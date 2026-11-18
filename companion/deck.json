@@ -1,7 +1,7 @@
 {
   "settings": {"volume": 70, "sounds": true, "brightness": 255},
   "desktops": [
-    {"name": "Playing", "kind": "nowplaying"},
+    {"name": "Playing", "kind": "nowplaying", "options": {"filter": {"mode": "all", "apps": []}, "tint": true, "album": true, "controls": "basic"}},
     {"name": "Main", "pages": [
         {"id": "root", "title": "Main", "cols": 4, "rows": 3, "keys": [
           {"label": "Mute", "icon": "mute", "color": "#B3261E", "action": {"type": "hotkey", "keys": "volume_mute"}},
@@ -64,6 +64,6 @@
           {"label": "End", "icon": "power", "action": {"type": "hotkey", "keys": "f21"}}
         ]}
     ]},
-    {"name": "PC", "kind": "stats"}
+    {"name": "PC", "kind": "stats", "options": {"style": "gauges"}}
   ]
 }

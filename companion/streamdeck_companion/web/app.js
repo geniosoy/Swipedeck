@@ -35,7 +35,7 @@ function h(tag, props, ...children) {
 const state = {
   deck: null, savedText: '', sel: { d: 0, p: 0, k: null }, icons: {}, presets: { builtin: [], user: [] },
   cat: 'all', query: '', status: null, clip: null, saving: false, capturing: false, sizeNote: '',
-  templates: [], addMenu: false,
+  templates: [], addMenu: false, view: 'deck', // 'deck' = the desktop editor, 'settings' = general settings
   sources: null, sourcesBusy: false, sourcesError: '', // media players found by "Detect" (Now playing filter)
 };
 const history = new M.History();
@@ -193,7 +193,11 @@ function renderTopbar() {
   }
   const size = state.deck ? `${(M.layoutBytes(state.deck) / 1024).toFixed(1)} KB layout` : '';
   $('#topbar').replaceChildren(
-    h('span', { class: 'brand' }, 'Deck editor'), pill, h('span', { class: 'pill' }, size), h('span', { class: 'spacer' }),
+    h('span', { class: 'brand' }, 'Deck editor'),
+    h('nav', { class: 'tabs' },
+      h('button', { class: 'tab' + (state.view === 'deck' ? ' on' : ''), onclick: () => setView('deck') }, 'Desktops'),
+      h('button', { class: 'tab' + (state.view === 'settings' ? ' on' : ''), onclick: () => setView('settings') }, 'General settings')),
+    pill, h('span', { class: 'pill' }, size), h('span', { class: 'spacer' }),
     h('button', { onclick: undo, disabled: !history.canUndo, title: 'Undo (Ctrl+Z)' }, 'Undo'),
     h('button', { onclick: redo, disabled: !history.canRedo, title: 'Redo (Ctrl+Y)' }, 'Redo'),
     h('button', { onclick: revert, disabled: !isDirty() }, 'Revert'),
@@ -284,22 +288,6 @@ function renderTree() {
     list.append(box);
   });
   $('#treeList').replaceChildren(list);
-}
-
-function renderTreeSettings() {
-  const s = state.deck.settings || {};
-  const setting = (name, value) => commit((d) => { d.settings = d.settings || {}; d.settings[name] = value; }, { coalesce: 'setting-' + name, rerender: 'live' });
-  const vol = h('span', {}, String(s.volume ?? 70));
-  const bri = h('span', {}, String(s.brightness ?? 255));
-  $('#treeSettings').replaceChildren(
-    h('h3', {}, 'Board settings'),
-    h('div', { class: 'card' },
-      h('div', { class: 'field' }, h('label', {}, 'Sound volume ', vol),
-        h('input', { type: 'range', min: 0, max: 100, value: s.volume ?? 70, oninput: (e) => { vol.textContent = e.target.value; setting('volume', +e.target.value); } })),
-      h('div', { class: 'field' }, h('label', {}, h('input', { type: 'checkbox', checked: s.sounds ?? true, onchange: (e) => setting('sounds', e.target.checked) }), ' Key sounds')),
-      h('div', { class: 'field' }, h('label', {}, 'Brightness ', bri),
-        h('input', { type: 'range', min: 5, max: 255, value: s.brightness ?? 255, oninput: (e) => { bri.textContent = e.target.value; setting('brightness', +e.target.value); } })),
-      h('div', { class: 'hint' }, 'Sent to the board when you save.')));
 }
 
 function moveDesktop(from, to) {
@@ -961,10 +949,51 @@ function renderPresetGrid() { renderPresets(); const input = $('#presets input')
 
 // ---- rendering ---------------------------------------------------------------------------------------
 
+function setView(view) {
+  state.view = view;
+  renderAll();
+}
+
+// ---- general settings page ---------------------------------------------------------------------------
+
+function renderSettingsPage() {
+  const s = state.deck.settings || {};
+  const setting = (name, value) => commit((d) => { d.settings = d.settings || {}; d.settings[name] = value; }, { coalesce: 'setting-' + name, rerender: 'live' });
+  const vol = h('b', {}, String(s.volume ?? 70));
+  const bri = h('b', {}, String(s.brightness ?? 255));
+  const st = state.status;
+  const info = (label, value) => h('div', { class: 'inforow' }, h('span', { class: 'lab' }, label), h('span', {}, value));
+  $('#settingsPage').replaceChildren(h('div', { class: 'settingsWrap' },
+    h('h2', {}, 'General settings'),
+    h('p', { class: 'hint' }, 'These apply to the whole board. They are sent to the board when you save, and the board remembers them.'),
+    h('div', { class: 'cards' },
+      h('div', { class: 'card' }, h('h4', {}, 'Sound'),
+        checkRow('Key sounds (a tick when you press a key, a chirp for folders and Back)', s.sounds ?? true, (v) => setting('sounds', v)),
+        h('div', { class: 'field' }, h('label', {}, 'Volume ', vol),
+          h('input', { type: 'range', id: 'setVolume', min: 0, max: 100, value: s.volume ?? 70, oninput: (e) => { vol.textContent = e.target.value; setting('volume', +e.target.value); } }))),
+      h('div', { class: 'card' }, h('h4', {}, 'Display'),
+        h('div', { class: 'field' }, h('label', {}, 'Brightness ', bri),
+          h('input', { type: 'range', id: 'setBrightness', min: 5, max: 255, value: s.brightness ?? 255, oninput: (e) => { bri.textContent = e.target.value; setting('brightness', +e.target.value); } })),
+        h('div', { class: 'hint' }, 'The lowest value is 5 out of 255: very dim, but not off.')),
+      h('div', { class: 'card' }, h('h4', {}, 'This deck'),
+        info('Desktops', String(state.deck.desktops.length)),
+        info('Layout sent to the board', `${(M.layoutBytes(state.deck) / 1024).toFixed(1)} KB`),
+        info('Board', st ? (st.connected ? `connected on ${st.port || '?'}, firmware ${st.firmware || '?'}` : 'not connected') : 'companion not reachable'),
+        h('div', { class: 'hint', style: { marginTop: '8px' } }, 'Every save keeps the previous deck as deck.json.bak next to deck.json.'))),
+  ));
+}
+
+function renderView() {
+  const settings = state.view === 'settings';
+  $('#deckView').hidden = settings;
+  $('#settingsPage').hidden = !settings;
+  if (settings) renderSettingsPage();
+}
+
 function renderAll() {
   renderTopbar();
+  renderView();
   renderTree();
-  renderTreeSettings();
   renderScreen();
   renderPageControls();
   renderInspector();
@@ -974,6 +1003,7 @@ function renderAll() {
 
 function renderLive() { // after typing: leave the inspector, the settings and the presets alone
   renderTopbar();
+  if (state.view !== 'deck') return;
   renderTree();
   renderScreen();
 }
@@ -988,6 +1018,11 @@ function onKeyDown(e) {
   const mod = e.ctrlKey || e.metaKey;
   if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); save(); return; }
   if (typing) return;
+  if (state.view !== 'deck') { // the general settings page has no keys to edit, but undo / redo still apply
+    if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+    else if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); }
+    return;
+  }
   if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
   if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
   if (!isKeys() || state.sel.k === null) return;

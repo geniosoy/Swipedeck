@@ -395,7 +395,26 @@ def main() -> int:
 
         print("saving")
         cdp.js("$$('.deskrow')[0].click()")  # back to the first keys desktop
-        cdp.js("setInput(document.querySelector('#treeSettings input[type=range]'), '40')")
+        print("general settings page")
+        check("the board settings are no longer at the bottom of the desktop list", cdp.js("!document.body.textContent.includes('Board settings')"))
+        check("the editor starts on the desktops view", cdp.js("!document.querySelector('#deckView').hidden && document.querySelector('#settingsPage').hidden"))
+        cdp.js("btn('General settings').click()")
+        check("the General settings tab replaces the editor", cdp.js("document.querySelector('#deckView').hidden && !document.querySelector('#settingsPage').hidden"))
+        check("the tab shows which view is active", cdp.js("btn('General settings').classList.contains('on') && !btn('Desktops').classList.contains('on')"))
+        check("sound, display and deck cards", cdp.js("$$('#settingsPage .card h4').map((h) => h.textContent)") == ["Sound", "Display", "This deck"])
+        check("the deck card shows the number of desktops", cdp.js("document.querySelector('#settingsPage').textContent.includes('Desktops5')"))
+        cdp.js("setInput(document.querySelector('#setVolume'), '40')")
+        check("the volume label follows the slider", cdp.js("document.querySelector('#setVolume').closest('.field').querySelector('b').textContent") == "40")
+        cdp.js("setInput(document.querySelector('#setBrightness'), '120')")
+        cdp.js("$$('#settingsPage .check input')[0].click()")
+        check("changing a setting makes the deck unsaved", cdp.js("btn('Save') && !btn('Save').disabled"))
+        cdp.js("press('z', { ctrlKey: true })")
+        check("undo works on the settings page", cdp.js("document.querySelector('#settingsPage .check input').checked") is True)
+        cdp.js("$$('#settingsPage .check input')[0].click()")  # sounds off again for the saved-file check
+        if shots:
+            cdp.shot(shots / "11_general_settings.png")
+        cdp.js("btn('Desktops').click()")
+        check("the Desktops tab brings the editor back", cdp.js("!document.querySelector('#deckView').hidden && document.querySelector('#settingsPage').hidden"))
         cdp.js("keyAt(11).click()")
         cdp.js("card('Mute').click()")
         cdp.js("btn('Save').click()")
@@ -403,7 +422,7 @@ def main() -> int:
         check("...and the button reads Saved again", cdp.js("btn('Saved') && btn('Saved').disabled"))
         saved = json.loads(deck_path.read_text(encoding="utf-8"))
         check("the file has the new key", any(k.get("label") == "Mute" for k in saved["desktops"][0]["pages"][0]["keys"][8:]))
-        check("the file has the volume setting", saved["settings"]["volume"] == 40)
+        check("the file has the volume, brightness and sounds settings", saved["settings"]["volume"] == 40 and saved["settings"]["brightness"] == 120 and saved["settings"]["sounds"] is False, str(saved["settings"]))
         stats_options = next(d for d in saved["desktops"] if d.get("kind") == "stats")["options"]
         np_options = next(d for d in saved["desktops"] if d.get("kind") == "nowplaying")["options"]
         check("the saved file has the stats style and items", stats_options["style"] == "gauges" and stats_options["items"] == ["gpu", "net", "disk", "vram", "cpu", "ram"], str(stats_options))
