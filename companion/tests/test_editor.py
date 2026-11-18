@@ -61,7 +61,7 @@ class EditorServerTest(unittest.TestCase):
         self.assertGreater(len(presets["builtin"]), 5)
         self.assertEqual(presets["user"], [])
         self.assertEqual(self.json("GET", "/api/status"), (200, {"connected": True}))
-        for path in ("/app.js", "/model.js", "/style.css", "/icons.json", "/presets.json", "/templates.json", "/fonts/fa.woff"):
+        for path in ("/app.js", "/model.js", "/style.css", "/icons.json", "/presets.json", "/templates.json", "/fonts/fa.woff", "/favicon.svg", "/favicon.ico"):
             self.assertEqual(self.call("GET", path)[0], 200, path)
 
     def test_static_files_cannot_escape_the_web_folder(self):

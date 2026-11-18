@@ -35,7 +35,7 @@ TOKEN_HEADER = "X-Streamdeck-Token"
 
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
-    ".json": "application/json; charset=utf-8", ".woff": "font/woff", ".svg": "image/svg+xml", ".png": "image/png",
+    ".json": "application/json; charset=utf-8", ".woff": "font/woff", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon",
 }
 CSP = ("default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; "
        "frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
