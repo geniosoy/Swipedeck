@@ -147,3 +147,29 @@ textarea { min-height: 70px; resize: vertical; font-family: Consolas, monospace;
 .addmenu .tx { display: flex; flex-direction: column; }
 .addmenu .nm { font-weight: 600; }
 .addmenu .ds { color: var(--muted); font-size: 12px; line-height: 1.25; }
+
+/* live screen settings */
+#liveConfig { margin-top: 22px; display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
+#liveConfig .card { flex: 1 1 340px; max-width: 540px; margin-bottom: 0; }
+.check { display: flex; gap: 8px; align-items: flex-start; margin: 5px 0; cursor: pointer; }
+.check input { margin-top: 3px; }
+.appchips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.appchip { display: inline-flex; gap: 4px; align-items: center; padding: 2px 4px 2px 10px; border-radius: 999px; background: var(--accent-soft); border: 1px solid var(--accent); }
+.appchip .x { border: 0; background: transparent; padding: 0 6px; border-radius: 999px; line-height: 1.2; }
+.appchip .x:hover { background: var(--bad); color: #fff; }
+.found { margin-top: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.foundrow { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.foundrow:last-child { border-bottom: 0; }
+.foundrow .fid { font-weight: 600; }
+.foundrow .ds, .srow .ds, .option .ds { color: var(--muted); font-size: 12px; flex: 1; }
+.tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--good) 25%, transparent); color: var(--good); }
+.hint.bad { color: var(--bad); }
+.option { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left; margin-bottom: 6px; padding: 8px 12px; }
+.option.on { border-color: var(--accent); background: var(--accent-soft); }
+.srow { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 5px; background: var(--bg); }
+.srow.off { opacity: .65; }
+.srow .nm { font-weight: 600; width: 62px; }
+.srow .grip { width: 14px; }
+.srow.dragging { opacity: .4; }
+.srow.drop-before { box-shadow: 0 -3px 0 var(--accent); }
+.srow.drop-after { box-shadow: 0 3px 0 var(--accent); }

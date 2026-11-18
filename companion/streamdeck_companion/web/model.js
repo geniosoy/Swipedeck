@@ -279,7 +279,12 @@ export function describeAction(a) {
 export function boardLayout(deck) {
   return {
     desktops: deck.desktops.map((d) => {
-      if (d.kind && d.kind !== 'keys') return { name: d.name, kind: d.kind };
+      if (d.kind && d.kind !== 'keys') {
+        const o = liveOptions(d);
+        // the player filter stays on the PC: the board only gets how the screen looks
+        const board = d.kind === 'nowplaying' ? { tint: o.tint, album: o.album, controls: o.controls } : { style: o.style, items: o.items };
+        return { name: d.name, kind: d.kind, options: board };
+      }
       return {
         name: d.name,
         pages: d.pages.map((p) => ({
@@ -327,4 +332,86 @@ export class History {
 
   get canUndo() { return this.past.length > 0; }
   get canRedo() { return this.future.length > 0; }
+}
+
+// ---- live screens: options ---------------------------------------------------------------------------
+
+export const STAT_ITEMS = [
+  { id: 'cpu', name: 'CPU', desc: 'Load, and temperature when a sensor is available' },
+  { id: 'gpu', name: 'GPU', desc: 'Load, temperature and power (NVIDIA)' },
+  { id: 'ram', name: 'RAM', desc: 'Memory in use' },
+  { id: 'vram', name: 'VRAM', desc: 'Graphics memory (NVIDIA)' },
+  { id: 'disk', name: 'Disk', desc: 'How full the system drive is' },
+  { id: 'net', name: 'Network', desc: 'Download and upload speed' },
+];
+export const STAT_STYLES = [
+  { id: 'gauges', name: 'Gauges', desc: 'Round gauges for the first three, bars for the rest' },
+  { id: 'bars', name: 'Bars', desc: 'One row per item' },
+  { id: 'tiles', name: 'Tiles', desc: 'Big numbers in two columns' },
+];
+export const FILTER_MODES = [
+  { id: 'all', name: 'All players' },
+  { id: 'only', name: 'Only these players' },
+  { id: 'except', name: 'Every player except these' },
+];
+
+// Quick-add groups for the player filter. Players are matched by a part of the name Windows gives them
+// (case-insensitive), so these are best guesses; "Detect" shows the exact names of what is running.
+export const APP_GROUPS = [
+  { id: 'music', name: 'Music apps', apps: ['spotify', 'tidal', 'applemusic', 'itunes', 'deezer', 'amazonmusic', 'zunemusic', 'foobar', 'musicbee', 'winamp', 'qobuz', 'youtube-music'] },
+  { id: 'browsers', name: 'Browsers', apps: ['chrome', 'msedge', 'edge', 'brave', 'opera', 'vivaldi'] },
+  { id: 'video', name: 'Video players', apps: ['vlc', 'mpv', 'potplayer', 'zunevideo', 'plex'] },
+];
+
+// The options of a live desktop with every default filled in (the file may hold only some of them).
+export function liveOptions(d) {
+  const o = d.options || {};
+  if (d.kind === 'nowplaying') {
+    const f = o.filter || {};
+    return { filter: { mode: f.mode || 'all', apps: [...(f.apps || [])] }, tint: o.tint ?? true, album: o.album ?? true, controls: o.controls || 'full' };
+  }
+  return { style: o.style || 'gauges', items: o.items && o.items.length ? [...o.items] : STAT_ITEMS.map((x) => x.id) };
+}
+
+export function setOptions(d, patch) {
+  d.options = { ...(d.options || {}), ...patch };
+}
+
+// Same rule as the companion (nowplaying.py): does the player's Windows name contain one of the parts?
+export function appMatches(appId, patterns) {
+  const low = String(appId || '').toLowerCase();
+  return patterns.some((p) => p && low.includes(String(p).toLowerCase()));
+}
+
+// Adds names to a filter's list (case-insensitive de-duplication, at most 30). Returns how many were added.
+export function addFilterApps(filter, names) {
+  let added = 0;
+  for (const raw of names) {
+    const name = String(raw).trim();
+    if (!name || name.length > 80 || filter.apps.length >= 30) continue;
+    if (filter.apps.some((a) => a.toLowerCase() === name.toLowerCase())) continue;
+    filter.apps.push(name);
+    added++;
+  }
+  return added;
+}
+
+export function describeFilter(f) {
+  if (f.mode === 'all') return 'Shows whatever Windows is playing.';
+  if (!f.apps.length) return f.mode === 'only' ? 'No players listed: nothing will ever be shown.' : 'No players listed: everything is shown.';
+  return f.mode === 'only' ? `Shows only players whose name contains: ${f.apps.join(', ')}.` : `Shows every player except those whose name contains: ${f.apps.join(', ')}.`;
+}
+
+// Stats items: the enabled ones in screen order, then the others.
+export function statItemOrder(items) {
+  const all = STAT_ITEMS.map((x) => x.id);
+  return { enabled: items.filter((i) => all.includes(i)), disabled: all.filter((i) => !items.includes(i)) };
+}
+
+// Turns an item on (appended) or off. The last enabled item cannot be turned off. Returns whether it changed.
+export function toggleStatItem(items, id, on) {
+  const at = items.indexOf(id);
+  if (on && at < 0) { items.push(id); return true; }
+  if (!on && at >= 0 && items.length > 1) { items.splice(at, 1); return true; }
+  return false;
 }

@@ -36,6 +36,7 @@ const state = {
   deck: null, savedText: '', sel: { d: 0, p: 0, k: null }, icons: {}, presets: { builtin: [], user: [] },
   cat: 'all', query: '', status: null, clip: null, saving: false, capturing: false, sizeNote: '',
   templates: [], addMenu: false,
+  sources: null, sourcesBusy: false, sourcesError: '', // media players found by "Detect" (Now playing filter)
 };
 const history = new M.History();
 let lastCoalesce = { key: null, t: 0 };
@@ -361,47 +362,125 @@ function keyEl(k, i, geo) {
   return el;
 }
 
-// Static previews of the two live screens (the real ones are drawn by the board from live data).
+// Static previews of the two live screens. They follow the same geometry as the firmware (nowplaying.cpp, stats.cpp)
+// and the options chosen below, with sample numbers instead of live data.
 const px = (n) => n * S + 'px';
 const abs = (style) => ({ position: 'absolute', ...style });
 const fa = (name, size, style = {}) => h('span', { class: 'fa', style: { fontSize: px(size), ...style } }, glyph(name));
 
-function mockNowPlaying() {
-  return h('div', { class: 'mock', style: { background: '#1b2535' } },
-    h('div', { style: abs({ left: px(9), top: px(9), width: px(140), height: px(140), background: '#2c3a52', display: 'flex', alignItems: 'center', justifyContent: 'center' }) }, fa('audio', 40, { opacity: .4 })),
-    h('div', { style: abs({ left: px(161), top: px(8), right: px(9), lineHeight: 1.15 }) },
-      h('div', { style: { fontSize: px(14), opacity: .6 } }, 'Album'),
-      h('div', { style: { fontSize: px(28), marginTop: px(4) } }, 'Song title'),
-      h('div', { style: { fontSize: px(16), marginTop: px(8), opacity: .9 } }, 'Artist'),
-      h('div', { style: { fontSize: px(14), marginTop: px(12), opacity: .6 } }, '1:23 / 3:45')),
-    h('div', { style: abs({ left: 0, right: 0, top: px(158), height: px(4), background: 'rgba(255,255,255,.3)' }) },
-      h('div', { style: { width: '38%', height: '100%', background: '#fff' } })),
-    h('div', { style: abs({ left: 0, right: 0, top: px(162), height: px(48), background: '#0b0f17', display: 'flex', justifyContent: 'space-around', alignItems: 'center' }) },
-      fa('shuffle', 24), fa('prev', 28), fa('play', 28), fa('next', 28), fa('loop', 24)));
+function mockNowPlaying(o) {
+  const shift = o.album ? 0 : -18; // without the album line, the title block moves up
+  const icon = (name, size, cx) => h('span', { class: 'fa', style: abs({ left: px(cx - 32), width: px(64), top: px(162), height: px(48), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: px(size) }) }, glyph(name));
+  const controls = [icon('prev', 28, 96), icon('play', 28, 160), icon('next', 28, 224)];
+  if (o.controls === 'full') controls.unshift(icon('shuffle', 24, 32)), controls.push(icon('loop', 24, 288));
+  return h('div', { class: 'mock', dataset: { tint: o.tint, album: o.album, controls: o.controls }, style: { background: o.tint ? '#2a2140' : '#1b2535' } },
+    h('div', { style: abs({ left: px(9), top: px(9), width: px(140), height: px(140), background: o.tint ? '#3d3158' : '#2c3a52', display: 'flex', alignItems: 'center', justifyContent: 'center' }) }, fa('audio', 40, { opacity: .4 })),
+    o.album ? h('div', { class: 'm-album', style: abs({ left: px(161), top: px(8), fontSize: px(14), opacity: .6 }) }, 'Album') : null,
+    h('div', { style: abs({ left: px(161), top: px(28 + shift), right: px(9), fontSize: px(28), lineHeight: 1.15 }) }, 'Song title'),
+    h('div', { style: abs({ left: px(161), top: px(100 + shift), fontSize: px(16), opacity: .9 }) }, 'Artist'),
+    h('div', { style: abs({ left: px(161), top: px(134 + shift), fontSize: px(14), opacity: .6 }) }, '1:23 / 3:45'),
+    h('div', { style: abs({ left: 0, right: 0, top: px(158), height: px(4), background: 'rgba(255,255,255,.3)' }) }, h('div', { style: { width: '38%', height: '100%', background: '#fff' } })),
+    h('div', { style: abs({ left: 0, right: 0, top: px(162), height: px(48), background: o.tint ? '#0d0a14' : '#0b0f17' }) }),
+    controls);
 }
 
-function mockStats() {
-  const gauge = (name, pct, sub, cx) => {
-    const sweep = pct * 2.7;
-    return h('div', {},
-      h('div', { style: abs({ left: px(cx - 46), top: px(8), width: px(92), height: px(92), borderRadius: '50%',
-        background: `conic-gradient(from 225deg, #1ed760 0deg ${sweep}deg, #2a3a4d ${sweep}deg 270deg, transparent 270deg)` }) },
-      h('div', { style: abs({ inset: px(9), borderRadius: '50%', background: '#101722' }) })),
-      h('div', { style: abs({ left: px(cx - 46), width: px(92), top: px(36), textAlign: 'center', fontSize: px(24), lineHeight: 1.1 }) }, pct + '%'),
-      h('div', { style: abs({ left: px(cx - 46), width: px(92), top: px(66), textAlign: 'center', fontSize: px(14), opacity: .6 }) }, name),
-      h('div', { style: abs({ left: px(cx - 52), width: px(104), top: px(104), textAlign: 'center', fontSize: px(14), whiteSpace: 'nowrap' }) }, sub));
-  };
-  const bar = (label, pct, text, top) => h('div', { style: abs({ left: px(10), right: px(8), top: px(top), display: 'flex', alignItems: 'center', gap: px(6), fontSize: px(14), whiteSpace: 'nowrap' }) },
-    h('span', { style: { width: px(46), opacity: .6 } }, label),
-    h('div', { style: { flex: 1, height: px(8), borderRadius: px(4), background: '#2a3a4d' } }, h('div', { style: { width: pct + '%', height: '100%', borderRadius: px(4), background: '#1ed760' } })),
-    h('span', { style: { width: px(74), textAlign: 'right', opacity: .8 } }, text));
-  return h('div', { class: 'mock', style: { background: '#101722' } },
-    gauge('CPU', 34, 'temp n/a', 54), gauge('GPU', 12, '45\u00B0C  4W', 160), gauge('RAM', 58, '9.1/15.6 GB', 266),
-    bar('VRAM', 27, '1.6/6.0 GB', 136), bar('DISK', 48, '195/405 GB', 160),
-    h('div', { style: abs({ left: px(10), top: px(186), fontSize: px(14), opacity: .8, whiteSpace: 'nowrap' }) },
-      fa('download', 14), ' 1.2 MB/s'),
-    h('div', { style: abs({ left: px(165), top: px(186), fontSize: px(14), opacity: .8, whiteSpace: 'nowrap' }) },
-      fa('upload', 14), ' 0.3 MB/s'));
+const SAMPLE = {
+  cpu: { name: 'CPU', pct: 34, sub: 'temp n/a', subColor: '#7f8fa6' },
+  gpu: { name: 'GPU', pct: 12, sub: '45\u00B0C  4W', subColor: '#1ed760' },
+  ram: { name: 'RAM', pct: 58, sub: '9.1/15.6 GB', subColor: '#7f8fa6' },
+  vram: { name: 'VRAM', pct: 27, sub: '1.6/6.0 GB', subColor: '#7f8fa6' },
+  disk: { name: 'DISK', pct: 48, sub: '195/405 GB', subColor: '#7f8fa6' },
+  net: { name: 'NET', net: true, down: 'download', downText: '1.2 MB/s', up: 'upload', upText: '0.3 MB/s' },
+};
+const loadColor = (pct) => (pct < 60 ? '#1ed760' : pct < 85 ? '#f5a524' : '#f04438');
+const txt = (style, text, extra = {}) => h('div', { style: abs({ whiteSpace: 'nowrap', ...style }), ...extra }, text);
+const netText = (it) => [fa(it.down, 14), ` ${it.downText}`];
+const netUpText = (it) => [fa(it.up, 14), ` ${it.upText}`];
+
+function barMock(x, y, w, hgt, pct) {
+  return h('div', { style: abs({ left: px(x), top: px(y), width: px(w), height: px(hgt), borderRadius: px(hgt / 2), background: '#2a3a4d' }) },
+    h('div', { style: { width: pct + '%', height: '100%', borderRadius: px(hgt / 2), background: loadColor(pct) } }));
+}
+
+function gaugesMock(items) {
+  const pct = items.filter((i) => i !== 'net');
+  const ng = Math.min(3, pct.length);
+  const centers = [[160], [100, 220], [54, 160, 266]];
+  const out = [];
+  for (let i = 0; i < ng; i++) {
+    const it = SAMPLE[pct[i]], cx = centers[ng - 1][i], sweep = it.pct * 2.7;
+    out.push(h('div', { class: 'mk', dataset: { item: pct[i] } },
+      h('div', { style: abs({ left: px(cx - 46), top: px(8), width: px(92), height: px(92), borderRadius: '50%', background: `conic-gradient(from 225deg, ${loadColor(it.pct)} 0deg ${sweep}deg, #2a3a4d ${sweep}deg 270deg, transparent 270deg)` }) },
+        h('div', { style: abs({ inset: px(9), borderRadius: '50%', background: '#101722' }) })),
+      txt({ left: px(cx - 36), width: px(72), top: px(36), textAlign: 'center', fontSize: px(24), lineHeight: 1.1 }, it.pct + '%'),
+      txt({ left: px(cx - 36), width: px(72), top: px(66), textAlign: 'center', fontSize: px(14), opacity: .6 }, it.name),
+      txt({ left: px(cx - 52), width: px(104), top: px(104), textAlign: 'center', fontSize: px(14), color: it.subColor }, it.sub)));
+  }
+  let rowY = ng > 0 ? 136 : 20;
+  const rowH = ng > 0 ? 24 : 44;
+  for (let i = ng; i < pct.length; i++, rowY += rowH) {
+    const it = SAMPLE[pct[i]];
+    out.push(h('div', { class: 'mk', dataset: { item: pct[i] } },
+      txt({ left: px(10), top: px(rowY), fontSize: px(14), opacity: .6 }, it.name), barMock(58, rowY + 5, 186, 8, it.pct),
+      txt({ left: px(250), width: px(62), top: px(rowY), textAlign: 'right', fontSize: px(14), opacity: .8 }, it.sub)));
+  }
+  if (items.includes('net')) {
+    const it = SAMPLE.net;
+    if (!pct.length) {
+      out.push(h('div', { class: 'mk', dataset: { item: 'net' } },
+        txt({ left: px(10), width: px(300), top: px(60), textAlign: 'center', fontSize: px(24) }, netText(it)),
+        txt({ left: px(10), width: px(300), top: px(110), textAlign: 'center', fontSize: px(24) }, netUpText(it))));
+    } else {
+      out.push(h('div', { class: 'mk', dataset: { item: 'net' } },
+        txt({ left: px(10), top: px(rowY), fontSize: px(14), opacity: .8 }, netText(it)),
+        txt({ left: px(165), top: px(rowY), fontSize: px(14), opacity: .8 }, netUpText(it))));
+    }
+  }
+  return out;
+}
+
+function barsMock(items) {
+  const n = items.length;
+  const rowH = n <= 3 ? 58 : n === 4 ? 48 : n === 5 ? 40 : 34;
+  const top = (210 - rowH * n) / 2;
+  const nameFont = rowH >= 48 ? 16 : 14, valueFont = rowH >= 40 ? 20 : 16;
+  return items.map((id, i) => {
+    const it = SAMPLE[id], cy = top + i * rowH + rowH / 2;
+    const name = txt({ left: px(10), top: px(cy - nameFont * 0.6), fontSize: px(nameFont), opacity: .6 }, it.name);
+    if (it.net) {
+      return h('div', { class: 'mk', dataset: { item: id } }, name,
+        txt({ left: px(64), top: px(cy - 9), fontSize: px(16) }, netText(it)), txt({ left: px(190), top: px(cy - 9), fontSize: px(16) }, netUpText(it)));
+    }
+    return h('div', { class: 'mk', dataset: { item: id } }, name, barMock(64, cy - 5, 100, 10, it.pct),
+      txt({ left: px(170), top: px(cy - 8), fontSize: px(14), opacity: .8 }, it.sub),
+      txt({ left: px(254), width: px(56), top: px(cy - valueFont * 0.65), textAlign: 'right', fontSize: px(valueFont) }, it.pct + '%'));
+  });
+}
+
+function tilesMock(items) {
+  const n = items.length, rows = Math.ceil(n / 2), pad = 6, gap = 6;
+  const tileW = (320 - 2 * pad - gap) / 2 | 0, tileH = (210 - 2 * pad - (rows - 1) * gap) / rows | 0;
+  const valueFont = tileH >= 80 ? 28 : 24;
+  return items.map((id, i) => {
+    const it = SAMPLE[id];
+    const full = i === n - 1 && n % 2 === 1;
+    const x = full ? pad : pad + (i % 2) * (tileW + gap), w = full ? 320 - 2 * pad : tileW, y = pad + Math.floor(i / 2) * (tileH + gap);
+    const parts = [h('div', { style: abs({ left: px(x), top: px(y), width: px(w), height: px(tileH), borderRadius: px(10), background: '#17212f' }) }),
+      txt({ left: px(x + 8), top: px(y + 4), fontSize: px(14), opacity: .6 }, it.name)];
+    if (it.net) {
+      parts.push(txt({ left: px(x + 8), top: px(y + 22), fontSize: px(16) }, netText(it)), txt({ left: px(x + 8), top: px(y + 41), fontSize: px(16) }, netUpText(it)));
+    } else {
+      parts.push(txt({ left: px(x + 60), width: px(w - 68), top: px(y + 4), textAlign: 'right', fontSize: px(14), color: it.subColor }, it.sub),
+        txt({ left: px(x + 8), top: px(y + (tileH >= 80 ? 26 : 20)), fontSize: px(valueFont), lineHeight: 1.1 }, it.pct + '%'),
+        barMock(x + 8, y + tileH - 11, w - 16, 5, it.pct));
+    }
+    return h('div', { class: 'mk', dataset: { item: id } }, parts);
+  });
+}
+
+function mockStats(o) {
+  const body = o.style === 'bars' ? barsMock(o.items) : o.style === 'tiles' ? tilesMock(o.items) : gaugesMock(o.items);
+  return h('div', { class: 'mock', dataset: { style: o.style }, style: { background: '#101722' } }, body);
 }
 
 function renderScreen() {
@@ -422,7 +501,7 @@ function renderScreen() {
     const geo = M.geometry(pg.cols, pg.rows);
     for (let i = 0; i < pg.cols * pg.rows; i++) content.append(keyEl(pg.keys[i] || {}, i, geo));
   } else {
-    content.append(kind === 'nowplaying' ? mockNowPlaying() : mockStats());
+    content.append(kind === 'nowplaying' ? mockNowPlaying(M.liveOptions(d)) : mockStats(M.liveOptions(d)));
   }
   screen.append(content);
   const head = h('div', { class: 'stagehead' }, h('b', {}, d.name),
@@ -616,8 +695,8 @@ function renderInspector() {
   cards.push(h('div', { class: 'card' }, h('h4', {}, 'Desktop'),
     field('Name', textInput(d.name, (v) => liveEdit(() => { desk().name = v; }, 'dname'), { maxLength: 24 })),
     h('div', { class: 'hint' }, kind === 'keys' ? 'A desktop holds pages of keys; swipe between desktops on the board.' :
-      kind === 'nowplaying' ? 'The Now playing screen shows the Windows media session: cover, title, progress bar and controls. Nothing to configure.' :
-        'The PC stats screen shows CPU, GPU, RAM, VRAM, disk and network. Nothing to configure.')));
+      kind === 'nowplaying' ? 'The Now playing screen shows the Windows media session: cover, title, progress bar and controls. Choose the players and the look below the preview.' :
+        'The PC stats screen shows CPU, GPU, RAM, VRAM, disk and network. Choose the style, the items and their order below the preview.')));
   if (kind !== 'keys') { box.replaceChildren(...cards); return; }
   const k = keyObj();
   if (state.sel.k === null) {
@@ -655,6 +734,127 @@ function pasteKey() {
   commit(() => { page().keys[state.sel.k] = clip; });
 }
 function clearKey() { if (state.sel.k !== null) commit(() => { page().keys[state.sel.k] = {}; }); }
+
+// ---- live screen settings ----------------------------------------------------------------------------
+
+const checkRow = (label, checked, onchange) => h('label', { class: 'check' }, h('input', { type: 'checkbox', checked, onchange: (e) => onchange(e.target.checked) }), label);
+const radioRow = (group, label, value, current, onPick, hint) => h('label', { class: 'check' },
+  h('input', { type: 'radio', name: group, checked: current === value, onchange: () => onPick(value) }), h('span', {}, label, hint ? h('span', { class: 'hint' }, ` \u2014 ${hint}`) : null));
+
+// A list row that can be dragged to reorder (same drop-position rule as the desktop list).
+function sortableRow(row, index, mime, move) {
+  const clear = () => row.classList.remove('drop-before', 'drop-after');
+  row.draggable = true;
+  row.addEventListener('dragstart', (e) => { e.dataTransfer.setData(mime, String(index)); e.dataTransfer.effectAllowed = 'move'; row.classList.add('dragging'); });
+  row.addEventListener('dragend', () => { row.classList.remove('dragging'); document.querySelectorAll('.srow').forEach((r) => r.classList.remove('drop-before', 'drop-after')); });
+  row.addEventListener('dragover', (e) => {
+    if (![...e.dataTransfer.types].includes(mime)) return;
+    e.preventDefault();
+    const r = row.getBoundingClientRect();
+    const after = e.clientY > r.top + r.height / 2;
+    row.classList.toggle('drop-after', after);
+    row.classList.toggle('drop-before', !after);
+  });
+  row.addEventListener('dragleave', (e) => { if (!row.contains(e.relatedTarget)) clear(); });
+  row.addEventListener('drop', (e) => {
+    const from = e.dataTransfer.getData(mime);
+    if (from === '') return;
+    e.preventDefault();
+    const after = row.classList.contains('drop-after');
+    clear();
+    move(+from, M.dropTarget(+from, index, after));
+  });
+}
+
+async function detectPlayers() {
+  state.sourcesBusy = true;
+  renderLiveConfig();
+  try {
+    state.sources = (await api('GET', '/api/media-sources')).sources;
+    state.sourcesError = '';
+    const list = document.getElementById('knownapps');
+    if (list) list.replaceChildren(...state.sources.map((s) => h('option', { value: s.id })));
+  } catch (e) {
+    state.sources = null;
+    state.sourcesError = e.message;
+  }
+  state.sourcesBusy = false;
+  renderLiveConfig();
+}
+
+function nowPlayingConfig(d) {
+  const o = M.liveOptions(d);
+  const setFilter = (fn) => commit(() => { const f = M.liveOptions(d).filter; fn(f); M.setOptions(d, { filter: f }); });
+  const setOpt = (patch) => commit(() => { M.setOptions(d, patch); });
+  const addInput = h('input', { type: 'text', list: 'knownapps', placeholder: 'part of an app name, e.g. tidal', maxLength: 80, id: 'addApp' });
+  const addApp = () => { if (addInput.value.trim()) setFilter((f) => { M.addFilterApps(f, [addInput.value]); }); };
+  addInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addApp(); } });
+
+  const who = h('div', { class: 'card' }, h('h4', {}, 'Which players are shown'),
+    M.FILTER_MODES.map((m) => radioRow('npmode', m.name, m.id, o.filter.mode, (v) => setFilter((f) => { f.mode = v; }))),
+    h('div', { class: 'hint', id: 'filterSummary' }, M.describeFilter(o.filter)));
+  if (o.filter.mode !== 'all') {
+    who.append(...[ // Node.append() turns null into the text "null": keep only real children
+      h('div', { class: 'appchips' }, o.filter.apps.map((a, i) => h('span', { class: 'appchip' }, a, h('button', { class: 'x', title: 'Remove', onclick: () => setFilter((f) => { f.apps.splice(i, 1); }) }, '\u2715')))),
+      h('div', { class: 'row tight' }, addInput, h('button', { class: 'small', onclick: addApp }, 'Add')),
+      h('div', { class: 'row tight', style: { marginTop: '8px' } }, h('span', { class: 'lab' }, 'Quick add:'),
+        M.APP_GROUPS.map((g) => h('button', { class: 'small', title: g.apps.join(', '), onclick: () => setFilter((f) => { M.addFilterApps(f, g.apps); }) }, g.name))),
+      h('div', { style: { marginTop: '10px' } }, h('button', { class: 'small', disabled: state.sourcesBusy, onclick: detectPlayers }, state.sourcesBusy ? 'Looking\u2026' : 'Detect running players')),
+      state.sourcesError ? h('div', { class: 'hint bad' }, state.sourcesError) : null,
+      state.sources ? h('div', { class: 'found' }, state.sources.length ? state.sources.map((src) => h('div', { class: 'foundrow' },
+        h('span', { class: 'fid' }, src.id), h('span', { class: 'ds' }, [src.title, src.artist].filter(Boolean).join(' \u2014 ') || '(nothing loaded)'),
+        src.playing ? h('span', { class: 'tag' }, 'playing') : null,
+        h('button', { class: 'small', disabled: M.appMatches(src.id, o.filter.apps), onclick: () => setFilter((f) => { M.addFilterApps(f, [src.id]); }) }, M.appMatches(src.id, o.filter.apps) ? 'Listed' : 'Add')))
+        : h('div', { class: 'hint' }, 'No media players are running right now.')) : null,
+      h('div', { class: 'hint', style: { marginTop: '8px' } }, 'Names are matched by part, ignoring case. Some apps (Firefox) have a code as their Windows name: use "Detect" while they play.')].filter(Boolean));
+  }
+
+  const look = h('div', { class: 'card' }, h('h4', {}, 'Look'),
+    checkRow('Tint the background with the cover colors', o.tint, (v) => setOpt({ tint: v })),
+    checkRow('Show the album line', o.album, (v) => setOpt({ album: v })),
+    h('div', { class: 'lab', style: { marginTop: '8px' } }, 'Controls'),
+    radioRow('npctl', 'Full', 'full', o.controls, (v) => setOpt({ controls: v }), 'shuffle, previous, play/pause, next, repeat'),
+    radioRow('npctl', 'Basic', 'basic', o.controls, (v) => setOpt({ controls: v }), 'previous, play/pause, next'));
+  return [who, look];
+}
+
+function statsConfig(d) {
+  const o = M.liveOptions(d);
+  const setOpt = (patch) => commit(() => { M.setOptions(d, patch); });
+  const { enabled, disabled } = M.statItemOrder(o.items);
+  const info = (id) => M.STAT_ITEMS.find((x) => x.id === id);
+  const move = (from, to) => commit(() => { const items = [...M.liveOptions(d).items]; if (M.moveInList(items, from, to)) M.setOptions(d, { items }); });
+  const toggle = (id, on) => commit(() => { const items = [...M.liveOptions(d).items]; if (M.toggleStatItem(items, id, on)) M.setOptions(d, { items }); });
+
+  const style = h('div', { class: 'card' }, h('h4', {}, 'Style'),
+    M.STAT_STYLES.map((s) => h('button', { class: 'option' + (o.style === s.id ? ' on' : ''), dataset: { style: s.id }, onclick: () => setOpt({ style: s.id }) },
+      h('b', {}, s.name), h('span', { class: 'ds' }, s.desc))));
+  const rows = [];
+  enabled.forEach((id, i) => {
+    const row = h('div', { class: 'srow', dataset: { item: id } }, h('span', { class: 'grip', title: 'Drag to reorder' }, '\u22EE\u22EE'),
+      h('input', { type: 'checkbox', checked: true, disabled: enabled.length <= 1, title: enabled.length <= 1 ? 'At least one item must stay' : 'Hide', onchange: (e) => toggle(id, e.target.checked) }),
+      h('span', { class: 'nm' }, info(id).name), h('span', { class: 'ds' }, info(id).desc),
+      h('button', { class: 'small', disabled: i === 0, title: 'Move up', onclick: () => move(i, i - 1) }, '\u2191'),
+      h('button', { class: 'small', disabled: i === enabled.length - 1, title: 'Move down', onclick: () => move(i, i + 1) }, '\u2193'));
+    sortableRow(row, i, 'application/x-sd-statitem', move);
+    rows.push(row);
+  });
+  for (const id of disabled) {
+    rows.push(h('div', { class: 'srow off', dataset: { item: id } }, h('span', { class: 'grip' }, ''),
+      h('input', { type: 'checkbox', checked: false, title: 'Show', onchange: (e) => toggle(id, e.target.checked) }),
+      h('span', { class: 'nm' }, info(id).name), h('span', { class: 'ds' }, info(id).desc)));
+  }
+  const items = h('div', { class: 'card' }, h('h4', {}, 'What to show'), h('div', { class: 'hint', style: { marginBottom: '6px' } }, 'Tick what you want and drag to set the order.'), rows,
+    h('div', { class: 'hint' }, 'GPU and VRAM need an NVIDIA graphics card. CPU temperature is not available on Windows without extra software.'));
+  return [style, items];
+}
+
+function renderLiveConfig() {
+  const box = $('#liveConfig');
+  if (isKeys()) { box.replaceChildren(); return; }
+  const d = desk();
+  box.replaceChildren(...(M.desktopKind(d) === 'nowplaying' ? nowPlayingConfig(d) : statsConfig(d)));
+}
 
 // ---- presets -----------------------------------------------------------------------------------------
 
@@ -728,6 +928,7 @@ function miniKey(key) {
 }
 
 function renderPresets() {
+  if (!isKeys()) { $('#presets').replaceChildren(); return; } // live screens have settings instead (renderLiveConfig)
   const all = flatPresets();
   const cats = [{ id: 'all', name: 'All' }];
   if (state.presets.user.length) cats.push({ id: 'user', name: 'My presets' });
@@ -768,6 +969,7 @@ function renderAll() {
   renderPageControls();
   renderInspector();
   renderPresets();
+  renderLiveConfig();
 }
 
 function renderLive() { // after typing: leave the inspector, the settings and the presets alone
@@ -807,7 +1009,7 @@ function onKeyDown(e) {
 
 async function start() {
   const names = [...M.NAMED_KEYS, ...Array.from({ length: 24 }, (_, i) => `f${i + 1}`)];
-  document.body.append(h('datalist', { id: 'keynames' }, names.map((n) => h('option', { value: n }))));
+  document.body.append(h('datalist', { id: 'keynames' }, names.map((n) => h('option', { value: n }))), h('datalist', { id: 'knownapps' }));
   try {
     const [icons, presets, , templates] = await Promise.all([fetch('/icons.json').then((r) => r.json()), api('GET', '/api/presets'), loadDeck(),
       fetch('/templates.json').then((r) => r.json())]);

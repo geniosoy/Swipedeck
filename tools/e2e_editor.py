@@ -104,6 +104,18 @@ window.dragDesktop = (from, to, after) => {
   window.indicator = dst.className;
   dst.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true, clientY: y }));
 };
+window.dragSortRow = (from, to, after) => {
+  const rows = $$('.srow:not(.off)');
+  const dst = rows[to], r = dst.getBoundingClientRect(), y = after ? r.bottom - 2 : r.top + 2;
+  const dt = new DataTransfer();
+  rows[from].dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
+  dst.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true, clientY: y }));
+  dst.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true, clientY: y }));
+};
+window.mockItems = () => $$('.mock .mk').map((e) => e.dataset.item);
+window.statRow = (id) => document.querySelector('.srow[data-item="' + id + '"]');
+window.radio = (group, index) => $$('input[name="' + group + '"]')[index];
+window.chips = () => $$('.appchip').map((c) => c.firstChild.textContent);
 window.press = (key, opts = {}) => document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...opts }));
 window.setInput = (el, value) => { el.value = value; el.dispatchEvent(new Event('input', { bubbles: true })); };
 window.drag = (from, to) => {
@@ -132,7 +144,9 @@ def main() -> int:
     work = Path(tempfile.mkdtemp(prefix="editor_e2e_"))
     deck_path = work / "deck.json"
     shutil.copyfile(ROOT / "companion" / "tests" / "fixtures" / "deck.json", deck_path)
-    server = EditorServer(deck_path, port=0, status_fn=lambda: {"connected": False})
+    players = [{"id": "Chrome", "title": "A video", "artist": "A channel", "playing": True, "current": True},
+               {"id": "Spotify.exe", "title": "", "artist": "", "playing": False, "current": False}]
+    server = EditorServer(deck_path, port=0, status_fn=lambda: {"connected": False}, media_sources_fn=lambda: players)
     server.start()
     port = free_port()
     proc = subprocess.Popen([browser, "--headless=new", "--disable-gpu", "--no-first-run", f"--remote-debugging-port={port}",
@@ -308,7 +322,79 @@ def main() -> int:
         check("live screens added back from the menu", cdp.js("names()") == ["Main", "Work", "Stream", "Playing", "PC"])
         cdp.js("$$('.deskrow')[0].click()")
 
+        print("live screen settings: PC stats")
+        cdp.js("$$('.deskrow').find((r) => r.textContent.includes('PC')).click()")
+        check("the presets area is replaced by settings on a live screen", cdp.js("document.querySelector('#presets').children.length") == 0 and cdp.js("$$('#liveConfig .card').length") == 2)
+        check("three styles and six items are offered", cdp.js("$$('#liveConfig .option').length") == 3 and cdp.js("$$('.srow').length") == 6)
+        check("the preview starts in the gauges style with all six items", cdp.js("document.querySelector('.mock').dataset.style") == "gauges" and cdp.js("mockItems()") == ["cpu", "gpu", "ram", "vram", "disk", "net"])
+        cdp.js("document.querySelector('.option[data-style=\"tiles\"]').click()")
+        check("choosing the tiles style redraws the preview", cdp.js("document.querySelector('.mock').dataset.style") == "tiles" and cdp.js("$$('.mock .mk').length") == 6)
+        if shots:
+            cdp.shot(shots / "8_stats_tiles.png")
+        cdp.js("statRow('net').querySelector('input').click()")
+        check("hiding an item removes it from the preview", cdp.js("mockItems()") == ["cpu", "gpu", "ram", "vram", "disk"])
+        check("...and it moves to the unticked rows", cdp.js("statRow('net').classList.contains('off')"))
+        cdp.js("dragSortRow(0, 2, true)")
+        check("dragging an item reorders the screen", cdp.js("mockItems()") == ["gpu", "ram", "cpu", "vram", "disk"])
+        cdp.js("statRow('gpu').querySelectorAll('button')[1].click()")
+        check("the arrow buttons reorder too", cdp.js("mockItems()") == ["ram", "gpu", "cpu", "vram", "disk"])
+        for item in ("ram", "cpu", "vram", "disk"):
+            cdp.js(f"statRow('{item}').querySelector('input').click()")
+        check("the last item cannot be hidden", cdp.js("mockItems()") == ["gpu"] and cdp.js("statRow('gpu').querySelector('input').disabled"))
+        for item in ("net", "disk", "vram", "cpu", "ram"):
+            cdp.js(f"statRow('{item}').querySelector('input').click()")
+        check("hidden items come back at the end", cdp.js("mockItems()") == ["gpu", "net", "disk", "vram", "cpu", "ram"])
+        cdp.js("document.querySelector('.option[data-style=\"bars\"]').click()")
+        check("the bars style", cdp.js("document.querySelector('.mock').dataset.style") == "bars" and cdp.js("$$('.mock .mk').length") == 6)
+        if shots:
+            cdp.shot(shots / "9_stats_bars.png")
+        cdp.js("document.querySelector('.option[data-style=\"gauges\"]').click()")
+
+        print("live screen settings: Now playing")
+        cdp.js("$$('.deskrow').find((r) => r.textContent.includes('Playing')).click()")
+        check("Now playing settings: who and look", cdp.js("$$('#liveConfig .card').length") == 2 and cdp.js("$$('input[name=npmode]').length") == 3)
+        check("starts on all players, no list shown", cdp.js("radio('npmode', 0).checked") and cdp.js("!document.querySelector('#addApp')"))
+        cdp.js("radio('npmode', 1).click()")
+        check("choosing 'only' shows the list editor and warns that it is empty", cdp.js("!!document.querySelector('#addApp')") and "nothing will ever be shown" in cdp.js("document.querySelector('#filterSummary').textContent"))
+        cdp.js("setInput(document.querySelector('#addApp'), 'tidal')")
+        cdp.js("btn('Add', document.querySelector('#liveConfig')).click()")
+        check("adding a player name makes a chip", cdp.js("chips()") == ["tidal"])
+        check("the summary describes the filter", "only players whose name contains: tidal" in cdp.js("document.querySelector('#filterSummary').textContent"))
+        cdp.js("btn('Music apps').click()")
+        names = cdp.js("chips()")
+        check("a quick-add group adds its apps without duplicating", len(names) > 8 and names.count("tidal") == 1 and "spotify" in names)
+        cdp.js("document.querySelector('.appchip .x').click()")
+        check("a chip can be removed", "tidal" not in cdp.js("chips()"))
+        check("no stray 'null' text in the settings", "null" not in cdp.js("document.querySelector('#liveConfig').textContent"))
+        cdp.js("btn('Detect running players').click()")
+        check("detect lists the running players", cdp.wait("document.querySelectorAll('.foundrow').length === 2"))
+        check("...and still no stray 'null'", "null" not in cdp.js("document.querySelector('#liveConfig').textContent"))
+        check("...with the title and a playing tag", cdp.js("document.querySelector('.foundrow').textContent.includes('A video') && !!document.querySelector('.foundrow .tag')"))
+        cdp.js("btn('Add', document.querySelector('.foundrow')).click()")
+        check("a detected player can be added with one click", "Chrome" in cdp.js("chips()") and cdp.js("btn('Listed', document.querySelector('.foundrow')) !== undefined"))
+        cdp.js("radio('npmode', 2).click()")
+        check("switching to 'except' keeps the list", "Chrome" in cdp.js("chips()") and "every player except" in cdp.js("document.querySelector('#filterSummary').textContent"))
+        cdp.js("radio('npmode', 1).click()")
+        cdp.js("radio('npmode', 0).click()")
+        check("'all players' hides the list editor again", cdp.js("!document.querySelector('#addApp')") and "whatever Windows is playing" in cdp.js("document.querySelector('#filterSummary').textContent"))
+        cdp.js("radio('npmode', 1).click()")
+        check("the list survives going back and forth", "Chrome" in cdp.js("chips()"))
+        check("the preview starts with the album line and full controls", cdp.js("!!document.querySelector('.m-album')") and cdp.js("$$('.mock > .fa').length") == 5)
+        cdp.js("[...$$('#liveConfig .check')].find((l) => l.textContent.includes('album')).querySelector('input').click()")
+        check("hiding the album line", cdp.js("!document.querySelector('.m-album')") and cdp.js("document.querySelector('.mock').dataset.album") == "false")
+        cdp.js("radio('npctl', 1).click()")
+        check("basic controls show three icons", cdp.js("$$('.mock > .fa').length") == 3)
+        before = cdp.js("getComputedStyle(document.querySelector('.mock')).backgroundColor")
+        cdp.js("[...$$('#liveConfig .check')].find((l) => l.textContent.includes('Tint')).querySelector('input').click()")
+        check("turning the tint off changes the preview background", cdp.js("getComputedStyle(document.querySelector('.mock')).backgroundColor") != before and cdp.js("document.querySelector('.mock').dataset.tint") == "false")
+        if shots:
+            cdp.shot(shots / "10_now_playing_settings.png")
+        cdp.js("btn('Undo').click()")
+        check("undo works for settings", cdp.js("document.querySelector('.mock').dataset.tint") == "true")
+        cdp.js("btn('Redo').click()")
+
         print("saving")
+        cdp.js("$$('.deskrow')[0].click()")  # back to the first keys desktop
         cdp.js("setInput(document.querySelector('#treeSettings input[type=range]'), '40')")
         cdp.js("keyAt(11).click()")
         cdp.js("card('Mute').click()")
@@ -318,7 +404,14 @@ def main() -> int:
         saved = json.loads(deck_path.read_text(encoding="utf-8"))
         check("the file has the new key", any(k.get("label") == "Mute" for k in saved["desktops"][0]["pages"][0]["keys"][8:]))
         check("the file has the volume setting", saved["settings"]["volume"] == 40)
-        check("the saved deck loads in the companion", Deck(saved) is not None)
+        stats_options = next(d for d in saved["desktops"] if d.get("kind") == "stats")["options"]
+        np_options = next(d for d in saved["desktops"] if d.get("kind") == "nowplaying")["options"]
+        check("the saved file has the stats style and items", stats_options["style"] == "gauges" and stats_options["items"] == ["gpu", "net", "disk", "vram", "cpu", "ram"], str(stats_options))
+        check("the saved file has the player filter and the look", np_options["filter"]["mode"] == "only" and "Chrome" in np_options["filter"]["apps"]
+              and np_options["album"] is False and np_options["controls"] == "basic" and np_options["tint"] is False, str(np_options))
+        loaded = Deck(saved)
+        check("the saved deck loads in the companion", loaded is not None)
+        check("the player filter reaches the companion but not the board", loaded.np_filter["mode"] == "only" and "Chrome" not in loaded.layout_text())
         check("a backup of the previous deck was written", (work / "deck.json.bak").exists())
         check("saved text is readable (one key per line)", max(len(l) for l in deck_path.read_text(encoding="utf-8").splitlines()) < 400)
 

@@ -127,7 +127,7 @@ test('default deck: board layout has no actions and the size is small', () => {
   assert.ok(!JSON.stringify(layout).includes('"action"'));
   assert.equal(layout.desktops.length, deck.desktops.length);
   assert.ok(M.layoutBytes(deck) > 500 && M.layoutBytes(deck) < 6000);
-  assert.deepEqual(layout.desktops[1], { name: 'Playing', kind: 'nowplaying' });
+  assert.deepEqual(layout.desktops[1], { name: 'Playing', kind: 'nowplaying', options: { tint: true, album: true, controls: 'full' } });
 });
 
 test('history: undo, redo, and a new change clears redo', () => {
@@ -174,4 +174,46 @@ test('template desktops: copied, padded, uniquely named, limited', () => {
   assert.equal(M.uniqueName(['A', 'A 2'], 'A'), 'A 3');
   while (deck.desktops.length < M.LIMITS.desktops) M.addTemplateDesktop(deck, tpl[0].desktop);
   assert.equal(M.addTemplateDesktop(deck, tpl[0].desktop), null);
+});
+
+test('live options: defaults, partial options, and what the board receives', () => {
+  const np = { name: 'P', kind: 'nowplaying' };
+  assert.deepEqual(M.liveOptions(np), { filter: { mode: 'all', apps: [] }, tint: true, album: true, controls: 'full' });
+  M.setOptions(np, { tint: false, filter: { mode: 'only', apps: ['tidal'] } });
+  assert.deepEqual(M.liveOptions(np), { filter: { mode: 'only', apps: ['tidal'] }, tint: false, album: true, controls: 'full' });
+  const stats = { name: 'S', kind: 'stats', options: { style: 'tiles', items: [] } };
+  assert.deepEqual(M.liveOptions(stats).items, ['cpu', 'gpu', 'ram', 'vram', 'disk', 'net']); // empty = all
+  assert.equal(M.liveOptions(stats).style, 'tiles');
+  const board = M.boardLayout({ desktops: [np, stats] }).desktops;
+  assert.deepEqual(board[0].options, { tint: false, album: true, controls: 'full' });
+  assert.ok(!JSON.stringify(board).includes('tidal'), 'the player filter must stay on the PC');
+});
+
+test('player filter: matching, adding, describing', () => {
+  assert.equal(M.appMatches('SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify', ['spotify']), true);
+  assert.equal(M.appMatches('Chrome', ['tidal', '']), false);
+  assert.equal(M.appMatches('', ['x']), false);
+  const f = { mode: 'only', apps: [] };
+  assert.equal(M.addFilterApps(f, ['Tidal', 'tidal', '  ', 'Spotify']), 2); // duplicates (any case) and blanks skipped
+  assert.deepEqual(f.apps, ['Tidal', 'Spotify']);
+  assert.equal(M.addFilterApps(f, ['x'.repeat(81)]), 0);
+  for (let i = 0; i < 40; i++) M.addFilterApps(f, ['app' + i]);
+  assert.equal(f.apps.length, 30); // the companion accepts at most 30
+  assert.match(M.describeFilter({ mode: 'only', apps: [] }), /nothing will ever be shown/);
+  assert.match(M.describeFilter({ mode: 'except', apps: ['chrome'] }), /every player except/);
+  assert.match(M.describeFilter({ mode: 'all', apps: ['chrome'] }), /whatever Windows is playing/);
+  for (const g of M.APP_GROUPS) assert.ok(g.apps.length > 3 && g.apps.every((a) => a === a.toLowerCase()));
+});
+
+test('stats items: order, toggling, never empty', () => {
+  assert.deepEqual(M.statItemOrder(['ram', 'cpu']), { enabled: ['ram', 'cpu'], disabled: ['gpu', 'vram', 'disk', 'net'] });
+  const items = ['cpu'];
+  assert.equal(M.toggleStatItem(items, 'cpu', false), false); // the last one stays
+  assert.equal(M.toggleStatItem(items, 'net', true), true);
+  assert.equal(M.toggleStatItem(items, 'net', true), false);  // already on
+  assert.deepEqual(items, ['cpu', 'net']);
+  assert.equal(M.toggleStatItem(items, 'cpu', false), true);
+  assert.deepEqual(items, ['net']);
+  assert.equal(M.STAT_ITEMS.length, 6);
+  assert.deepEqual(M.STAT_STYLES.map((s) => s.id), ['gauges', 'bars', 'tiles']);
 });
