@@ -38,6 +38,14 @@ starts on a key does not tick; see `kKeySoundEvent` in `src/ui.cpp` to switch to
 ## Third-party code
 `lib/TFT_eSPI` (patched, vendor package), `lib/FT6336`, `lib/ES8311` (Espressif, Apache-2.0, patched to use `Wire`).
 
+## Running the PC side
+Double-click **`Streamdeck.bat`**. On the first run it creates the Python environment (`companion\.venv`) and installs
+the requirements, then starts the companion; afterwards it just starts. Arguments are passed through
+(`Streamdeck.bat --dry-run`, `--no-media`, `--no-stats`, `--port COM3`, `-v`).
+* **`Streamdeck-background.vbs`** starts it without a window (log: `companion\companion.log`). A shortcut to it in
+  the Startup folder (Win+R, `shell:startup`) starts the companion with Windows.
+* **`Stop-Streamdeck.bat`** stops a running companion (hidden or not) - do this before flashing the board.
+
 ## PC companion (Python, Windows)
 ```
 cd companion
