@@ -42,7 +42,7 @@ struct Marquee {
 lv_obj_t *root, *bar, *coverBox, *coverImg, *coverPlaceholder, *titleWrap, *timeLbl, *slider;
 lv_obj_t *btnShuffle, *btnPrev, *btnPlay, *btnNext, *btnRepeat;
 lv_obj_t *shuffleImg, *prevImg, *playImg, *nextImg, *repeatImg, *repeatOneLbl;  // icon images (child 0 of each button)
-Marquee albumM, titleM, artistM;
+Marquee albumM, artistM;
 bool built = false;
 bool dragging = false;
 
@@ -135,31 +135,24 @@ void fmtTime(int32_t ms, char* out, size_t n) {
   else snprintf(out, n, "%d:%02d", (int)(s / 60), (int)(s % 60));
 }
 
-// Big title: the largest font that fits in 2-3 lines; if even the smallest does not, one scrolling line.
+// Big title (Car Thing style): at most two lines. The largest font that fits in two lines is used; if even the
+// smallest does not fit, the text is cut with an ellipsis at the end of the second line. It never scrolls.
 void setTitle(const String& t) {
   if (shownTitle == t) return;
   shownTitle = t;
-  struct Option {
-    const lv_font_t* font;
-    int maxLines;
-  };
-  const Option options[] = {{&lv_font_montserrat_28, 2}, {&lv_font_montserrat_24, 2}, {&lv_font_montserrat_20, 3}};
-  for (const Option& o : options) {
+  const lv_font_t* fonts[] = {&lv_font_montserrat_28, &lv_font_montserrat_24, &lv_font_montserrat_20};
+  const lv_font_t* chosen = fonts[2];
+  for (const lv_font_t* f : fonts) {
     lv_point_t size;
-    lv_txt_get_size(&size, t.c_str(), o.font, 0, 0, kTextW, LV_TEXT_FLAG_NONE);
-    if (size.y <= o.maxLines * o.font->line_height) {
-      marqueeStop(titleM);
-      titleM.shown = "\x01";
-      lv_obj_add_flag(titleM.clip, LV_OBJ_FLAG_HIDDEN);
-      lv_obj_clear_flag(titleWrap, LV_OBJ_FLAG_HIDDEN);
-      lv_obj_set_style_text_font(titleWrap, o.font, 0);
-      lv_label_set_text(titleWrap, t.c_str());
-      return;
+    lv_txt_get_size(&size, t.c_str(), f, 0, 0, kTextW, LV_TEXT_FLAG_NONE);
+    if (size.y <= 2 * f->line_height) {
+      chosen = f;
+      break;
     }
   }
-  lv_obj_add_flag(titleWrap, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_clear_flag(titleM.clip, LV_OBJ_FLAG_HIDDEN);
-  marqueeSet(titleM, t);
+  lv_obj_set_style_text_font(titleWrap, chosen, 0);
+  lv_obj_set_height(titleWrap, 2 * chosen->line_height);  // LONG_DOT cuts the text to this height
+  lv_label_set_text(titleWrap, t.c_str());
 }
 
 void applyTexts() {
@@ -371,8 +364,6 @@ void npBuild(lv_obj_t* tile) {
   lv_obj_set_style_text_color(titleWrap, lv_color_white(), 0);
   lv_label_set_long_mode(titleWrap, LV_LABEL_LONG_DOT);
   lv_label_set_text(titleWrap, "");
-  marqueeCreate(titleM, root, &lv_font_montserrat_24, 0xFFFFFF, LV_OPA_COVER, kTextX, kTitleY + 20, kTextW);
-  lv_obj_add_flag(titleM.clip, LV_OBJ_FLAG_HIDDEN);
   marqueeCreate(artistM, root, &lv_font_montserrat_16, 0xFFFFFF, LV_OPA_90, kTextX, kArtistY, kTextW);
   timeLbl = lv_label_create(root);
   lv_obj_set_pos(timeLbl, kTextX, kTimeY);
