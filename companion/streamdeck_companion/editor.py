@@ -102,8 +102,9 @@ def validate_preset_key(key) -> None:
 
 class EditorServer:
     def __init__(self, deck_path: str | Path, host: str = "127.0.0.1", port: int = 8765,
-                 status_fn: Callable[[], dict] | None = None):
+                 status_fn: Callable[[], dict] | None = None, media_sources_fn: Callable[[], list] | None = None):
         self.deck_path = Path(deck_path)
+        self._media_sources_fn = media_sources_fn
         self.presets_user_path = self.deck_path.with_name("presets.user.json")
         self.token = secrets.token_urlsafe(24)
         self._status_fn = status_fn or (lambda: {})
@@ -171,16 +172,24 @@ class EditorServer:
                         return False
                 return True
 
-            def _body_json(self):
+            def _read_body(self):
+                """The request body, or None if it is missing or too large. It is read before the request is
+                checked: answering (403 ...) while the client is still sending makes the OS reset the connection,
+                and the client would never see the error message."""
                 try:
                     length = int(self.headers.get("Content-Length", "0"))
                 except ValueError:
                     length = -1
                 if not 0 < length <= MAX_BODY:
+                    return None
+                return self.rfile.read(length)
+
+            def _parse_json(self, raw):
+                if raw is None:
                     self._json(413, {"error": "body missing or too large"})
                     return None
                 try:
-                    return json.loads(self.rfile.read(length).decode("utf-8"))
+                    return json.loads(raw.decode("utf-8"))
                 except (UnicodeDecodeError, json.JSONDecodeError) as e:
                     self._json(400, {"error": f"invalid JSON: {e}"})
                     return None
@@ -202,7 +211,19 @@ class EditorServer:
                     return self._json(200, server.presets())
                 if path == "/api/status":
                     return self._json(200, server._status_fn())
+                if path == "/api/media-sources":
+                    return self._media_sources()
                 return self._static(path)
+
+            def _media_sources(self):
+                """The media players Windows knows about right now (for the Now playing filter in the editor)."""
+                if server._media_sources_fn is None:
+                    return self._json(501, {"error": "listing media players is not available here"})
+                try:
+                    return self._json(200, {"sources": server._media_sources_fn()})
+                except Exception as e:  # winrt missing, not Windows, API hiccup: the editor shows the message
+                    log.warning("media sources: %s", e)
+                    return self._json(501, {"error": f"could not read the media players: {e}"})
 
             def _static(self, path: str):
                 target = (WEB / path.lstrip("/")).resolve()
@@ -216,10 +237,11 @@ class EditorServer:
                 self._send(200, target.read_bytes(), ctype)
 
             def do_PUT(self):  # noqa: N802
+                raw = self._read_body()
                 if not self._guard(write=True):
                     return
                 path = unquote(urlparse(self.path).path)
-                body = self._body_json()
+                body = self._parse_json(raw)
                 if body is None:
                     return
                 if path == "/api/deck":

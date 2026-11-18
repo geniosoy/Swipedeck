@@ -64,6 +64,30 @@ class EditorServerTest(unittest.TestCase):
         for path in ("/app.js", "/model.js", "/style.css", "/icons.json", "/presets.json", "/templates.json", "/fonts/fa.woff", "/favicon.svg", "/favicon.ico"):
             self.assertEqual(self.call("GET", path)[0], 200, path)
 
+    def test_media_sources_endpoint(self):
+        self.assertEqual(self.call("GET", "/api/media-sources")[0], 501)  # this server has no source function
+        ok = EditorServer(self.deck_path, port=0, media_sources_fn=lambda: [{"id": "Chrome", "playing": True}])
+        ok.start()
+        self.addCleanup(ok.stop)
+        conn = http.client.HTTPConnection("127.0.0.1", ok.port, timeout=5)
+        conn.request("GET", "/api/media-sources", headers={"Host": f"127.0.0.1:{ok.port}"})
+        r = conn.getresponse()
+        self.assertEqual((r.status, json.loads(r.read())), (200, {"sources": [{"id": "Chrome", "playing": True}]}))
+        conn.request("GET", "/api/media-sources", headers={"Host": "evil.example.com"})
+        self.assertEqual(conn.getresponse().status, 403)
+
+        def broken():
+            raise RuntimeError("no winrt")
+
+        bad = EditorServer(self.deck_path, port=0, media_sources_fn=broken)
+        bad.start()
+        self.addCleanup(bad.stop)
+        conn = http.client.HTTPConnection("127.0.0.1", bad.port, timeout=5)
+        conn.request("GET", "/api/media-sources", headers={"Host": f"127.0.0.1:{bad.port}"})
+        r = conn.getresponse()
+        self.assertEqual(r.status, 501)
+        self.assertIn("no winrt", json.loads(r.read())["error"])
+
     def test_static_files_cannot_escape_the_web_folder(self):
         for path in ("/../deck.json", "/%2e%2e/deck.json", "/fonts/../../deck.json", "/..%2fdeck.json",
                      "/editor.py", "/%2e%2e/streamdeck_companion/editor.py", "/nothing.js"):

@@ -11,12 +11,38 @@ import threading
 import time
 from datetime import datetime, timezone
 
-from .nowplaying import COVER_PX_DEFAULT, Snapshot, background_color, cover_key, cover_to_rgb565
+from .nowplaying import COVER_PX_DEFAULT, Snapshot, background_color, choose_session, cover_key, cover_to_rgb565
 
 log = logging.getLogger("media")
 
 POLL_S = 0.5
 COVER_RETRIES = 12  # some players publish the thumbnail a moment after the title
+
+
+def list_media_sources() -> list[dict]:
+    """One-shot look at the media sessions Windows has right now: [{"id", "title", "artist", "playing", "current"}].
+    Used by the editor's "detect players" button; runs its own event loop, independent of the reader."""
+
+    async def look() -> list[dict]:
+        from winrt.windows.media.control import GlobalSystemMediaTransportControlsSessionManager as Manager
+
+        manager = await Manager.request_async()
+        current = manager.get_current_session()
+        current_id = current.source_app_user_model_id if current else None
+        out = []
+        for s in manager.get_sessions():
+            title = artist = ""
+            try:
+                props = await s.try_get_media_properties_async()
+                title, artist = props.title or "", props.artist or ""
+            except Exception:
+                pass
+            out.append({"id": s.source_app_user_model_id, "title": title, "artist": artist,
+                        "playing": int(s.get_playback_info().playback_status) == 4,
+                        "current": s.source_app_user_model_id == current_id})
+        return out
+
+    return asyncio.run(look())
 
 
 class MediaReader:
@@ -31,6 +57,9 @@ class MediaReader:
         self._ready = threading.Event()
         self._active = threading.Event()   # polling only happens while the Now playing screen is visible
         self._fresh = threading.Event()    # a reading taken since the screen became active
+        self._filter: dict = {"mode": "all", "apps": []}  # which players may be shown (see deck.json)
+        self._selected = None   # the media session currently shown; commands go to it
+        self._previous_id: str | None = None
         self.error: str | None = None
 
     # -- public (thread-safe) ------------------------------------------------------------------
@@ -51,6 +80,11 @@ class MediaReader:
             self._active.set()
         else:
             self._active.clear()
+
+    def set_filter(self, flt: dict) -> None:
+        """Which players may be shown: {"mode": "all" | "only" | "except", "apps": [name parts]}."""
+        with self._lock:
+            self._filter = {"mode": flt.get("mode", "all"), "apps": list(flt.get("apps", []))}
 
     def ready(self) -> bool:
         """True once a reading taken after the last activation is available (older data would be stale)."""
@@ -111,7 +145,22 @@ class MediaReader:
             await asyncio.sleep(POLL_S)
 
     def _session(self):
-        return self._manager.get_current_session()
+        return self._selected
+
+    def _pick_session(self):
+        """The session to show: among the players the filter allows, a playing one (see choose_session)."""
+        sessions = list(self._manager.get_sessions())
+        if not sessions:
+            return None
+        current = self._manager.get_current_session()
+        current_id = current.source_app_user_model_id if current else None
+        candidates = [{"id": s.source_app_user_model_id, "current": s.source_app_user_model_id == current_id,
+                       "playing": int(s.get_playback_info().playback_status) == 4} for s in sessions]
+        with self._lock:
+            flt = dict(self._filter)
+        i = choose_session(candidates, flt, self._previous_id)
+        self._previous_id = candidates[i]["id"] if i is not None else None
+        return sessions[i] if i is not None else None
 
     async def _command(self, cmd: str) -> None:
         s = self._session()
@@ -145,7 +194,7 @@ class MediaReader:
         await self._refresh()
 
     async def _refresh(self) -> None:
-        s = self._session()
+        s = self._selected = self._pick_session()
         if s is None:
             with self._lock:
                 self._snap, self._cover, self._track = Snapshot(), None, None

@@ -4,8 +4,8 @@ import unittest
 
 from PIL import Image
 
-from streamdeck_companion.nowplaying import (NowPlayingSync, Snapshot, background_color, cover_key, cover_messages,
-                                             cover_to_rgb565, sanitize)
+from streamdeck_companion.nowplaying import (NowPlayingSync, Snapshot, app_allowed, app_matches, background_color,
+                                             choose_session, cover_key, cover_messages, cover_to_rgb565, sanitize)
 
 
 def png(w, h, color):
@@ -62,6 +62,56 @@ class CoverTest(unittest.TestCase):
     def test_key_is_stable(self):
         self.assertEqual(cover_key(b"abc"), cover_key(b"abc"))
         self.assertNotEqual(cover_key(b"abc"), cover_key(b"abd"))
+
+
+def session(app, playing=False, current=False):
+    return {"id": app, "playing": playing, "current": current}
+
+
+class PlayerFilterTest(unittest.TestCase):
+    def test_matching_is_by_name_part_and_case_insensitive(self):
+        self.assertTrue(app_matches("SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify", ["spotify"]))
+        self.assertTrue(app_matches("TIDAL.exe", ["Tidal"]))
+        self.assertFalse(app_matches("Chrome", ["tidal", "spotify"]))
+        self.assertFalse(app_matches("Chrome", [""]))     # an empty pattern matches nothing (not everything)
+        self.assertFalse(app_matches("", ["x"]))
+
+    def test_modes(self):
+        self.assertTrue(app_allowed("Chrome", {}))
+        self.assertTrue(app_allowed("Chrome", {"mode": "all", "apps": ["chrome"]}))
+        self.assertTrue(app_allowed("Chrome", {"mode": "only", "apps": ["chrome"]}))
+        self.assertFalse(app_allowed("Spotify.exe", {"mode": "only", "apps": ["chrome"]}))
+        self.assertFalse(app_allowed("Chrome", {"mode": "except", "apps": ["chrome"]}))
+        self.assertTrue(app_allowed("Spotify.exe", {"mode": "except", "apps": ["chrome"]}))
+        self.assertFalse(app_allowed("Anything", {"mode": "only", "apps": []}))   # whitelist of nothing: nothing
+        self.assertTrue(app_allowed("Anything", {"mode": "except", "apps": []}))  # blacklist of nothing: everything
+
+    def test_choose_session(self):
+        chrome, spotify, tidal = "Chrome", "Spotify.exe", "TIDAL.exe"
+        alls = {"mode": "all", "apps": []}
+        self.assertIsNone(choose_session([], alls))
+        # a playing player beats the system's "current" one
+        c = [session(chrome, current=True), session(spotify, playing=True)]
+        self.assertEqual(choose_session(c, alls), 1)
+        # the whitelist hides the others even when they play
+        self.assertEqual(choose_session(c, {"mode": "only", "apps": ["chrome"]}), 0)
+        self.assertEqual(choose_session(c, {"mode": "except", "apps": ["spotify"]}), 0)
+        self.assertIsNone(choose_session(c, {"mode": "only", "apps": ["tidal"]}))   # allowed player is not running
+        # two players playing: the one already shown stays, then the system's current one
+        c = [session(spotify, playing=True), session(tidal, playing=True, current=True)]
+        self.assertEqual(choose_session(c, alls, previous=spotify), 0)
+        self.assertEqual(choose_session(c, alls, previous=None), 1)
+        self.assertEqual(choose_session(c, alls, previous="Gone.exe"), 1)
+        # nothing playing: keep the one shown, then the current one, then the first
+        c = [session(chrome), session(spotify, current=True), session(tidal)]
+        self.assertEqual(choose_session(c, alls, previous=tidal), 2)
+        self.assertEqual(choose_session(c, alls), 1)
+        self.assertEqual(choose_session([session(chrome), session(tidal)], alls), 0)
+        # ...but a previous player the filter now forbids is not kept
+        self.assertEqual(choose_session(c, {"mode": "except", "apps": ["tidal"]}, previous=tidal), 1)
+        # a paused allowed player is shown when the others (not allowed) are the ones playing
+        c = [session(chrome, playing=True), session(tidal)]
+        self.assertEqual(choose_session(c, {"mode": "only", "apps": ["tidal"]}), 1)
 
 
 class SyncTest(unittest.TestCase):

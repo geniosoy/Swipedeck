@@ -89,6 +89,43 @@ def cover_messages(key: str, rgb565: bytes, px: int, bg: str = "") -> list[dict]
             for off in range(0, len(rgb565), COVER_CHUNK_BYTES)]
 
 
+FILTER_MODES = ("all", "only", "except")
+
+
+def app_matches(app_id: str, patterns) -> bool:
+    """Does the player's Windows app id contain any of the patterns? (case-insensitive substring)"""
+    low = (app_id or "").lower()
+    return any(p and p.lower() in low for p in patterns)
+
+
+def app_allowed(app_id: str, flt: dict) -> bool:
+    mode, apps = flt.get("mode", "all"), flt.get("apps", [])
+    if mode == "only":
+        return app_matches(app_id, apps)
+    if mode == "except":
+        return not app_matches(app_id, apps)
+    return True
+
+
+def choose_session(candidates: list[dict], flt: dict, previous: str | None = None) -> int | None:
+    """Which media session to show. `candidates`: [{"id", "playing", "current"}] in Windows' order.
+
+    Only players the filter allows are considered. A playing one wins (the one already shown stays, so two players
+    playing at once do not make the screen flip back and forth; then the system's current one); with nothing playing
+    the one already shown stays, then the system's current one, then the first. None when no player is allowed."""
+    allowed = [i for i, c in enumerate(candidates) if app_allowed(c["id"], flt)]
+    if not allowed:
+        return None
+    pool = [i for i in allowed if candidates[i]["playing"]] or allowed
+    for i in pool:
+        if candidates[i]["id"] == previous:
+            return i
+    for i in pool:
+        if candidates[i]["current"]:
+            return i
+    return pool[0]
+
+
 class NowPlayingSync:
     """Remembers what the board was told and says what must be sent next."""
 

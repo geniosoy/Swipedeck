@@ -19,8 +19,11 @@ class DeckTest(unittest.TestCase):
         self.assertEqual(deck.warnings, [])
         self.assertEqual(len(deck.layout["desktops"]), 5)
         self.assertTrue(deck.has_nowplaying and deck.has_stats)
-        self.assertEqual(deck.layout["desktops"][2], {"name": "PC", "kind": "stats"})
-        self.assertEqual(deck.layout["desktops"][1], {"name": "Playing", "kind": "nowplaying"})
+        self.assertEqual(deck.layout["desktops"][2], {"name": "PC", "kind": "stats", "options": {
+            "style": "gauges", "items": ["cpu", "gpu", "ram", "vram", "disk", "net"]}})
+        self.assertEqual(deck.layout["desktops"][1], {"name": "Playing", "kind": "nowplaying", "options": {
+            "tint": True, "album": True, "controls": "full"}})
+        self.assertEqual(deck.np_filter, {"mode": "all", "apps": []})
         self.assertEqual(deck.action_at(0, 0, 0), {"type": "hotkey", "keys": "volume_mute"})
         self.assertIsNone(deck.action_at(0, 0, 4))  # folder key has no action
 
@@ -61,6 +64,38 @@ class DeckTest(unittest.TestCase):
         Deck({"desktops": [np, st]})
         with self.assertRaises(DeckError):
             Deck({"desktops": [st, dict(st)]})
+
+    def test_live_screen_options(self):
+        deck = Deck({"desktops": [
+            {"name": "P", "kind": "nowplaying", "options": {"filter": {"mode": "only", "apps": ["tidal", "spotify"]},
+                                                             "tint": False, "controls": "basic"}},
+            {"name": "S", "kind": "stats", "options": {"style": "tiles", "items": ["ram", "cpu"]}}]})
+        np, stats = deck.layout["desktops"]
+        # the player filter stays on the PC: the board only gets how the screen looks
+        self.assertEqual(np["options"], {"tint": False, "album": True, "controls": "basic"})
+        self.assertNotIn("filter", json.dumps(deck.layout))
+        self.assertEqual(deck.np_filter, {"mode": "only", "apps": ["tidal", "spotify"]})
+        self.assertEqual(stats["options"], {"style": "tiles", "items": ["ram", "cpu"]})
+
+    def test_bad_live_screen_options(self):
+        def np(**opts):
+            return {"desktops": [{"name": "P", "kind": "nowplaying", "options": opts}]}
+
+        def st(**opts):
+            return {"desktops": [{"name": "S", "kind": "stats", "options": opts}]}
+
+        bad = [np(tint="yes"), np(album=1), np(controls="huge"), np(filter="all"), np(filter={"mode": "some"}),
+               np(filter={"mode": "only", "apps": "tidal"}), np(filter={"mode": "only", "apps": [""]}),
+               np(filter={"mode": "only", "apps": ["x"] * 31}),
+               st(style="pie"), st(items=[]), st(items=["cpu", "cpu"]), st(items=["cpu", "fan"]), st(items="cpu"),
+               {"desktops": [{"name": "P", "kind": "stats", "options": []}]}]
+        for data in bad:
+            with self.assertRaises(DeckError, msg=str(data)):
+                Deck(data)
+
+    def test_unknown_option_is_only_a_warning(self):
+        deck = Deck({"desktops": [{"name": "S", "kind": "stats", "options": {"sparkle": True}}]})
+        self.assertTrue(any("sparkle" in w for w in deck.warnings))
 
     def test_warnings(self):
         d = Deck(simple([{"label": "X", "icon": "nonexistent", "action": {"type": "lock"}},

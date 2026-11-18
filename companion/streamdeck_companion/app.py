@@ -59,6 +59,8 @@ class Companion:
         for w in deck.warnings:
             log.warning("deck: %s", w)
         self.deck = deck
+        if self._reader is not None:
+            self._reader.set_filter(deck.np_filter)
         self._deck_mtime = self.deck_path.stat().st_mtime
         log.info("deck loaded: %d desktop(s)", len(deck.layout["desktops"]))
         return True
@@ -209,6 +211,7 @@ class Companion:
         if new == "nowplaying" and old != new:
             reader = self._media_reader()
             if reader is not None:
+                reader.set_filter(self.deck.np_filter)
                 reader.set_active(True)
                 nps.resend()  # the board shows what we sent last: send the current state again
         if new == "stats" and old != new:

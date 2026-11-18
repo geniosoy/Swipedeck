@@ -9,6 +9,12 @@ from .app import Companion
 from .deck import DeckError
 
 
+def media_sources() -> list:
+    from .media import list_media_sources  # imported late: needs the optional winrt packages
+
+    return list_media_sources()
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(prog="streamdeck_companion", description="PC side of the ES3C28P Streamdeck")
     ap.add_argument("--deck", default=str(Path(__file__).resolve().parent.parent / "deck.json"),
@@ -39,7 +45,8 @@ def main() -> int:
         from .editor import EditorServer
 
         try:
-            editor = EditorServer(args.deck, port=args.editor_port, status_fn=lambda: dict(app.status))
+            editor = EditorServer(args.deck, port=args.editor_port, status_fn=lambda: dict(app.status),
+                                  media_sources_fn=media_sources)
             logging.getLogger("companion").info("web editor: %s", editor.start())
             if args.open_editor:
                 import webbrowser

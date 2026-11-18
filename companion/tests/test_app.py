@@ -92,10 +92,14 @@ class FakeReader:
         self.commands, self.seeks = [], []
         self.active = False
         self.activations = []   # every set_active call, in order
+        self.filters = []       # every set_filter call
 
     def set_active(self, on):
         self.active = on
         self.activations.append(on)
+
+    def set_filter(self, flt):
+        self.filters.append(flt)
 
     def ready(self):
         return self.active
@@ -236,6 +240,26 @@ class AppTest(unittest.TestCase):
         # the stats were sent only between entering and leaving the PC desktop
         first_stats = next(i for i, m in enumerate(board.out) if m["type"] == "stats")
         self.assertGreater(first_stats, next(i for i, m in enumerate(board.out) if m["type"] == "np"))
+
+    def test_the_player_filter_reaches_the_reader_when_the_screen_is_entered(self):
+        import json
+        import tempfile
+
+        data = json.loads(DECK.read_text(encoding="utf-8"))
+        data["desktops"][1]["options"] = {"filter": {"mode": "only", "apps": ["tidal"]}}
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "deck.json"
+            path.write_text(json.dumps(data), encoding="utf-8")
+            reader = FakeReader(Snapshot(state="playing", title="x"))
+            board = FakeBoard(crc="x", script=[{"type": "desktop", "index": 1}, None, None])
+            app = Companion(path, executor=Recorder(), open_board_fn=lambda port: board, clock=Clock(), reader=reader)
+            board.on_idle = app.stop
+            app.session(board)
+        wanted = {"mode": "only", "apps": ["tidal"]}
+        self.assertTrue(reader.filters and all(f == wanted for f in reader.filters), reader.filters)
+        self.assertEqual(reader.activations[0], True)  # set before the reader was switched on
+        np_msgs = [m for m in board.out if m["type"] == "np"]
+        self.assertTrue(np_msgs)  # and the screen still works
 
     def test_hello_tells_which_desktop_is_showing(self):
         reader = FakeReader(Snapshot(state="paused", title="x"))

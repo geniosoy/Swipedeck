@@ -17,6 +17,12 @@ ICONS = {
 }
 
 MAX_DESKTOPS, MAX_PAGES = 8, 16
+
+# Options of the two live screens (see deck.json). Defaults apply when "options" is missing or partial.
+FILTER_MODES = ("all", "only", "except")
+NP_CONTROLS = ("full", "basic")
+STATS_STYLES = ("gauges", "bars", "tiles")
+STAT_ITEMS = ("cpu", "gpu", "ram", "vram", "disk", "net")
 COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
@@ -32,6 +38,8 @@ class Deck:
         self.warnings: list[str] = []
         self.has_nowplaying = False  # a desktop with "kind": "nowplaying" (live media screen)
         self.has_stats = False       # a desktop with "kind": "stats" (PC statistics)
+        # Which media players the Now playing screen may show; stays on the PC (the board never sees it).
+        self.np_filter: dict = {"mode": "all", "apps": []}
         self._actions: dict[tuple[int, int, int], dict] = {}
         self.layout = self._build(data)
 
@@ -88,7 +96,7 @@ class Deck:
                 if getattr(self, f"has_{kind}"):
                     raise DeckError(f"{where}: only one '{kind}' desktop is supported")
                 setattr(self, f"has_{kind}", True)
-                out_desktops.append({"name": name, "kind": kind})
+                out_desktops.append({"name": name, "kind": kind, "options": self._live_options(kind, d.get("options"), where)})
                 continue
             pages = d.get("pages")
             if not isinstance(pages, list) or not pages:
@@ -115,6 +123,46 @@ class Deck:
                                   "rows": rows, "keys": out_keys})
             out_desktops.append({"name": name, "pages": out_pages})
         return {"desktops": out_desktops}
+
+    def _live_options(self, kind: str, opts, where: str) -> dict:
+        """Validates a live screen's options. Returns what the board needs; the player filter stays on the PC."""
+        if opts is None:
+            opts = {}
+        if not isinstance(opts, dict):
+            raise DeckError(f"{where}.options must be an object")
+        known = {"nowplaying": {"filter", "tint", "album", "controls"}, "stats": {"style", "items"}}[kind]
+        for extra in sorted(set(opts) - known):
+            self.warnings.append(f"{where}.options: unknown option '{extra}' ignored")
+
+        def flag(name: str, default: bool) -> bool:
+            value = opts.get(name, default)
+            if not isinstance(value, bool):
+                raise DeckError(f"{where}.options.{name} must be true or false")
+            return value
+
+        def choice(name: str, allowed: tuple, default: str) -> str:
+            value = opts.get(name, default)
+            if value not in allowed:
+                raise DeckError(f"{where}.options.{name} must be one of {', '.join(allowed)}")
+            return value
+
+        if kind == "nowplaying":
+            flt = opts.get("filter", {})
+            if not isinstance(flt, dict):
+                raise DeckError(f"{where}.options.filter must be an object")
+            mode = flt.get("mode", "all")
+            apps = flt.get("apps", [])
+            if mode not in FILTER_MODES:
+                raise DeckError(f"{where}.options.filter.mode must be one of {', '.join(FILTER_MODES)}")
+            if not (isinstance(apps, list) and len(apps) <= 30 and all(isinstance(a, str) and 0 < len(a) <= 80 for a in apps)):
+                raise DeckError(f"{where}.options.filter.apps must be a list of up to 30 names")
+            self.np_filter = {"mode": mode, "apps": list(apps)}
+            return {"tint": flag("tint", True), "album": flag("album", True), "controls": choice("controls", NP_CONTROLS, "full")}
+
+        items = opts.get("items", list(STAT_ITEMS))
+        if not (isinstance(items, list) and items and len(items) == len(set(items)) and all(i in STAT_ITEMS for i in items)):
+            raise DeckError(f"{where}.options.items must be a non-empty list without repeats of: {', '.join(STAT_ITEMS)}")
+        return {"style": choice("style", STATS_STYLES, "gauges"), "items": list(items)}
 
     def _check_action(self, act, where: str) -> None:
         try:
