@@ -3,6 +3,7 @@ from pathlib import Path
 
 from streamdeck_companion.actions import Executor
 from streamdeck_companion.app import Companion
+from streamdeck_companion.nowplaying import Snapshot
 from streamdeck_companion.protocol import crc_hex
 
 DECK = Path(__file__).resolve().parent.parent / "deck.json"
@@ -17,6 +18,7 @@ class FakeBoard:
         self.out = []          # what the companion sent
         self.inbox = []        # what the board will "send" next
         self.layout_parts = []
+        self.cover_parts = []
         self.settings = None
         self.on_idle = None
 
@@ -33,6 +35,12 @@ class FakeBoard:
         elif t == "settings":
             self.settings = msg
             self.inbox.append({"type": "settings-ack"})
+        elif t == "cover":
+            self.cover_parts.append(msg)
+            if msg["off"] + 3000 >= msg["total"]:
+                self.inbox.append({"type": "cover-ack", "ok": True, "id": msg["id"]})
+            else:
+                self.inbox.append({"type": "cover-part", "off": msg["off"]})
         elif t == "layout":
             self.layout_parts.append(msg["data"])
             if msg["seq"] < msg["of"] - 1:
@@ -74,9 +82,32 @@ class Clock:
         return self.t
 
 
-def make(board, clock=None):
+class FakeReader:
+    def __init__(self, snap=None, cover=None, handled=True):
+        self.snap = snap or Snapshot()
+        self.cv = cover
+        self.handled = handled
+        self.commands, self.seeks = [], []
+
+    def snapshot(self):
+        return self.snap
+
+    def cover(self):
+        return self.cv
+
+    def command(self, cmd):
+        self.commands.append(cmd)
+        return self.handled
+
+    def seek(self, ms):
+        self.seeks.append(ms)
+        return True
+
+
+def make(board, clock=None, reader=None):
     rec = Recorder()
-    app = Companion(DECK, executor=rec, open_board_fn=lambda port: board, clock=clock or Clock())
+    app = Companion(DECK, executor=rec, open_board_fn=lambda port: board, clock=clock or Clock(),
+                    reader=reader, media=reader is not None)
     board.on_idle = app.stop
     return app, rec
 
@@ -127,6 +158,44 @@ class AppTest(unittest.TestCase):
         board.on_idle = lambda: setattr(board, "silent", True)  # goes quiet once the sync is done
         with self.assertRaises(ConnectionError):
             app.session(board)
+
+    def test_now_playing_sends_cover_then_state(self):
+        reader = FakeReader(Snapshot(state="playing", title="Canción", artist="Ñandú", pos_ms=5000, dur_ms=200000,
+                                     can_seek=True, can_play=True), cover=("abcd1234", bytes(112 * 112 * 2)))
+        board = FakeBoard(script=[None] * 3)
+        app, _ = make(board, reader=reader)
+        app.session(board)
+        types = [m["type"] for m in board.out]
+        self.assertIn("np", types)
+        self.assertLess(types.index("cover"), types.index("np"))  # image first
+        self.assertEqual(sum(m["type"] == "cover" for m in board.out), 9)  # 25088 bytes / 3000
+        np_msg = next(m for m in board.out if m["type"] == "np")
+        self.assertEqual((np_msg["title"], np_msg["artist"], np_msg["posMs"]), ("Cancion", "Nandu", 5000))
+        self.assertEqual(types.count("np"), 1)  # unchanged state is not repeated
+
+    def test_no_cover_means_nothing_sent(self):
+        reader = FakeReader(Snapshot(state="playing", title="x"), cover=None)
+        board = FakeBoard(script=[None] * 2)
+        app, _ = make(board, reader=reader)
+        app.session(board)
+        self.assertFalse(any(m["type"] in ("cover", "cover-clear") for m in board.out))
+
+    def test_media_and_seek_messages_go_to_the_player(self):
+        reader = FakeReader()
+        board = FakeBoard(crc="x", script=[{"type": "media", "cmd": "next"}, {"type": "seek", "posMs": 42000}])
+        app, rec = make(board, reader=reader)
+        app.session(board)
+        self.assertEqual(reader.commands, ["next"])
+        self.assertEqual(reader.seeks, [42000])
+        self.assertEqual(rec.ran, [])
+
+    def test_media_falls_back_to_media_keys_without_a_session(self):
+        reader = FakeReader(handled=False)
+        board = FakeBoard(crc="x", script=[{"type": "media", "cmd": "toggle"}, {"type": "media", "cmd": "prev"}])
+        app, rec = make(board, reader=reader)
+        app.session(board)
+        self.assertEqual([a for _, a in rec.ran], [{"type": "hotkey", "keys": "play_pause"},
+                                                    {"type": "hotkey", "keys": "prev_track"}])
 
 
 if __name__ == "__main__":

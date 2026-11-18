@@ -30,6 +30,7 @@ class Deck:
     def __init__(self, data: dict):
         self.settings: dict = {}
         self.warnings: list[str] = []
+        self.has_nowplaying = False  # a desktop with "kind": "nowplaying" (live media screen)
         self._actions: dict[tuple[int, int, int], dict] = {}
         self.layout = self._build(data)
 
@@ -79,6 +80,15 @@ class Deck:
         for di, d in enumerate(desktops):
             where = f"desktops[{di}]"
             name = d.get("name", f"Desktop {di + 1}")
+            kind = d.get("kind", "keys")
+            if kind not in ("keys", "nowplaying"):
+                raise DeckError(f"{where}: kind must be 'keys' or 'nowplaying'")
+            if kind == "nowplaying":
+                if self.has_nowplaying:
+                    raise DeckError(f"{where}: only one 'nowplaying' desktop is supported")
+                self.has_nowplaying = True
+                out_desktops.append({"name": name, "kind": "nowplaying"})
+                continue
             pages = d.get("pages")
             if not isinstance(pages, list) or not pages:
                 raise DeckError(f"{where}: 'pages' must be a non-empty list")

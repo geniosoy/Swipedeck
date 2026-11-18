@@ -41,6 +41,7 @@
         }
       ]
     },
+    { "name": "Playing", "kind": "nowplaying" },
     {
       "name": "Work",
       "pages": [

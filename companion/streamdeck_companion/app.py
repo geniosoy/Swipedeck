@@ -1,6 +1,7 @@
 """The companion: keeps the board connected, syncs the deck, runs the actions of pressed keys."""
 from __future__ import annotations
 
+import dataclasses
 import logging
 import time
 from pathlib import Path
@@ -9,6 +10,7 @@ from typing import Callable
 from .actions import Executor
 from .deck import Deck, DeckError
 from .link import open_board
+from .nowplaying import COVER_PX_DEFAULT, NowPlayingSync, cover_messages
 from .protocol import crc_hex, layout_messages
 
 log = logging.getLogger("companion")
@@ -21,7 +23,8 @@ ACK_TIMEOUT = 5.0
 
 class Companion:
     def __init__(self, deck_path: str | Path, port: str | None = None, executor: Executor | None = None,
-                 open_board_fn: Callable = open_board, clock: Callable[[], float] = time.monotonic):
+                 open_board_fn: Callable = open_board, clock: Callable[[], float] = time.monotonic,
+                 reader=None, media: bool = True):
         self.deck_path = Path(deck_path)
         self.port = port
         self.executor = executor or Executor()
@@ -30,6 +33,9 @@ class Companion:
         self.deck: Deck | None = None
         self._deck_mtime = 0.0
         self._stop = False
+        self._reader = reader          # MediaReader-like: snapshot(), cover(), command(), seek()
+        self._media = media            # False (--no-media) never touches the Windows media API
+        self._cover_px = COVER_PX_DEFAULT
         self.load_deck(first=True)
 
     # -- deck ----------------------------------------------------------------------------------
@@ -79,8 +85,10 @@ class Companion:
         hello = self._handshake(board)
         log.info("board firmware %s, screen %sx%s, layout crc %r", hello.get("firmware"),
                  hello.get("screen", {}).get("w"), hello.get("screen", {}).get("h"), hello.get("layoutCrc"))
+        self._cover_px = int(hello.get("coverPx") or COVER_PX_DEFAULT)
         self._push_settings(board)
         board_crc = self._sync_layout(board, hello.get("layoutCrc", ""))
+        nps = NowPlayingSync()  # a new connection starts from scratch: the board may have lost its state
 
         last_rx = last_ping = self._clock()
         ping_id = 0
@@ -96,6 +104,7 @@ class Companion:
                 ping_id += 1
                 board.send({"type": "ping", "id": ping_id})
                 last_ping = now
+            self._pump_nowplaying(board, nps, now)
             if self._deck_changed() and self.load_deck():
                 self._push_settings(board)
                 board_crc = self._sync_layout(board, board_crc)
@@ -153,6 +162,60 @@ class Companion:
             self.handle(msg)  # key presses etc. that arrive meanwhile are not lost
         raise ConnectionError(f"timeout waiting for {sorted(types)}")
 
+    # -- now playing -----------------------------------------------------------------------------
+
+    def _media_reader(self):
+        """The media reader, started on first use; None when disabled, unnecessary or unavailable."""
+        if not self._media or not (self.deck and self.deck.has_nowplaying):
+            return None
+        if self._reader is None:
+            from .media import MediaReader  # imported late: needs the optional winrt packages
+
+            reader = MediaReader(self._cover_px)
+            if not reader.start():
+                log.warning("Now playing disabled: %s", reader.error)
+                self._media = False
+                return None
+            self._reader = reader
+            log.info("Now playing: watching the Windows media session")
+        return self._reader
+
+    def _pump_nowplaying(self, board, nps: NowPlayingSync, now: float) -> None:
+        reader = self._media_reader()
+        if reader is None:
+            return
+        cover = reader.cover()
+        snap = dataclasses.replace(reader.snapshot(), cover_key=cover[0] if cover else None)
+        action = nps.cover_action(snap)  # cover first, so the image is there when the text changes
+        if action == "clear":
+            board.send({"type": "cover-clear"})
+            nps.cover_sent = ""
+        elif action == "send" and cover:
+            self._send_cover(board, cover[0], cover[1])
+            nps.cover_sent = cover[0]
+        msg = nps.update(snap, now)
+        if msg:
+            board.send(msg)
+
+    def _send_cover(self, board, key: str, rgb565: bytes) -> None:
+        msgs = cover_messages(key, rgb565, self._cover_px)
+        log.info("sending cover %s: %d bytes in %d message(s)", key, len(rgb565), len(msgs))
+        for i, m in enumerate(msgs):
+            board.send(m)
+            reply = self._wait_for(board, {"cover-part", "cover-ack"})
+            if reply["type"] == "cover-ack":
+                if not reply.get("ok", True):
+                    log.warning("board rejected the cover: %s", reply.get("error"))
+                return
+
+    def _media_command(self, cmd: str) -> None:
+        if self._reader is not None and self._reader.command(cmd):
+            return
+        keys = {"toggle": "play_pause", "play": "play_pause", "pause": "play_pause",
+                "next": "next_track", "prev": "prev_track"}.get(cmd)
+        if keys:  # no media session (or media disabled): the plain media keys still work for most players
+            self.executor.run_async({"type": "hotkey", "keys": keys}, f"media {cmd}")
+
     # -- events from the board -----------------------------------------------------------------
 
     def handle(self, msg: dict) -> None:
@@ -164,6 +227,11 @@ class Companion:
                 log.info("key %s/%s/%s (%s) has no action", d, p, k, msg.get("id", ""))
                 return
             self.executor.run_async(action, f"{d}/{p}/{k}")
+        elif kind == "media":
+            self._media_command(str(msg.get("cmd", "")))
+        elif kind == "seek":
+            if self._reader is not None and "posMs" in msg:
+                self._reader.seek(int(msg["posMs"]))
         elif kind in ("nav", "desktop"):
             log.debug("board: %s", msg)
         elif kind == "error":

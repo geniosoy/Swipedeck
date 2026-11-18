@@ -15,13 +15,14 @@ def main() -> int:
                     help="deck file (layout + actions), reloaded automatically when it changes")
     ap.add_argument("--port", help="serial port (default: auto-detect the native USB ESP32-S3)")
     ap.add_argument("--dry-run", action="store_true", help="log actions instead of running them")
+    ap.add_argument("--no-media", action="store_true", help="do not read the Windows media session (Now playing)")
     ap.add_argument("--check", action="store_true", help="only validate the deck file and exit")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s", datefmt="%H:%M:%S")
     try:
-        app = Companion(args.deck, port=args.port, executor=Executor(dry_run=args.dry_run))
+        app = Companion(args.deck, port=args.port, executor=Executor(dry_run=args.dry_run), media=not args.no_media)
     except (DeckError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
