@@ -10,8 +10,9 @@
 //    {"id":"media","title":"Media","cols":3,"rows":2,"keys":[ ... ]}
 // ]}]}
 //
-// A desktop can also be {"name":"Playing","kind":"nowplaying"} (media screen) or {"name":"PC","kind":"stats"}
-// (PC statistics): live screens fed by the companion, no pages.
+// A desktop can also be {"name":"Playing","kind":"nowplaying","options":{"tint":true,"album":true,"controls":"full"}}
+// (media screen) or {"name":"PC","kind":"stats","options":{"style":"gauges","items":["cpu","gpu","ram","vram","disk","net"]}}
+// (PC statistics): live screens fed by the companion, no pages. Options are optional (see live_options.h).
 //
 // The first page of a desktop is its root. A key with "folder" opens that page (by page id);
 // every other key is an action: pressing it reports its "id" to the PC.
@@ -19,6 +20,8 @@
 #include <Arduino.h>
 
 #include <vector>
+
+#include "live_options.h"
 
 constexpr int kMaxDesktops = 8;
 constexpr int kMaxPages = 16;  // per desktop
@@ -49,7 +52,9 @@ enum class DeskKind : uint8_t {
 struct DeckDesktop {
   String name;
   DeskKind kind = DeskKind::Keys;
-  std::vector<DeckPage> pages;  // pages[0] is the root (empty for NowPlaying)
+  NpOptions np;                 // Now playing: how it looks
+  StatsOptions stats;           // PC stats: style and which items, in which order
+  std::vector<DeckPage> pages;  // pages[0] is the root (empty for the live screens)
 };
 
 struct Deck {

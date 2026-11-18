@@ -2,6 +2,8 @@
 
 #include <ArduinoJson.h>
 
+#include <algorithm>
+
 static uint32_t parseColor(const char* s, uint32_t fallback) {
   if (!s || s[0] != '#' || strlen(s) != 7) return fallback;
   return static_cast<uint32_t>(strtoul(s + 1, nullptr, 16));
@@ -35,6 +37,27 @@ bool deckParse(const char* json, Deck& out, String& err) {
       }
       seen = true;
       dk.kind = kind == "nowplaying" ? DeskKind::NowPlaying : DeskKind::Stats;
+      JsonObject options = d["options"];  // missing = all defaults
+      if (dk.kind == DeskKind::NowPlaying) {
+        dk.np.tint = options["tint"] | true;
+        dk.np.album = options["album"] | true;
+        dk.np.basicControls = String(options["controls"] | "full") == "basic";
+      } else {
+        const String style = options["style"] | "gauges";
+        dk.stats.style = style == "bars" ? StatsStyle::Bars : style == "tiles" ? StatsStyle::Tiles : StatsStyle::Gauges;
+        JsonArray items = options["items"];
+        if (!items.isNull() && items.size() > 0) {
+          static const char* const kNames[kStatItemCount] = {"cpu", "gpu", "ram", "vram", "disk", "net"};
+          std::vector<uint8_t> chosen;
+          for (const char* name : items) {
+            for (uint8_t i = 0; i < kStatItemCount; i++) {
+              const bool repeated = std::find(chosen.begin(), chosen.end(), i) != chosen.end();
+              if (name && strcmp(name, kNames[i]) == 0 && !repeated) chosen.push_back(i);
+            }
+          }
+          if (!chosen.empty()) dk.stats.items = chosen;
+        }
+      }
       deck.desktops.push_back(std::move(dk));
       continue;
     }

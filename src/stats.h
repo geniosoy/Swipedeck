@@ -1,9 +1,11 @@
-// "PC stats" desktop: CPU / GPU / RAM gauges, VRAM and disk bars, network speed.
+// "PC stats" desktop: CPU / GPU / RAM / VRAM / disk / network, shown in one of three styles (see live_options.h).
 // The PC companion sends a `stats` message about once a second, and only while this desktop is visible.
 // -1 in any field means "not available" (e.g. no CPU temperature sensor on Windows without extra software).
 #pragma once
 #include <Arduino.h>
 #include <lvgl.h>
+
+#include "live_options.h"
 
 struct StatsInfo {
   int cpu = -1;       // %
@@ -17,6 +19,6 @@ struct StatsInfo {
   int netDownKBs = -1, netUpKBs = -1;
 };
 
-void statsBuild(lv_obj_t* tile);      // builds the screen inside `tile`
-void statsForget();                   // widgets were deleted (layout reload)
-void statsSet(const StatsInfo& info); // new numbers from the PC
+void statsBuild(lv_obj_t* tile, const StatsOptions& options);  // builds the screen inside `tile`
+void statsForget();                                            // widgets were deleted (layout reload)
+void statsSet(const StatsInfo& info);                          // new numbers from the PC

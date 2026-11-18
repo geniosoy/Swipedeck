@@ -26,6 +26,7 @@ constexpr uint32_t kMarqueeRepeatDelayMs = 2500;
 constexpr uint32_t kMarqueeMsPerPx = 28;
 
 UiEventFn sink = nullptr;
+NpOptions opts;  // how this screen is configured (deck.json options)
 
 NpInfo info;
 uint32_t stampMs = 0;         // millis() when info.posMs was valid
@@ -220,7 +221,7 @@ void applyProgress() {
 
 void applyBackground() {
   if (!built) return;
-  const lv_color_t c = lv_color_hex(bgColor);
+  const lv_color_t c = lv_color_hex(opts.tint ? bgColor : kDefaultBg);
   lv_obj_set_style_bg_color(root, c, 0);
   lv_obj_set_style_bg_color(bar, lv_color_darken(c, 90), 0);
   lv_obj_set_style_bg_color(coverBox, lv_color_lighten(c, 30), 0);
@@ -325,7 +326,10 @@ void npForget() {
   dragging = false;
 }
 
-void npBuild(lv_obj_t* tile) {
+void npBuild(lv_obj_t* tile, const NpOptions& options) {
+  opts = options;
+  // Without the album line everything below it moves up to fill the space.
+  const int shift = opts.album ? 0 : -18;
   root = lv_obj_create(tile);
   lv_obj_remove_style_all(root);
   lv_obj_set_size(root, lv_obj_get_width(tile), lv_obj_get_height(tile));
@@ -358,15 +362,16 @@ void npBuild(lv_obj_t* tile) {
 
   // text column: album (small), title (big), artist, time
   marqueeCreate(albumM, root, &lv_font_montserrat_14, 0xFFFFFF, LV_OPA_60, kTextX, kAlbumY, kTextW);
+  if (!opts.album) lv_obj_add_flag(albumM.clip, LV_OBJ_FLAG_HIDDEN);
   titleWrap = lv_label_create(root);
-  lv_obj_set_pos(titleWrap, kTextX, kTitleY);
+  lv_obj_set_pos(titleWrap, kTextX, kTitleY + shift);
   lv_obj_set_size(titleWrap, kTextW, kTitleH);
   lv_obj_set_style_text_color(titleWrap, lv_color_white(), 0);
   lv_label_set_long_mode(titleWrap, LV_LABEL_LONG_DOT);
   lv_label_set_text(titleWrap, "");
-  marqueeCreate(artistM, root, &lv_font_montserrat_16, 0xFFFFFF, LV_OPA_90, kTextX, kArtistY, kTextW);
+  marqueeCreate(artistM, root, &lv_font_montserrat_16, 0xFFFFFF, LV_OPA_90, kTextX, kArtistY + shift, kTextW);
   timeLbl = lv_label_create(root);
-  lv_obj_set_pos(timeLbl, kTextX, kTimeY);
+  lv_obj_set_pos(timeLbl, kTextX, kTimeY + shift);
   lv_obj_set_style_text_font(timeLbl, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(timeLbl, lv_color_white(), 0);
   lv_obj_set_style_text_opa(timeLbl, LV_OPA_60, 0);
@@ -403,6 +408,10 @@ void npBuild(lv_obj_t* tile) {
   playImg = lv_obj_get_child(btnPlay, 0);
   nextImg = lv_obj_get_child(btnNext, 0);
   repeatImg = lv_obj_get_child(btnRepeat, 0);
+  if (opts.basicControls) {  // previous / play / next only: they already sit in the middle of the bar
+    lv_obj_add_flag(btnShuffle, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(btnRepeat, LV_OBJ_FLAG_HIDDEN);
+  }
   repeatOneLbl = lv_label_create(btnRepeat);  // small "1" for repeat-one
   lv_obj_set_style_text_font(repeatOneLbl, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(repeatOneLbl, lv_color_hex(kAccent), 0);

@@ -53,6 +53,12 @@ The companion serves a layout editor at **http://127.0.0.1:8765/** (`Streamdeck-
   desktops** you can add and then tweak: Discord, Coding (VS Code, with Git and Debug pages), OBS & streaming (F13-F24
   hotkeys to bind in OBS, with a Scenes page), Music, Windows, Browser, Editing and Gaming. They live in
   `companion/streamdeck_companion/web/templates.json`; add your own entries there (the tests validate every one).
+* **Live screen settings:** Now playing and PC stats have no keys, so the presets area gives way to their settings
+  (below the preview, which follows every option):
+  * *Now playing*: which players are shown (all, only these, or all except these; add names, quick-add groups such as
+    music apps / browsers / video players, or click **Detect running players** to see what Windows has right now),
+    tint the background with the cover colors, show the album line, full or basic controls (previous / play / next).
+  * *PC stats*: the style (gauges, bars or tiles) and which items to show and in which order (drag or arrows).
 * **Button presets** (about 90, in 12 categories: audio, media, system, windows, editing, browser, apps, git, streaming,
   text ...): click one to place it in the selected or first empty slot, drag it onto a slot, search them, or fill the
   empty slots with a whole category. "Save as preset" in the key panel keeps your own keys in *My presets*
@@ -79,8 +85,11 @@ for explanation: the real file is plain JSON.
       ] },
       { "id": "media", "title": "Media", "cols": 3, "rows": 2, "keys": [ /* ... */ ] }
     ] },
-    { "name": "Playing", "kind": "nowplaying" },                   // the media screen (at most one)
-    { "name": "PC", "kind": "stats" }                              // the stats screen (at most one)
+    { "name": "Playing", "kind": "nowplaying", "options": {        // the media screen (at most one); options are optional
+        "filter": { "mode": "only", "apps": ["tidal", "spotify"] },  // mode: all | only | except; names matched by part
+        "tint": true, "album": true, "controls": "full" } },         // controls: full | basic
+    { "name": "PC", "kind": "stats", "options": {                   // the stats screen (at most one)
+        "style": "tiles", "items": ["cpu", "gpu", "ram", "vram", "disk", "net"] } }  // style: gauges | bars | tiles
   ]
 }
 ```
@@ -92,6 +101,8 @@ for explanation: the real file is plain JSON.
 * Icons on keys come from a built-in list of about 50 names (`mute`, `play`, `home`, `copy` ...), see `ICONS` in
   `companion/streamdeck_companion/deck.py`; an unknown name shows a warning symbol and a log warning.
 * Layouts have only been tried at a few KB; the editor warns above 30 KB.
+* The live-screen options are checked by the companion when it loads the deck (a wrong value is an error with a clear
+  message); the board never receives the Now playing player filter.
 
 ## Live screens run on demand
 The Now playing and PC stats screens only cost the PC something while they are on screen. The board tells the
@@ -100,6 +111,14 @@ otherwise, and start from a clean state when you come back (the full state is se
 draw off-screen objects, so nothing needs switching there.
 
 ## Now playing
+* **Which player:** Windows can have several media players at once (Chrome, Spotify, TIDAL ...). The `filter` option picks
+  among them: players are matched by a part of the name Windows gives them (case-insensitive: `tidal` matches
+  `TIDAL.exe`), "only" is a whitelist, "except" a blacklist. Of the allowed players one that is playing wins, and the one
+  already shown stays (two players playing at once do not make the screen flip). With nothing allowed running, the screen
+  says "Nothing playing". The filter only exists on the PC; the board just shows what it is sent. Firefox's Windows name is
+  a code rather than "firefox": use **Detect running players** in the editor to see the exact names.
+* **Look options** (sent to the board): `tint` (background from the cover), `album` (album line), `controls` (`full` or
+  `basic`).
 * Cover (140 x 140, square) converted on the PC to RGB565; the screen background is a dark, muted tone of the cover's
   average color. The title uses up to two lines (largest font that fits, then an ellipsis); album and artist scroll
   once in a while only when they do not fit (pause, scroll, pause, scroll back).
@@ -114,6 +133,9 @@ draw off-screen objects, so nothing needs switching there.
   may use.
 
 ## PC stats
+Three styles, chosen with the `style` option, and `items` sets which items are shown and in which order (each item once):
+**gauges** (round gauges for the first three percentage items, bars for the rest, the network as a line), **bars** (one
+row per item) and **tiles** (two columns of tiles with a big number). Items: `cpu`, `gpu`, `ram`, `vram`, `disk`, `net`.
 CPU, RAM, disk and network come from `psutil`; the GPU (first NVIDIA card: usage, temperature, power, VRAM) from the
 driver's NVML library, with no process spawned per reading. **CPU temperature is not available** (Windows only gives it
 to elevated programs or sensor software such as LibreHardwareMonitor), so it shows "temp n/a"; any value that cannot be
@@ -138,7 +160,7 @@ Streamdeck.bat, Streamdeck-background.vbs, Stop-Streamdeck.bat   launchers for t
 platformio.ini, include/, src/                                  firmware (ui.cpp, nowplaying.cpp, stats.cpp, link.cpp, audio.cpp ...)
 lib/                                                            patched TFT_eSPI, FT6336, ES8311 (see below)
 tools/gen_icons.py, tools/icons/                                icon generator and its SVG sources
-tools/gen_icon_map.py, tools/e2e_editor.py                      editor icon table generator, browser test of the editor
+tools/gen_icon_map.py, gen_favicon.py, e2e_editor.py            editor icon table and favicon generators, browser test
 Streamdeck-Editor.bat                                           opens the editor
 companion/                                                      the Python companion: deck.json, streamdeck_companion/ (incl.
                                                                 editor.py and web/ = the editor), tests/

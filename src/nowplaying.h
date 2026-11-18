@@ -6,6 +6,7 @@
 #include <Arduino.h>
 #include <lvgl.h>
 
+#include "live_options.h"
 #include "ui.h"
 
 constexpr int kCoverPx = 140;  // the PC converts covers to this square size (RGB565, little-endian)
@@ -24,7 +25,7 @@ struct NpInfo {
 };
 
 void npInit(UiEventFn sink);          // once, after lv_init (timer + event sink)
-void npBuild(lv_obj_t* tile);         // builds the screen inside `tile`
+void npBuild(lv_obj_t* tile, const NpOptions& options);  // builds the screen inside `tile`
 void npForget();                      // the widgets were deleted (layout reload): drop the pointers
 void npSetInfo(const NpInfo& info);   // new state from the PC (the progress bar then runs on its own clock)
 

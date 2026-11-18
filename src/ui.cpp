@@ -239,11 +239,11 @@ void buildDesktops() {
     u.stack = {0};
 
     if (deck.desktops[d].kind == DeskKind::NowPlaying) {
-      npBuild(u.tile);
+      npBuild(u.tile, deck.desktops[d].np);
       continue;
     }
     if (deck.desktops[d].kind == DeskKind::Stats) {
-      statsBuild(u.tile);
+      statsBuild(u.tile, deck.desktops[d].stats);
       continue;
     }
     showPage(d, 0);
