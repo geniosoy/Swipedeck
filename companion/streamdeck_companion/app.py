@@ -13,7 +13,7 @@ from .protocol import crc_hex, layout_messages
 
 log = logging.getLogger("companion")
 
-HELLO_TIMEOUT = 15.0   # the board reboots when the port is opened; it needs a few seconds
+HELLO_TIMEOUT = 15.0   # generous: the board may be booting (just plugged in or flashed); opening the port does not reset it
 PING_EVERY = 2.0
 SILENCE_LIMIT = 8.0    # no message at all for this long -> treat the link as dead
 ACK_TIMEOUT = 5.0

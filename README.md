@@ -13,8 +13,7 @@ Board facts and traps: `../ES3C28P_BOARD_NOTES.md`. Firmware: Arduino + Platform
 ## Milestones
 1. **Bring-up** - display, touch, sound, serial console - done
 2. **Firmware UI** - swipeable desktops, folder pages + back button, key sounds, JSON layout over serial - done
-   (layout is not stored on the board yet: it falls back to the built-in demo after a reboot)
-3. Serial protocol + PC companion (actions, layout sync)
+3. **Serial protocol + PC companion** (actions, layout sync, stored layout/settings) - done
 4. Now playing screen (SMTC) incl. seek slider
 5. Polish: icons, brightness/sleep, settings
 
@@ -38,3 +37,24 @@ starts on a key does not tick; see `kKeySoundEvent` in `src/ui.cpp` to switch to
 
 ## Third-party code
 `lib/TFT_eSPI` (patched, vendor package), `lib/FT6336`, `lib/ES8311` (Espressif, Apache-2.0, patched to use `Wire`).
+
+## PC companion (Python, Windows)
+```
+cd companion
+python -m venv .venv && .venv\Scripts\pip install -r requirements.txt     (once)
+.venv\Scripts\python -m streamdeck_companion            (add --dry-run to only log the actions, -v for debug)
+.venv\Scripts\python -m unittest discover -s tests      (tests)
+```
+* `companion/deck.json` is the single source of truth: the layout (desktops -> pages -> keys) **and** what each key
+  does (`"action"`). The companion strips the actions, sends the layout to the board and reloads automatically when
+  the file is saved. The board stores the last layout and the settings, so it works (and looks right) without the PC.
+* Actions: `hotkey` (also media/volume keys), `text` (typed, `
+` = Enter), `open` (file/URL/app), `run`, `lock`,
+  `multi` (sequence with `{"wait": seconds}`). Schema and validation: `streamdeck_companion/actions.py`, `deck.py`.
+* Close the companion before flashing (it holds the COM port). It reconnects by itself after a replug or reflash.
+
+## Link protocol
+JSON lines over the USB serial port (documented in `src/link.h`): `hello`, `ping`/`pong`, chunked `layout` with
+`layout-part` / `layout-ack` (+ FNV-1a CRC so an unchanged layout is not re-sent), `settings`, `focus`,
+`reset-layout`; board events `press`, `nav`, `desktop`. Plain-text debug commands (`help`, `info`, `reboot`, ...)
+still work on the same port.

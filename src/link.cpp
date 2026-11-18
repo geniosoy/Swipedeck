@@ -201,6 +201,7 @@ void onConsole(const String& line) {
   if (line == "ping") Serial.println("{\"type\":\"pong\"}");
   else if (line == "beep") audioPlay(Sound::Tap);
   else if (line == "back") uiGoBack();
+  else if (line == "reboot") ESP.restart();
   else if (line == "info") {
     Serial.printf("layout %s crc %s, vol %d sounds %d bri %d, heap %u KB, PSRAM %u KB\n",
                   layoutJson.isEmpty() ? "demo" : "stored", crcHex(layoutCrc).c_str(), settings.volume, settings.sounds,
@@ -215,7 +216,7 @@ void onConsole(const String& line) {
     audioSetAmp(line.substring(4).toInt() != 0);
     audioPlay(Sound::Tap);
     Serial.println("amp set");
-  } else if (line.length()) Serial.println("console: ping | beep | back | info | desktop N | vol N | amp 0/1  (PC link speaks JSON lines)");
+  } else if (line.length()) Serial.println("console: ping | beep | back | info | reboot | desktop N | vol N | amp 0/1  (PC link speaks JSON lines)");
 }
 
 }  // namespace
