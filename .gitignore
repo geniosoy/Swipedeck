@@ -4,3 +4,6 @@
 __pycache__/
 node_modules/
 companion/companion.log
+companion/deck.json.bak
+companion/*.tmp
+companion/presets.user.json

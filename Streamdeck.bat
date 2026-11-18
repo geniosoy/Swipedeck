@@ -37,6 +37,7 @@ if errorlevel 1 (
 )
 
 echo Streamdeck companion running. Close this window or press Ctrl+C to stop it.
+echo Deck editor: http://127.0.0.1:8765/  (or run Streamdeck-Editor.bat)
 echo (Stop it before flashing the board: it holds the USB port.)
 echo.
 ".venv\Scripts\python.exe" -m streamdeck_companion %*

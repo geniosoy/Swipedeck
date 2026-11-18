@@ -1,0 +1,109 @@
+{
+ "categories": [
+  { "id": "layout", "name": "Layout", "presets": [
+   { "name": "Folder", "key": { "label": "Folder", "icon": "directory", "color": "#1F6F5C", "folder": "new" } },
+   { "name": "Empty slot", "key": {} }
+  ] },
+  { "id": "audio", "name": "Audio", "presets": [
+   { "name": "Mute", "key": { "label": "Mute", "icon": "mute", "color": "#B3261E", "action": { "type": "hotkey", "keys": "volume_mute" } } },
+   { "name": "Volume down", "key": { "label": "Vol -", "icon": "volume_down", "action": { "type": "hotkey", "keys": "volume_down" } } },
+   { "name": "Volume up", "key": { "label": "Vol +", "icon": "volume_up", "action": { "type": "hotkey", "keys": "volume_up" } } }
+  ] },
+  { "id": "media", "name": "Media", "presets": [
+   { "name": "Play / Pause", "key": { "label": "Play", "icon": "play", "color": "#2E7D32", "action": { "type": "hotkey", "keys": "play_pause" } } },
+   { "name": "Next track", "key": { "label": "Next", "icon": "next", "action": { "type": "hotkey", "keys": "next_track" } } },
+   { "name": "Previous track", "key": { "label": "Prev", "icon": "prev", "action": { "type": "hotkey", "keys": "prev_track" } } },
+   { "name": "Stop", "key": { "label": "Stop", "icon": "stop", "action": { "type": "hotkey", "keys": "stop" } } }
+  ] },
+  { "id": "system", "name": "System", "presets": [
+   { "name": "Lock PC", "key": { "label": "Lock", "icon": "power", "color": "#5B3A8C", "action": { "type": "lock" } } },
+   { "name": "Screenshot", "key": { "label": "Shot", "icon": "image", "action": { "type": "hotkey", "keys": "win+shift+s" } } },
+   { "name": "Task Manager", "key": { "label": "Tasks", "icon": "list", "action": { "type": "hotkey", "keys": "ctrl+shift+esc" } } },
+   { "name": "Show desktop", "key": { "label": "Desktop", "icon": "home", "action": { "type": "hotkey", "keys": "win+d" } } },
+   { "name": "File Explorer", "key": { "label": "Files", "icon": "directory", "action": { "type": "hotkey", "keys": "win+e" } } },
+   { "name": "Run dialog", "key": { "label": "Run", "icon": "keyboard", "action": { "type": "hotkey", "keys": "win+r" } } },
+   { "name": "Windows settings", "key": { "label": "Settings", "icon": "settings", "action": { "type": "open", "target": "ms-settings:" } } },
+   { "name": "Clipboard history", "key": { "label": "Clipboard", "icon": "paste", "action": { "type": "hotkey", "keys": "win+v" } } },
+   { "name": "Emoji panel", "key": { "label": "Emoji", "icon": "bell", "action": { "type": "hotkey", "keys": "win+." } } },
+   { "name": "Search", "key": { "label": "Search", "icon": "eye", "action": { "type": "hotkey", "keys": "win+s" } } },
+   { "name": "Task view", "key": { "label": "Views", "icon": "list", "action": { "type": "hotkey", "keys": "win+tab" } } },
+   { "name": "Switch window", "key": { "label": "Alt+Tab", "icon": "loop", "action": { "type": "hotkey", "keys": "alt+tab" } } }
+  ] },
+  { "id": "windows", "name": "Windows", "presets": [
+   { "name": "Next virtual desktop", "key": { "label": "Desk >", "icon": "right", "action": { "type": "hotkey", "keys": "ctrl+win+right" } } },
+   { "name": "Previous virtual desktop", "key": { "label": "Desk <", "icon": "left", "action": { "type": "hotkey", "keys": "ctrl+win+left" } } },
+   { "name": "New virtual desktop", "key": { "label": "New desk", "icon": "plus", "action": { "type": "hotkey", "keys": "ctrl+win+d" } } },
+   { "name": "Snap left", "key": { "label": "Snap L", "icon": "left", "action": { "type": "hotkey", "keys": "win+left" } } },
+   { "name": "Snap right", "key": { "label": "Snap R", "icon": "right", "action": { "type": "hotkey", "keys": "win+right" } } },
+   { "name": "Maximize", "key": { "label": "Max", "icon": "up", "action": { "type": "hotkey", "keys": "win+up" } } },
+   { "name": "Minimize", "key": { "label": "Min", "icon": "down", "action": { "type": "hotkey", "keys": "win+down" } } },
+   { "name": "Minimize all", "key": { "label": "Min all", "icon": "down", "action": { "type": "hotkey", "keys": "win+m" } } },
+   { "name": "Close window", "key": { "label": "Close", "icon": "close", "color": "#B3261E", "action": { "type": "hotkey", "keys": "alt+f4" } } }
+  ] },
+  { "id": "editing", "name": "Editing", "presets": [
+   { "name": "Copy", "key": { "label": "Copy", "icon": "copy", "action": { "type": "hotkey", "keys": "ctrl+c" } } },
+   { "name": "Paste", "key": { "label": "Paste", "icon": "paste", "action": { "type": "hotkey", "keys": "ctrl+v" } } },
+   { "name": "Cut", "key": { "label": "Cut", "icon": "cut", "action": { "type": "hotkey", "keys": "ctrl+x" } } },
+   { "name": "Select all", "key": { "label": "All", "icon": "list", "action": { "type": "hotkey", "keys": "ctrl+a" } } },
+   { "name": "Undo", "key": { "label": "Undo", "icon": "left", "action": { "type": "hotkey", "keys": "ctrl+z" } } },
+   { "name": "Redo", "key": { "label": "Redo", "icon": "right", "action": { "type": "hotkey", "keys": "ctrl+y" } } },
+   { "name": "Save", "key": { "label": "Save", "icon": "save", "color": "#2E7D32", "action": { "type": "hotkey", "keys": "ctrl+s" } } },
+   { "name": "Find", "key": { "label": "Find", "icon": "eye", "action": { "type": "hotkey", "keys": "ctrl+f" } } },
+   { "name": "New", "key": { "label": "New", "icon": "plus", "action": { "type": "hotkey", "keys": "ctrl+n" } } },
+   { "name": "Open", "key": { "label": "Open", "icon": "directory", "action": { "type": "hotkey", "keys": "ctrl+o" } } },
+   { "name": "Rename", "key": { "label": "Rename", "icon": "edit", "action": { "type": "hotkey", "keys": "f2" } } },
+   { "name": "Delete", "key": { "label": "Delete", "icon": "trash", "color": "#B3261E", "action": { "type": "hotkey", "keys": "delete" } } },
+   { "name": "Enter", "key": { "label": "Enter", "icon": "ok", "action": { "type": "hotkey", "keys": "enter" } } },
+   { "name": "Escape", "key": { "label": "Esc", "icon": "close", "action": { "type": "hotkey", "keys": "esc" } } }
+  ] },
+  { "id": "browser", "name": "Browser", "presets": [
+   { "name": "New tab", "key": { "label": "New tab", "icon": "plus", "action": { "type": "hotkey", "keys": "ctrl+t" } } },
+   { "name": "Close tab", "key": { "label": "Close tab", "icon": "close", "action": { "type": "hotkey", "keys": "ctrl+w" } } },
+   { "name": "Reopen tab", "key": { "label": "Reopen", "icon": "refresh", "action": { "type": "hotkey", "keys": "ctrl+shift+t" } } },
+   { "name": "Reload", "key": { "label": "Reload", "icon": "refresh", "action": { "type": "hotkey", "keys": "f5" } } },
+   { "name": "Back", "key": { "label": "Back", "icon": "left", "action": { "type": "hotkey", "keys": "alt+left" } } },
+   { "name": "Forward", "key": { "label": "Forward", "icon": "right", "action": { "type": "hotkey", "keys": "alt+right" } } },
+   { "name": "Address bar", "key": { "label": "Address", "icon": "home", "action": { "type": "hotkey", "keys": "ctrl+l" } } },
+   { "name": "Private window", "key": { "label": "Private", "icon": "eye_off", "action": { "type": "hotkey", "keys": "ctrl+shift+n" } } },
+   { "name": "Developer tools", "key": { "label": "DevTools", "icon": "settings", "action": { "type": "hotkey", "keys": "f12" } } },
+   { "name": "Fullscreen", "key": { "label": "Fullscr.", "icon": "image", "action": { "type": "hotkey", "keys": "f11" } } }
+  ] },
+  { "id": "apps", "name": "Apps & web", "presets": [
+   { "name": "Open website", "key": { "label": "Browser", "icon": "home", "action": { "type": "open", "target": "https://www.google.com" } } },
+   { "name": "YouTube", "key": { "label": "YouTube", "icon": "video", "color": "#B3261E", "action": { "type": "open", "target": "https://www.youtube.com" } } },
+   { "name": "Gmail", "key": { "label": "Mail", "icon": "bell", "action": { "type": "open", "target": "https://mail.google.com" } } },
+   { "name": "Terminal", "key": { "label": "Terminal", "icon": "keyboard", "action": { "type": "run", "command": ["wt"] } } },
+   { "name": "VS Code", "key": { "label": "Code", "icon": "edit", "action": { "type": "run", "command": "code", "shell": true } } },
+   { "name": "Calculator", "key": { "label": "Calc", "icon": "plus", "action": { "type": "run", "command": "calc", "shell": true } } },
+   { "name": "Notepad", "key": { "label": "Notes", "icon": "file", "action": { "type": "run", "command": "notepad", "shell": true } } },
+   { "name": "Spotify", "key": { "label": "Spotify", "icon": "audio", "color": "#1F6F5C", "action": { "type": "open", "target": "spotify:" } } },
+   { "name": "Steam", "key": { "label": "Steam", "icon": "play", "action": { "type": "open", "target": "steam://open/main" } } },
+   { "name": "Discord", "key": { "label": "Discord", "icon": "call", "color": "#5B3A8C", "action": { "type": "open", "target": "discord://" } } }
+  ] },
+  { "id": "dev", "name": "Git & terminal", "presets": [
+   { "name": "git status", "key": { "label": "Status", "icon": "list", "action": { "type": "text", "text": "git status\n" } } },
+   { "name": "git pull", "key": { "label": "Pull", "icon": "download", "action": { "type": "text", "text": "git pull\n" } } },
+   { "name": "git push", "key": { "label": "Push", "icon": "upload", "action": { "type": "text", "text": "git push\n" } } },
+   { "name": "git diff", "key": { "label": "Diff", "icon": "edit", "action": { "type": "text", "text": "git diff\n" } } },
+   { "name": "git log", "key": { "label": "Log", "icon": "file", "action": { "type": "text", "text": "git log --oneline -10\n" } } },
+   { "name": "git commit", "key": { "label": "Commit", "icon": "ok", "color": "#2E7D32", "action": { "type": "multi", "steps": [ { "type": "text", "text": "git commit -am \"\"" }, { "type": "hotkey", "keys": "left" } ] } } },
+   { "name": "Interrupt (Ctrl+C)", "key": { "label": "Stop", "icon": "close", "color": "#B3261E", "action": { "type": "hotkey", "keys": "ctrl+c" } } },
+   { "name": "Clear screen", "key": { "label": "Clear", "icon": "refresh", "action": { "type": "text", "text": "cls\n" } } }
+  ] },
+  { "id": "streaming", "name": "Streaming (F13-F24)", "presets": [
+   { "name": "Record", "key": { "label": "Record", "icon": "video", "color": "#B3261E", "action": { "type": "hotkey", "keys": "f13" } } },
+   { "name": "Go live", "key": { "label": "Live", "icon": "wifi", "color": "#B3261E", "action": { "type": "hotkey", "keys": "f14" } } },
+   { "name": "Mic mute", "key": { "label": "Mic", "icon": "mute", "action": { "type": "hotkey", "keys": "f15" } } },
+   { "name": "Clip", "key": { "label": "Clip", "icon": "cut", "action": { "type": "hotkey", "keys": "f16" } } },
+   { "name": "Scene 1", "key": { "label": "Scene 1", "icon": "image", "action": { "type": "hotkey", "keys": "f17" } } },
+   { "name": "Scene 2", "key": { "label": "Scene 2", "icon": "image", "action": { "type": "hotkey", "keys": "f18" } } },
+   { "name": "Scene 3", "key": { "label": "Scene 3", "icon": "image", "action": { "type": "hotkey", "keys": "f19" } } },
+   { "name": "Scene 4", "key": { "label": "Scene 4", "icon": "image", "action": { "type": "hotkey", "keys": "f20" } } }
+  ] },
+  { "id": "text", "name": "Text", "presets": [
+   { "name": "Type text", "key": { "label": "Text", "icon": "keyboard", "action": { "type": "text", "text": "Hello!" } } },
+   { "name": "Shrug", "key": { "label": "Shrug", "icon": "bell", "action": { "type": "text", "text": "¯\\_(ツ)_/¯" } } },
+   { "name": "Custom hotkey", "key": { "label": "Hotkey", "icon": "keyboard", "action": { "type": "hotkey", "keys": "ctrl+shift+a" } } }
+  ] }
+ ]
+}

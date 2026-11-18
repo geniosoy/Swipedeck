@@ -41,6 +41,9 @@ class Companion:
         self._stats_sent = 0           # sequence number of the last sample sent to the board
         self._active_desktop = 0       # which desktop the board is showing
         self._shown_kind = "keys"      # kind of that desktop: keys | nowplaying | stats
+        # What the web editor shows in its status line (read from another thread; plain values only).
+        self.status: dict = {"connected": False, "port": None, "firmware": None, "layoutCrc": None,
+                             "desktop": 0, "kind": "keys"}
         self.load_deck(first=True)
 
     # -- deck ----------------------------------------------------------------------------------
@@ -77,10 +80,12 @@ class Companion:
             try:
                 board = self._open_board(self.port)
                 log.info("connected on %s", getattr(board, "port", "?"))
+                self.status.update(port=getattr(board, "port", None))
                 self.session(board)
             except ConnectionError as e:
                 log.warning("link: %s", e)
             finally:
+                self.status.update(connected=False, firmware=None)
                 if board is not None:
                     board.close()
             if not self._stop:
@@ -93,6 +98,7 @@ class Companion:
         self._cover_px = int(hello.get("coverPx") or COVER_PX_DEFAULT)
         self._active_desktop = int(hello.get("desktop") or 0)
         self._shown_kind = "keys"
+        self.status.update(connected=True, firmware=hello.get("firmware"), layoutCrc=hello.get("layoutCrc"))
         self._push_settings(board)
         board_crc = self._sync_layout(board, hello.get("layoutCrc", ""))
         nps = NowPlayingSync()  # a new connection starts from scratch: the board may have lost its state
@@ -160,6 +166,7 @@ class Companion:
                     log.warning("layout crc differs: board %s, pc %s", reply.get("crc"), crc)
                 log.info("layout accepted (crc %s)", reply.get("crc"))
                 self._active_desktop = 0  # a freshly loaded layout starts on the first desktop
+                self.status.update(layoutCrc=crc)
                 return crc
         raise ConnectionError("layout transfer ended without an acknowledgement")
 
@@ -182,6 +189,7 @@ class Companion:
 
     def _update_live(self, board, nps: NowPlayingSync, now: float) -> None:
         kind = self._kind_of(self._active_desktop)
+        self.status.update(desktop=self._active_desktop, kind=kind)
         if kind != self._shown_kind:
             self._switch_live(self._shown_kind, kind, nps)
             self._shown_kind = kind

@@ -25,6 +25,8 @@ passed through: `--dry-run` (log actions, do not run them), `--no-media`, `--no-
 `--check` (validate the deck file and exit), `-v` (debug log).
 * **`Streamdeck-background.vbs`** starts it without a window (log: `companion\companion.log`). A shortcut to it in the
   Startup folder (Win+R, `shell:startup`) starts the companion with Windows.
+* **`Streamdeck-Editor.bat`** opens the deck editor in your browser (starting the companion in the background first if
+  it is not running). The editor lives at http://127.0.0.1:8765/ whenever the companion runs.
 * **`Stop-Streamdeck.bat`** stops a running companion (hidden or not). Do this before flashing: it holds the USB port.
   It reconnects by itself after a replug or reflash.
 
@@ -34,8 +36,31 @@ passed through: `--dry-run` (log actions, do not run them), `--no-media`, `--no-
 ```
 If the board does not accept the upload: hold BOOT, tap RESET, release BOOT, upload, tap RESET once.
 
-## Configuring: `companion/deck.json`
-One file holds everything. The companion strips the actions, sends the layout to the board, and reloads when the file
+## The deck editor (web)
+The companion serves a layout editor at **http://127.0.0.1:8765/** (`Streamdeck-Editor.bat` opens it). Saving writes
+`companion/deck.json`, and the companion pushes the new layout to the board a moment later.
+* **Live preview** of the board's screen, drawn with the same geometry and the same icon glyphs as the firmware.
+  Click a key to edit it, drag keys to swap them, undo/redo (Ctrl+Z / Ctrl+Y), copy/paste keys (Ctrl+C / Ctrl+V),
+  Delete clears a key, arrow keys move the selection, Ctrl+S saves.
+* **Per key:** label, icon (all 51 board icons), color, and either an action, a folder (opens another page, or creates one)
+  or nothing. Actions have forms: a hotkey builder (modifier tick boxes plus a key box, with a "press a key" capture;
+  the Windows key cannot be captured by a browser, so it is a tick box), typed text, open, run, lock, and multi-step
+  sequences with waits.
+* **Structure:** add, rename, reorder and delete desktops and pages, change a page's grid size (keys keep their row and
+  column; you are asked before keys are removed), add the Now playing and PC stats screens, and set the board's volume,
+  key sounds and brightness.
+* **Button presets** (about 90, in 12 categories: audio, media, system, windows, editing, browser, apps, git, streaming,
+  text ...): click one to place it in the selected or first empty slot, drag it onto a slot, search them, or fill the
+  empty slots with a whole category. "Save as preset" in the key panel keeps your own keys in *My presets*
+  (`companion/presets.user.json`).
+* Saving checks the deck with the same validation the companion uses and shows the error if something is wrong; the
+  previous file is kept as `deck.json.bak`. The file is written one key per line, so it stays easy to read and diff.
+* **Safety:** the editor can write actions that run on your PC, so the server listens on 127.0.0.1 only, accepts only its
+  own Host name, and writes need a random token that exists only in the editor page (other websites you visit can neither
+  read nor write your deck). `--no-editor` turns it off, `--editor-port N` moves it.
+
+## Configuring by hand: `companion/deck.json`
+The editor edits this file; you can also edit it directly (changes are picked up while the companion runs). The companion strips the actions, sends the layout to the board, and reloads when the file
 is saved (the board's layout, settings and screens update without a restart). The comments in this example are only
 for explanation: the real file is plain JSON.
 ```jsonc
@@ -62,7 +87,7 @@ for explanation: the real file is plain JSON.
   readable errors (`--check`).
 * Icons on keys come from a built-in list of about 50 names (`mute`, `play`, `home`, `copy` ...), see `ICONS` in
   `companion/streamdeck_companion/deck.py`; an unknown name shows a warning symbol and a log warning.
-* The whole layout must stay below about 15 KB of JSON.
+* Layouts have only been tried at a few KB; the editor warns above 30 KB.
 
 ## Live screens run on demand
 The Now playing and PC stats screens only cost the PC something while they are on screen. The board tells the
@@ -109,17 +134,26 @@ Streamdeck.bat, Streamdeck-background.vbs, Stop-Streamdeck.bat   launchers for t
 platformio.ini, include/, src/                                  firmware (ui.cpp, nowplaying.cpp, stats.cpp, link.cpp, audio.cpp ...)
 lib/                                                            patched TFT_eSPI, FT6336, ES8311 (see below)
 tools/gen_icons.py, tools/icons/                                icon generator and its SVG sources
-companion/                                                      the Python companion: deck.json, streamdeck_companion/, tests/
+tools/gen_icon_map.py, tools/e2e_editor.py                      editor icon table generator, browser test of the editor
+Streamdeck-Editor.bat                                           opens the editor
+companion/                                                      the Python companion: deck.json, streamdeck_companion/ (incl.
+                                                                editor.py and web/ = the editor), tests/
 ```
-Tests: `companion\.venv\Scripts\python -m unittest discover -s tests` (from `companion`).
+Tests: `companion\.venv\Scripts\python -m unittest discover -s tests` (from `companion`; companion, protocol and editor
+server incl. its security checks) and `node --test companion/tests/js/model.test.mjs` (the editor's logic). A full browser
+test of the editor, which drives it in headless Edge/Chrome against a copy of the deck, is `tools/e2e_editor.py`
+(needs `pip install websocket-client`; `--shots DIR` saves screenshots).
 
 ## Milestones
 1. Bring-up (display, touch, sound, serial) - done
 2. Firmware UI (swipeable desktops, folders, back, key sounds) - done
 3. Serial protocol and PC companion (actions, layout sync, stored layout and settings) - done
 4. Now playing screen, PC stats screen, on-demand live screens - done
-5. Polish: brightness / sleep, settings screen, accented fonts - open
+5. Layout editor (web) with button presets - done
+6. Polish: brightness / sleep, settings screen on the board, accented fonts - open
 
 ## Third-party code
 `lib/TFT_eSPI` (patched, from the vendor package), `lib/FT6336`, `lib/ES8311` (Espressif, Apache-2.0, patched to use
-`Wire`). Python: pyserial, Pillow, psutil, nvidia-ml-py, winrt (pywinrt) packages.
+`Wire`). Python: pyserial, Pillow, psutil, nvidia-ml-py, winrt (pywinrt) packages. The editor draws icons with the Font
+Awesome Free font that LVGL ships (`web/fonts/fa.woff`; icons CC BY 4.0, font SIL OFL 1.1,
+https://fontawesome.com/license/free).
