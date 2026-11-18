@@ -11,7 +11,8 @@ import threading
 import time
 from datetime import datetime, timezone
 
-from .nowplaying import COVER_PX_DEFAULT, Snapshot, background_color, choose_session, cover_key, cover_to_rgb565
+from .nowplaying import (COVER_PX_DEFAULT, Snapshot, background_color, choose_session, cover_key, cover_to_rgb565,
+                         normalize_filter)
 
 log = logging.getLogger("media")
 
@@ -57,7 +58,7 @@ class MediaReader:
         self._ready = threading.Event()
         self._active = threading.Event()   # polling only happens while the Now playing screen is visible
         self._fresh = threading.Event()    # a reading taken since the screen became active
-        self._filter: dict = {"mode": "all", "apps": []}  # which players may be shown (see deck.json)
+        self._filter: dict = {"allow": [], "block": []}  # which players may be shown (see deck.json)
         self._selected = None   # the media session currently shown; commands go to it
         self._previous_id: str | None = None
         self.error: str | None = None
@@ -82,9 +83,9 @@ class MediaReader:
             self._active.clear()
 
     def set_filter(self, flt: dict) -> None:
-        """Which players may be shown: {"mode": "all" | "only" | "except", "apps": [name parts]}."""
+        """Which players may be shown: {"allow": [name parts], "block": [name parts]} (see normalize_filter)."""
         with self._lock:
-            self._filter = {"mode": flt.get("mode", "all"), "apps": list(flt.get("apps", []))}
+            self._filter = normalize_filter(flt)
 
     def ready(self) -> bool:
         """True once a reading taken after the last activation is available (older data would be stale)."""

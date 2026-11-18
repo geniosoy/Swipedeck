@@ -349,26 +349,11 @@ export const STAT_STYLES = [
   { id: 'bars', name: 'Bars', desc: 'One row per item' },
   { id: 'tiles', name: 'Tiles', desc: 'Big numbers in two columns' },
 ];
-export const FILTER_MODES = [
-  { id: 'all', name: 'All players' },
-  { id: 'only', name: 'Only these players' },
-  { id: 'except', name: 'Every player except these' },
-];
-
-// Quick-add groups for the player filter. Players are matched by a part of the name Windows gives them
-// (case-insensitive), so these are best guesses; "Detect" shows the exact names of what is running.
-export const APP_GROUPS = [
-  { id: 'music', name: 'Music apps', apps: ['spotify', 'tidal', 'applemusic', 'itunes', 'deezer', 'amazonmusic', 'zunemusic', 'foobar', 'musicbee', 'winamp', 'qobuz', 'youtube-music'] },
-  { id: 'browsers', name: 'Browsers', apps: ['chrome', 'msedge', 'edge', 'brave', 'opera', 'vivaldi'] },
-  { id: 'video', name: 'Video players', apps: ['vlc', 'mpv', 'potplayer', 'zunevideo', 'plex'] },
-];
-
 // The options of a live desktop with every default filled in (the file may hold only some of them).
 export function liveOptions(d) {
   const o = d.options || {};
   if (d.kind === 'nowplaying') {
-    const f = o.filter || {};
-    return { filter: { mode: f.mode || 'all', apps: [...(f.apps || [])] }, tint: o.tint ?? true, album: o.album ?? true, controls: o.controls || 'full' };
+    return { filter: normalizeFilter(o.filter), tint: o.tint ?? true, album: o.album ?? true, controls: o.controls || 'full' };
   }
   return { style: o.style || 'gauges', items: o.items && o.items.length ? [...o.items] : STAT_ITEMS.map((x) => x.id) };
 }
@@ -377,29 +362,77 @@ export function setOptions(d, patch) {
   d.options = { ...(d.options || {}), ...patch };
 }
 
-// Same rule as the companion (nowplaying.py): does the player's Windows name contain one of the parts?
+// ---- the Now playing player filter -------------------------------------------------------------------
+// Two lists: "allow" (when not empty, only these players can be shown) and "block" (these never are; it wins).
+// Players are matched by a part of the name Windows gives them, case-insensitive (same rule as nowplaying.py).
+
+// Reads the current form {allow, block} and the older {mode: all|only|except, apps}.
+export function normalizeFilter(f) {
+  f = f || {};
+  if ('mode' in f || 'apps' in f) {
+    const apps = f.apps || [];
+    return { allow: f.mode === 'only' ? [...apps] : [], block: f.mode === 'except' ? [...apps] : [] };
+  }
+  return { allow: [...(f.allow || [])], block: [...(f.block || [])] };
+}
+
 export function appMatches(appId, patterns) {
   const low = String(appId || '').toLowerCase();
   return patterns.some((p) => p && low.includes(String(p).toLowerCase()));
 }
 
-// Adds names to a filter's list (case-insensitive de-duplication, at most 30). Returns how many were added.
-export function addFilterApps(filter, names) {
+const sameName = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
+const otherList = (which) => (which === 'allow' ? 'block' : 'allow');
+export const FILTER_LIST_LIMIT = 30;
+
+// Puts names on one list ('allow' or 'block') and takes them off the other (a player is on at most one list).
+// Blank, over-long and duplicate names are skipped; a list holds at most 30. Returns how many were added.
+export function addFilterApps(filter, names, which) {
   let added = 0;
   for (const raw of names) {
     const name = String(raw).trim();
-    if (!name || name.length > 80 || filter.apps.length >= 30) continue;
-    if (filter.apps.some((a) => a.toLowerCase() === name.toLowerCase())) continue;
-    filter.apps.push(name);
+    if (!name || name.length > 80) continue;
+    filter[otherList(which)] = filter[otherList(which)].filter((x) => !sameName(x, name));
+    if (filter[which].some((x) => sameName(x, name)) || filter[which].length >= FILTER_LIST_LIMIT) continue;
+    filter[which].push(name);
     added++;
   }
   return added;
 }
 
+export function removeFilterApps(filter, which, names) {
+  filter[which] = filter[which].filter((x) => !names.some((n) => sameName(x, n)));
+}
+
+// Is any of these names on the list?
+export const inFilterList = (filter, which, names) => names.some((n) => filter[which].some((x) => sameName(x, n)));
+
 export function describeFilter(f) {
-  if (f.mode === 'all') return 'Shows whatever Windows is playing.';
-  if (!f.apps.length) return f.mode === 'only' ? 'No players listed: nothing will ever be shown.' : 'No players listed: everything is shown.';
-  return f.mode === 'only' ? `Shows only players whose name contains: ${f.apps.join(', ')}.` : `Shows every player except those whose name contains: ${f.apps.join(', ')}.`;
+  if (!f.allow.length && !f.block.length) return 'Any player can be shown.';
+  if (!f.block.length) return 'Only the players under \u201COnly show these\u201D can be shown.';
+  if (!f.allow.length) return 'Any player can be shown, except those under \u201CNever show these\u201D.';
+  return 'Only the players under \u201COnly show these\u201D can be shown, and never those under \u201CNever show these\u201D.';
+}
+
+// The catalog app (apps.json) a name belongs to: an exact match of one of its patterns, else a name that contains one
+// ("SpotifyAB.SpotifyMusic_...!Spotify" is Spotify). null for custom names.
+export function catalogApp(catalog, name) {
+  const low = String(name).toLowerCase();
+  const apps = catalog.apps;
+  return apps.find((a) => a.patterns.some((q) => low === q.toLowerCase())) || apps.find((a) => a.patterns.some((q) => low.includes(q.toLowerCase()))) || null;
+}
+
+// A filter list as display entries: names of the same catalog app (Firefox has two) are one entry, custom names one each.
+export function filterEntries(list, catalog) {
+  const entries = [];
+  for (const name of list) {
+    const app = catalogApp(catalog, name);
+    const key = app ? app.id : 'custom:' + name.toLowerCase();
+    const found = entries.find((e) => e.key === key);
+    if (found) found.names.push(name);
+    else entries.push({ key, app, names: [name] });
+  }
+  return entries;
 }
 
 // Stats items: the enabled ones in screen order, then the others.

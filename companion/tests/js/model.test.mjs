@@ -176,11 +176,13 @@ test('template desktops: copied, padded, uniquely named, limited', () => {
   assert.equal(M.addTemplateDesktop(deck, tpl[0].desktop), null);
 });
 
+const catalog = JSON.parse(readFileSync(new URL('../../streamdeck_companion/web/apps.json', import.meta.url), 'utf8'));
+
 test('live options: defaults, partial options, and what the board receives', () => {
   const np = { name: 'P', kind: 'nowplaying' };
-  assert.deepEqual(M.liveOptions(np), { filter: { mode: 'all', apps: [] }, tint: true, album: true, controls: 'full' });
-  M.setOptions(np, { tint: false, filter: { mode: 'only', apps: ['tidal'] } });
-  assert.deepEqual(M.liveOptions(np), { filter: { mode: 'only', apps: ['tidal'] }, tint: false, album: true, controls: 'full' });
+  assert.deepEqual(M.liveOptions(np), { filter: { allow: [], block: [] }, tint: true, album: true, controls: 'full' });
+  M.setOptions(np, { tint: false, filter: { allow: ['tidal'], block: ['chrome'] } });
+  assert.deepEqual(M.liveOptions(np), { filter: { allow: ['tidal'], block: ['chrome'] }, tint: false, album: true, controls: 'full' });
   const stats = { name: 'S', kind: 'stats', options: { style: 'tiles', items: [] } };
   assert.deepEqual(M.liveOptions(stats).items, ['cpu', 'gpu', 'ram', 'vram', 'disk', 'net']); // empty = all
   assert.equal(M.liveOptions(stats).style, 'tiles');
@@ -189,20 +191,58 @@ test('live options: defaults, partial options, and what the board receives', () 
   assert.ok(!JSON.stringify(board).includes('tidal'), 'the player filter must stay on the PC');
 });
 
-test('player filter: matching, adding, describing', () => {
+test('player filter: the older form is read, lists are exclusive, limits hold', () => {
+  assert.deepEqual(M.normalizeFilter(undefined), { allow: [], block: [] });
+  assert.deepEqual(M.normalizeFilter({ mode: 'only', apps: ['a'] }), { allow: ['a'], block: [] });
+  assert.deepEqual(M.normalizeFilter({ mode: 'except', apps: ['b'] }), { allow: [], block: ['b'] });
+  assert.deepEqual(M.normalizeFilter({ mode: 'all', apps: ['x'] }), { allow: [], block: [] });
+  const np = { name: 'P', kind: 'nowplaying', options: { filter: { mode: 'except', apps: ['chrome'] } } };
+  assert.deepEqual(M.liveOptions(np).filter, { allow: [], block: ['chrome'] }); // an older deck.json shows up in the new form
+
+  const f = { allow: [], block: [] };
+  assert.equal(M.addFilterApps(f, ['Tidal', 'tidal', '  ', 'Spotify'], 'allow'), 2); // duplicates (any case) and blanks skipped
+  assert.deepEqual(f.allow, ['Tidal', 'Spotify']);
+  assert.equal(M.addFilterApps(f, ['x'.repeat(81)], 'allow'), 0);
+  M.addFilterApps(f, ['spotify'], 'block'); // moving: it leaves the other list
+  assert.deepEqual(f, { allow: ['Tidal'], block: ['spotify'] });
+  assert.equal(M.inFilterList(f, 'block', ['SPOTIFY']), true);
+  assert.equal(M.inFilterList(f, 'allow', ['spotify']), false);
+  M.removeFilterApps(f, 'block', ['Spotify']);
+  assert.deepEqual(f.block, []);
+  for (let i = 0; i < 40; i++) M.addFilterApps(f, ['app' + i], 'allow');
+  assert.equal(f.allow.length, 30); // the companion accepts at most 30 per list
+});
+
+test('player filter: matching, descriptions', () => {
   assert.equal(M.appMatches('SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify', ['spotify']), true);
   assert.equal(M.appMatches('Chrome', ['tidal', '']), false);
   assert.equal(M.appMatches('', ['x']), false);
-  const f = { mode: 'only', apps: [] };
-  assert.equal(M.addFilterApps(f, ['Tidal', 'tidal', '  ', 'Spotify']), 2); // duplicates (any case) and blanks skipped
-  assert.deepEqual(f.apps, ['Tidal', 'Spotify']);
-  assert.equal(M.addFilterApps(f, ['x'.repeat(81)]), 0);
-  for (let i = 0; i < 40; i++) M.addFilterApps(f, ['app' + i]);
-  assert.equal(f.apps.length, 30); // the companion accepts at most 30
-  assert.match(M.describeFilter({ mode: 'only', apps: [] }), /nothing will ever be shown/);
-  assert.match(M.describeFilter({ mode: 'except', apps: ['chrome'] }), /every player except/);
-  assert.match(M.describeFilter({ mode: 'all', apps: ['chrome'] }), /whatever Windows is playing/);
-  for (const g of M.APP_GROUPS) assert.ok(g.apps.length > 3 && g.apps.every((a) => a === a.toLowerCase()));
+  assert.match(M.describeFilter({ allow: [], block: [] }), /Any player can be shown\./);
+  assert.match(M.describeFilter({ allow: ['a'], block: [] }), /Only the players under .Only show these. can be shown\./);
+  assert.match(M.describeFilter({ allow: [], block: ['a'] }), /except those under .Never show these./);
+  assert.match(M.describeFilter({ allow: ['a'], block: ['b'] }), /never those under/);
+});
+
+test('app catalog: every app has an icon source, and names resolve to apps', () => {
+  const ids = new Set();
+  for (const a of catalog.apps) {
+    assert.ok(!ids.has(a.id), 'duplicate id ' + a.id);
+    ids.add(a.id);
+    assert.ok(a.name && a.patterns.length && /^#[0-9A-Fa-f]{6}$/.test(a.color), a.id);
+    assert.ok(/^[0-9a-f]{4}$/.test(a.glyph || '') || (a.letter && a.letter.length === 1), a.id + ' needs a glyph or a letter');
+    assert.ok(catalog.categories.some((c) => c.id === a.category), a.id);
+  }
+  assert.ok(catalog.apps.length >= 20);
+  assert.equal(M.catalogApp(catalog, 'spotify').id, 'spotify');
+  assert.equal(M.catalogApp(catalog, 'SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify').id, 'spotify');
+  assert.equal(M.catalogApp(catalog, 'Spotify.exe').id, 'spotify');
+  assert.equal(M.catalogApp(catalog, 'Chrome').id, 'chrome');
+  assert.equal(M.catalogApp(catalog, 'MSEdge').id, 'edge');
+  assert.equal(M.catalogApp(catalog, '308046B0AF4A39CB').id, 'firefox');
+  assert.equal(M.catalogApp(catalog, 'my-own-player'), null);
+  const entries = M.filterEntries(['firefox', 'Chrome', '308046B0AF4A39CB', 'my-own-player', 'MyOwnPlayer'], catalog);
+  assert.deepEqual(entries.map((e) => [e.key, e.names.length]), [['firefox', 2], ['chrome', 1], ['custom:my-own-player', 1], ['custom:myownplayer', 1]]);
+  assert.equal(entries[2].app, null);
 });
 
 test('stats items: order, toggling, never empty', () => {

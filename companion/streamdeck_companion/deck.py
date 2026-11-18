@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 
 from .actions import validate_action
+from .nowplaying import normalize_filter
 
 # Icon names the firmware knows (kIcons in src/ui.cpp; tests/test_icons.py keeps both in sync).
 ICONS = {
@@ -19,7 +20,6 @@ ICONS = {
 MAX_DESKTOPS, MAX_PAGES = 8, 16
 
 # Options of the two live screens (see deck.json). Defaults apply when "options" is missing or partial.
-FILTER_MODES = ("all", "only", "except")
 NP_CONTROLS = ("full", "basic")
 STATS_STYLES = ("gauges", "bars", "tiles")
 STAT_ITEMS = ("cpu", "gpu", "ram", "vram", "disk", "net")
@@ -39,7 +39,7 @@ class Deck:
         self.has_nowplaying = False  # a desktop with "kind": "nowplaying" (live media screen)
         self.has_stats = False       # a desktop with "kind": "stats" (PC statistics)
         # Which media players the Now playing screen may show; stays on the PC (the board never sees it).
-        self.np_filter: dict = {"mode": "all", "apps": []}
+        self.np_filter: dict = {"allow": [], "block": []}
         self._actions: dict[tuple[int, int, int], dict] = {}
         self.layout = self._build(data)
 
@@ -150,13 +150,17 @@ class Deck:
             flt = opts.get("filter", {})
             if not isinstance(flt, dict):
                 raise DeckError(f"{where}.options.filter must be an object")
-            mode = flt.get("mode", "all")
-            apps = flt.get("apps", [])
-            if mode not in FILTER_MODES:
-                raise DeckError(f"{where}.options.filter.mode must be one of {', '.join(FILTER_MODES)}")
-            if not (isinstance(apps, list) and len(apps) <= 30 and all(isinstance(a, str) and 0 < len(a) <= 80 for a in apps)):
-                raise DeckError(f"{where}.options.filter.apps must be a list of up to 30 names")
-            self.np_filter = {"mode": mode, "apps": list(apps)}
+            legacy = ("mode" in flt) or ("apps" in flt)  # the older form: {"mode": "all|only|except", "apps": [...]}
+            if legacy and flt.get("mode", "all") not in ("all", "only", "except"):
+                raise DeckError(f"{where}.options.filter.mode must be one of all, only, except")
+            lists = {"apps": flt.get("apps", [])} if legacy else {"allow": flt.get("allow", []), "block": flt.get("block", [])}
+            for name, names in lists.items():
+                if not (isinstance(names, list) and len(names) <= 30 and all(isinstance(a, str) and 0 < len(a) <= 80 for a in names)):
+                    raise DeckError(f"{where}.options.filter.{name} must be a list of up to 30 names")
+            self.np_filter = normalize_filter(flt)
+            both = {a.lower() for a in self.np_filter["allow"]} & {b.lower() for b in self.np_filter["block"]}
+            if both:
+                self.warnings.append(f"{where}.options.filter: {', '.join(sorted(both))} is on both lists (it will never be shown)")
             return {"tint": flag("tint", True), "album": flag("album", True), "controls": choice("controls", NP_CONTROLS, "full")}
 
         items = opts.get("items", list(STAT_ITEMS))

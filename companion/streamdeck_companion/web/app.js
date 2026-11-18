@@ -36,7 +36,8 @@ const state = {
   deck: null, savedText: '', sel: { d: 0, p: 0, k: null }, icons: {}, presets: { builtin: [], user: [] },
   cat: 'all', query: '', status: null, clip: null, saving: false, capturing: false, sizeNote: '',
   templates: [], addMenu: false, view: 'deck', // 'deck' = the desktop editor, 'settings' = general settings
-  sources: null, sourcesBusy: false, sourcesError: '', // media players found by "Detect" (Now playing filter)
+  sources: null, sourcesBusy: false, sourcesError: '', sourcesTried: false, // media players running now (Now playing filter)
+  catalog: { categories: [], apps: [] }, appSearch: '',   // known apps with icons (apps.json) and the library search box
 };
 const history = new M.History();
 let lastCoalesce = { key: null, t: 0 };
@@ -760,8 +761,6 @@ async function detectPlayers() {
   try {
     state.sources = (await api('GET', '/api/media-sources')).sources;
     state.sourcesError = '';
-    const list = document.getElementById('knownapps');
-    if (list) list.replaceChildren(...state.sources.map((s) => h('option', { value: s.id })));
   } catch (e) {
     state.sources = null;
     state.sourcesError = e.message;
@@ -770,32 +769,115 @@ async function detectPlayers() {
   renderLiveConfig();
 }
 
+// ---- Now playing: which players are shown ------------------------------------------------------------
+
+// The icon of an app in this configurator: its logo (Font Awesome brand glyph), else a colored letter badge, and a grey
+// placeholder for names that are not in the catalog (custom text).
+function appIcon(app, size = 30) {
+  const box = h('span', { class: 'aico', style: { width: size + 'px', height: size + 'px', fontSize: Math.round(size * 0.62) + 'px' } });
+  if (app && app.glyph) {
+    box.classList.add('brand');
+    box.append(h('span', { class: 'fa', style: { color: app.color } }, String.fromCodePoint(parseInt(app.glyph, 16))));
+  } else if (app && app.letter) {
+    box.classList.add('badge');
+    box.style.background = app.color;
+    box.append(app.letter);
+  } else {
+    box.classList.add('placeholder');
+    box.append(h('span', { class: 'fa' }, String.fromCodePoint(0xf2d0)));
+  }
+  return box;
+}
+
+const DRAG_APP = 'application/x-sd-app';
+
+function appRow({ app, title, sub, tag, drag, buttons }) {
+  const row = h('div', { class: 'arow' }, appIcon(app),
+    h('div', { class: 'ainfo' }, h('div', { class: 'an' }, title, tag ? h('span', { class: 'tag' }, tag) : null), h('div', { class: 'as' }, sub)),
+    h('div', { class: 'abtns' }, buttons));
+  if (drag) {
+    row.draggable = true;
+    row.addEventListener('dragstart', (e) => { e.dataTransfer.setData(DRAG_APP, JSON.stringify(drag)); e.dataTransfer.effectAllowed = 'copyMove'; });
+  }
+  return row;
+}
+
+// What the library can offer: players running right now, then the catalog by category, and what was typed as a custom name.
+function libraryItems() {
+  const raw = state.appSearch.trim();
+  const q = raw.toLowerCase();
+  const items = [];
+  const running = new Set();
+  for (const src of state.sources || []) {
+    const app = M.catalogApp(state.catalog, src.id);
+    if (app) running.add(app.id);
+    items.push({ section: 'Running now', app, name: app ? app.name : src.id, names: app ? app.patterns : [src.id], tag: src.playing ? 'playing' : null,
+      sub: [src.title, src.artist].filter(Boolean).join(' \u2014 ') || (app ? src.id : 'running now') });
+  }
+  for (const cat of state.catalog.categories) {
+    for (const app of state.catalog.apps.filter((a) => a.category === cat.id && !running.has(a.id))) {
+      items.push({ section: cat.name, app, name: app.name, names: app.patterns, sub: 'matches ' + app.patterns.join(', ') });
+    }
+  }
+  const shown = items.filter((it) => !q || it.name.toLowerCase().includes(q) || it.sub.toLowerCase().includes(q) || it.names.some((n) => n.toLowerCase().includes(q)));
+  if (raw && raw.length <= 80 && !items.some((it) => it.name.toLowerCase() === q || it.names.some((n) => n.toLowerCase() === q))) {
+    shown.unshift({ section: 'Custom name', app: null, name: `\u201C${raw}\u201D`, names: [raw], sub: 'a name of your own: matched by this text' });
+  }
+  return shown;
+}
+
+function fillLibrary(listEl, f, setFilter) {
+  const toggle = (item, which, label) => {
+    const on = M.inFilterList(f, which, item.names);
+    return h('button', { class: 'small tog' + (on ? ' on' : ''), dataset: { list: which }, title: on ? 'Click to remove from this list' : `Add to the \u201C${label}\u201D list`,
+      onclick: () => setFilter((x) => { if (on) M.removeFilterApps(x, which, item.names); else M.addFilterApps(x, item.names, which); }) }, (on ? '\u2713 ' : '') + (which === 'allow' ? 'Only' : 'Never'));
+  };
+  const rows = [];
+  let section = null;
+  for (const item of libraryItems()) {
+    if (item.section !== section) { section = item.section; rows.push(h('div', { class: 'libsec' }, section)); }
+    rows.push(appRow({ app: item.app, title: item.name, sub: item.sub, tag: item.tag, drag: { names: item.names }, buttons: [toggle(item, 'allow', 'Only show these players'), toggle(item, 'block', 'Never show these players')] }));
+  }
+  if (!rows.length) rows.push(h('div', { class: 'hint' }, 'No players match.'));
+  listEl.replaceChildren(...rows);
+}
+
+function listCard(which, title, empty, f, setFilter) {
+  const entries = M.filterEntries(f[which], state.catalog);
+  const card = h('div', { class: 'card applist', dataset: { list: which } }, h('h4', {}, title, h('span', { class: 'count' }, entries.length ? String(entries.length) : '')),
+    entries.length ? entries.map((e) => appRow({ app: e.app, title: e.app ? e.app.name : e.names[0], sub: e.app ? 'matches ' + e.names.join(', ') : 'custom name', drag: { names: e.names },
+      buttons: [h('button', { class: 'small x', title: 'Remove', onclick: () => setFilter((x) => { M.removeFilterApps(x, which, e.names); }) }, '\u2715')] }))
+      : h('div', { class: 'hint emptylist' }, empty));
+  card.addEventListener('dragover', (e) => { if ([...e.dataTransfer.types].includes(DRAG_APP)) { e.preventDefault(); card.classList.add('dragover'); } });
+  card.addEventListener('dragleave', (e) => { if (!card.contains(e.relatedTarget)) card.classList.remove('dragover'); });
+  card.addEventListener('drop', (e) => {
+    card.classList.remove('dragover');
+    const raw = e.dataTransfer.getData(DRAG_APP);
+    if (!raw) return;
+    e.preventDefault();
+    const { names } = JSON.parse(raw);
+    setFilter((x) => { M.addFilterApps(x, names, which); }); // adding to one list takes it off the other
+  });
+  return card;
+}
+
 function nowPlayingConfig(d) {
   const o = M.liveOptions(d);
-  const setFilter = (fn) => commit(() => { const f = M.liveOptions(d).filter; fn(f); M.setOptions(d, { filter: f }); });
+  const f = o.filter;
+  const setFilter = (fn) => commit(() => { const cur = M.liveOptions(d).filter; fn(cur); M.setOptions(d, { filter: cur }); });
   const setOpt = (patch) => commit(() => { M.setOptions(d, patch); });
-  const addInput = h('input', { type: 'text', list: 'knownapps', placeholder: 'part of an app name, e.g. tidal', maxLength: 80, id: 'addApp' });
-  const addApp = () => { if (addInput.value.trim()) setFilter((f) => { M.addFilterApps(f, [addInput.value]); }); };
-  addInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addApp(); } });
+  if (!state.sourcesTried) { state.sourcesTried = true; setTimeout(detectPlayers, 0); } // look at what is running, once
 
-  const who = h('div', { class: 'card' }, h('h4', {}, 'Which players are shown'),
-    M.FILTER_MODES.map((m) => radioRow('npmode', m.name, m.id, o.filter.mode, (v) => setFilter((f) => { f.mode = v; }))),
-    h('div', { class: 'hint', id: 'filterSummary' }, M.describeFilter(o.filter)));
-  if (o.filter.mode !== 'all') {
-    who.append(...[ // Node.append() turns null into the text "null": keep only real children
-      h('div', { class: 'appchips' }, o.filter.apps.map((a, i) => h('span', { class: 'appchip' }, a, h('button', { class: 'x', title: 'Remove', onclick: () => setFilter((f) => { f.apps.splice(i, 1); }) }, '\u2715')))),
-      h('div', { class: 'row tight' }, addInput, h('button', { class: 'small', onclick: addApp }, 'Add')),
-      h('div', { class: 'row tight', style: { marginTop: '8px' } }, h('span', { class: 'lab' }, 'Quick add:'),
-        M.APP_GROUPS.map((g) => h('button', { class: 'small', title: g.apps.join(', '), onclick: () => setFilter((f) => { M.addFilterApps(f, g.apps); }) }, g.name))),
-      h('div', { style: { marginTop: '10px' } }, h('button', { class: 'small', disabled: state.sourcesBusy, onclick: detectPlayers }, state.sourcesBusy ? 'Looking\u2026' : 'Detect running players')),
-      state.sourcesError ? h('div', { class: 'hint bad' }, state.sourcesError) : null,
-      state.sources ? h('div', { class: 'found' }, state.sources.length ? state.sources.map((src) => h('div', { class: 'foundrow' },
-        h('span', { class: 'fid' }, src.id), h('span', { class: 'ds' }, [src.title, src.artist].filter(Boolean).join(' \u2014 ') || '(nothing loaded)'),
-        src.playing ? h('span', { class: 'tag' }, 'playing') : null,
-        h('button', { class: 'small', disabled: M.appMatches(src.id, o.filter.apps), onclick: () => setFilter((f) => { M.addFilterApps(f, [src.id]); }) }, M.appMatches(src.id, o.filter.apps) ? 'Listed' : 'Add')))
-        : h('div', { class: 'hint' }, 'No media players are running right now.')) : null,
-      h('div', { class: 'hint', style: { marginTop: '8px' } }, 'Names are matched by part, ignoring case. Some apps (Firefox) have a code as their Windows name: use "Detect" while they play.')].filter(Boolean));
-  }
+  const libList = h('div', { class: 'liblist' });
+  const search = h('input', { type: 'text', id: 'appSearch', placeholder: 'Search players, or type a name of your own\u2026', value: state.appSearch, maxLength: 80,
+    oninput: (e) => { state.appSearch = e.target.value; fillLibrary(libList, f, setFilter); } });
+  fillLibrary(libList, f, setFilter);
+  const libraryCard = h('div', { class: 'card library' },
+    h('div', { class: 'libhead' }, h('h4', {}, 'Players'), h('button', { class: 'small', disabled: state.sourcesBusy, onclick: detectPlayers, title: 'Look again at which players Windows has right now' }, state.sourcesBusy ? 'Looking\u2026' : 'Refresh running players')),
+    h('div', { class: 'hint' }, 'Click Only or Never on a player, or drag it into a list. Names are matched by part, ignoring case.'),
+    search,
+    state.sourcesError ? h('div', { class: 'hint bad' }, 'Could not list the running players: ' + state.sourcesError) : null,
+    libList);
 
   const look = h('div', { class: 'card' }, h('h4', {}, 'Look'),
     checkRow('Tint the background with the cover colors', o.tint, (v) => setOpt({ tint: v })),
@@ -803,7 +885,13 @@ function nowPlayingConfig(d) {
     h('div', { class: 'lab', style: { marginTop: '8px' } }, 'Controls'),
     radioRow('npctl', 'Full', 'full', o.controls, (v) => setOpt({ controls: v }), 'shuffle, previous, play/pause, next, repeat'),
     radioRow('npctl', 'Basic', 'basic', o.controls, (v) => setOpt({ controls: v }), 'previous, play/pause, next'));
-  return [who, look];
+
+  return [h('div', { class: 'npgrid' }, libraryCard,
+    h('div', { class: 'npright' },
+      h('div', { class: 'hint', id: 'filterSummary' }, M.describeFilter(f)),
+      listCard('allow', 'Only show these players', 'Empty: any player can be shown.', f, setFilter),
+      listCard('block', 'Never show these players', 'Empty: no player is blocked.', f, setFilter),
+      look))];
 }
 
 function statsConfig(d) {
@@ -1044,11 +1132,12 @@ function onKeyDown(e) {
 
 async function start() {
   const names = [...M.NAMED_KEYS, ...Array.from({ length: 24 }, (_, i) => `f${i + 1}`)];
-  document.body.append(h('datalist', { id: 'keynames' }, names.map((n) => h('option', { value: n }))), h('datalist', { id: 'knownapps' }));
+  document.body.append(h('datalist', { id: 'keynames' }, names.map((n) => h('option', { value: n }))));
   try {
-    const [icons, presets, , templates] = await Promise.all([fetch('/icons.json').then((r) => r.json()), api('GET', '/api/presets'), loadDeck(),
-      fetch('/templates.json').then((r) => r.json())]);
+    const [icons, presets, , templates, catalog] = await Promise.all([fetch('/icons.json').then((r) => r.json()), api('GET', '/api/presets'), loadDeck(),
+      fetch('/templates.json').then((r) => r.json()), fetch('/apps.json').then((r) => r.json())]);
     state.icons = icons;
+    state.catalog = catalog;
     state.templates = templates.templates;
     state.presets = { builtin: presets.builtin, user: presets.user };
     renderAll();

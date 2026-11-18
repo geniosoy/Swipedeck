@@ -5,7 +5,8 @@ import unittest
 from PIL import Image
 
 from streamdeck_companion.nowplaying import (NowPlayingSync, Snapshot, app_allowed, app_matches, background_color,
-                                             choose_session, cover_key, cover_messages, cover_to_rgb565, sanitize)
+                                             choose_session, cover_key, cover_messages, cover_to_rgb565, normalize_filter,
+                                             sanitize)
 
 
 def png(w, h, color):
@@ -76,42 +77,58 @@ class PlayerFilterTest(unittest.TestCase):
         self.assertFalse(app_matches("Chrome", [""]))     # an empty pattern matches nothing (not everything)
         self.assertFalse(app_matches("", ["x"]))
 
-    def test_modes(self):
-        self.assertTrue(app_allowed("Chrome", {}))
-        self.assertTrue(app_allowed("Chrome", {"mode": "all", "apps": ["chrome"]}))
-        self.assertTrue(app_allowed("Chrome", {"mode": "only", "apps": ["chrome"]}))
-        self.assertFalse(app_allowed("Spotify.exe", {"mode": "only", "apps": ["chrome"]}))
-        self.assertFalse(app_allowed("Chrome", {"mode": "except", "apps": ["chrome"]}))
+    def test_both_forms_are_read(self):
+        self.assertEqual(normalize_filter(None), {"allow": [], "block": []})
+        self.assertEqual(normalize_filter({}), {"allow": [], "block": []})
+        self.assertEqual(normalize_filter({"allow": ["a"], "block": ["b"]}), {"allow": ["a"], "block": ["b"]})
+        self.assertEqual(normalize_filter({"mode": "only", "apps": ["a"]}), {"allow": ["a"], "block": []})
+        self.assertEqual(normalize_filter({"mode": "except", "apps": ["b"]}), {"allow": [], "block": ["b"]})
+        self.assertEqual(normalize_filter({"mode": "all", "apps": ["x"]}), {"allow": [], "block": []})
+
+    def test_allow_and_block_lists(self):
+        self.assertTrue(app_allowed("Chrome", {}))                                  # no lists: everything
+        only = {"allow": ["chrome"]}
+        self.assertTrue(app_allowed("Chrome", only))
+        self.assertFalse(app_allowed("Spotify.exe", only))                          # a non-empty allow list is a whitelist
+        block = {"block": ["chrome"]}
+        self.assertFalse(app_allowed("Chrome", block))
+        self.assertTrue(app_allowed("Spotify.exe", block))                          # the block list is a blacklist
+        both = {"allow": ["spotify", "tidal"], "block": ["tidal"]}
+        self.assertTrue(app_allowed("Spotify.exe", both))
+        self.assertFalse(app_allowed("TIDAL.exe", both))                            # block wins over allow
+        self.assertFalse(app_allowed("Chrome", both))
+        self.assertFalse(app_allowed("Chrome", {"mode": "except", "apps": ["chrome"]}))   # the older form still works
         self.assertTrue(app_allowed("Spotify.exe", {"mode": "except", "apps": ["chrome"]}))
-        self.assertFalse(app_allowed("Anything", {"mode": "only", "apps": []}))   # whitelist of nothing: nothing
-        self.assertTrue(app_allowed("Anything", {"mode": "except", "apps": []}))  # blacklist of nothing: everything
+        self.assertFalse(app_allowed("Spotify.exe", {"mode": "only", "apps": ["chrome"]}))
 
     def test_choose_session(self):
         chrome, spotify, tidal = "Chrome", "Spotify.exe", "TIDAL.exe"
-        alls = {"mode": "all", "apps": []}
-        self.assertIsNone(choose_session([], alls))
+        nothing = {"allow": [], "block": []}
+        self.assertIsNone(choose_session([], nothing))
         # a playing player beats the system's "current" one
         c = [session(chrome, current=True), session(spotify, playing=True)]
-        self.assertEqual(choose_session(c, alls), 1)
-        # the whitelist hides the others even when they play
-        self.assertEqual(choose_session(c, {"mode": "only", "apps": ["chrome"]}), 0)
-        self.assertEqual(choose_session(c, {"mode": "except", "apps": ["spotify"]}), 0)
-        self.assertIsNone(choose_session(c, {"mode": "only", "apps": ["tidal"]}))   # allowed player is not running
+        self.assertEqual(choose_session(c, nothing), 1)
+        # the allow list hides the others even when they play; the block list hides the blocked ones
+        self.assertEqual(choose_session(c, {"allow": ["chrome"]}), 0)
+        self.assertEqual(choose_session(c, {"block": ["spotify"]}), 0)
+        self.assertIsNone(choose_session(c, {"allow": ["tidal"]}))                  # allowed player is not running
+        self.assertIsNone(choose_session(c, {"block": ["chrome", "spotify"]}))
         # two players playing: the one already shown stays, then the system's current one
         c = [session(spotify, playing=True), session(tidal, playing=True, current=True)]
-        self.assertEqual(choose_session(c, alls, previous=spotify), 0)
-        self.assertEqual(choose_session(c, alls, previous=None), 1)
-        self.assertEqual(choose_session(c, alls, previous="Gone.exe"), 1)
+        self.assertEqual(choose_session(c, nothing, previous=spotify), 0)
+        self.assertEqual(choose_session(c, nothing, previous=None), 1)
+        self.assertEqual(choose_session(c, nothing, previous="Gone.exe"), 1)
         # nothing playing: keep the one shown, then the current one, then the first
         c = [session(chrome), session(spotify, current=True), session(tidal)]
-        self.assertEqual(choose_session(c, alls, previous=tidal), 2)
-        self.assertEqual(choose_session(c, alls), 1)
-        self.assertEqual(choose_session([session(chrome), session(tidal)], alls), 0)
+        self.assertEqual(choose_session(c, nothing, previous=tidal), 2)
+        self.assertEqual(choose_session(c, nothing), 1)
+        self.assertEqual(choose_session([session(chrome), session(tidal)], nothing), 0)
         # ...but a previous player the filter now forbids is not kept
-        self.assertEqual(choose_session(c, {"mode": "except", "apps": ["tidal"]}, previous=tidal), 1)
+        self.assertEqual(choose_session(c, {"block": ["tidal"]}, previous=tidal), 1)
         # a paused allowed player is shown when the others (not allowed) are the ones playing
         c = [session(chrome, playing=True), session(tidal)]
-        self.assertEqual(choose_session(c, {"mode": "only", "apps": ["tidal"]}), 1)
+        self.assertEqual(choose_session(c, {"allow": ["tidal"]}), 1)
+        self.assertEqual(choose_session(c, {"block": ["chrome"]}), 1)
 
 
 class SyncTest(unittest.TestCase):

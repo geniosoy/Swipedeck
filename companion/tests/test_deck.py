@@ -23,7 +23,7 @@ class DeckTest(unittest.TestCase):
             "style": "gauges", "items": ["cpu", "gpu", "ram", "vram", "disk", "net"]}})
         self.assertEqual(deck.layout["desktops"][1], {"name": "Playing", "kind": "nowplaying", "options": {
             "tint": True, "album": True, "controls": "full"}})
-        self.assertEqual(deck.np_filter, {"mode": "all", "apps": []})
+        self.assertEqual(deck.np_filter, {"allow": [], "block": []})
         self.assertEqual(deck.action_at(0, 0, 0), {"type": "hotkey", "keys": "volume_mute"})
         self.assertIsNone(deck.action_at(0, 0, 4))  # folder key has no action
 
@@ -74,7 +74,10 @@ class DeckTest(unittest.TestCase):
         # the player filter stays on the PC: the board only gets how the screen looks
         self.assertEqual(np["options"], {"tint": False, "album": True, "controls": "basic"})
         self.assertNotIn("filter", json.dumps(deck.layout))
-        self.assertEqual(deck.np_filter, {"mode": "only", "apps": ["tidal", "spotify"]})
+        self.assertEqual(deck.np_filter, {"allow": ["tidal", "spotify"], "block": []})  # the older form is converted
+        newer = Deck({"desktops": [{"name": "P", "kind": "nowplaying", "options": {"filter": {"allow": ["tidal"], "block": ["chrome"]}}}]})
+        self.assertEqual(newer.np_filter, {"allow": ["tidal"], "block": ["chrome"]})
+        self.assertNotIn("chrome", json.dumps(newer.layout))
         self.assertEqual(stats["options"], {"style": "tiles", "items": ["ram", "cpu"]})
 
     def test_bad_live_screen_options(self):
@@ -84,7 +87,8 @@ class DeckTest(unittest.TestCase):
         def st(**opts):
             return {"desktops": [{"name": "S", "kind": "stats", "options": opts}]}
 
-        bad = [np(tint="yes"), np(album=1), np(controls="huge"), np(filter="all"), np(filter={"mode": "some"}),
+        bad = [np(filter={"allow": "x"}), np(filter={"block": [1]}), np(filter={"allow": ["x"] * 31}), np(filter={"block": [""]}),
+               np(tint="yes"), np(album=1), np(controls="huge"), np(filter="all"), np(filter={"mode": "some"}),
                np(filter={"mode": "only", "apps": "tidal"}), np(filter={"mode": "only", "apps": [""]}),
                np(filter={"mode": "only", "apps": ["x"] * 31}),
                st(style="pie"), st(items=[]), st(items=["cpu", "cpu"]), st(items=["cpu", "fan"]), st(items="cpu"),
@@ -92,6 +96,10 @@ class DeckTest(unittest.TestCase):
         for data in bad:
             with self.assertRaises(DeckError, msg=str(data)):
                 Deck(data)
+
+    def test_an_app_on_both_lists_is_reported(self):
+        deck = Deck({"desktops": [{"name": "P", "kind": "nowplaying", "options": {"filter": {"allow": ["Tidal"], "block": ["tidal"]}}}]})
+        self.assertTrue(any("both lists" in w for w in deck.warnings))
 
     def test_unknown_option_is_only_a_warning(self):
         deck = Deck({"desktops": [{"name": "S", "kind": "stats", "options": {"sparkle": True}}]})

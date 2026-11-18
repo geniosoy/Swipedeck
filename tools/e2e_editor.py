@@ -116,6 +116,15 @@ window.mockItems = () => $$('.mock .mk').map((e) => e.dataset.item);
 window.statRow = (id) => document.querySelector('.srow[data-item="' + id + '"]');
 window.radio = (group, index) => $$('input[name="' + group + '"]')[index];
 window.chips = () => $$('.appchip').map((c) => c.firstChild.textContent);
+window.libRow = (name) => $$('.library .arow').find((r) => r.querySelector('.an').textContent.replace(/[“”]/g, '').startsWith(name));
+window.libButton = (name, list) => libRow(name).querySelector('button[data-list="' + list + '"]');
+window.listNames = (list) => $$('.applist[data-list="' + list + '"] .arow .an').map((e) => e.textContent);
+window.dragApp = (from, to) => {
+  const dt = new DataTransfer();
+  from.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
+  to.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }));
+  to.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+};
 window.press = (key, opts = {}) => document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...opts }));
 window.setInput = (el, value) => { el.value = value; el.dispatchEvent(new Event('input', { bubbles: true })); };
 window.drag = (from, to) => {
@@ -350,35 +359,55 @@ def main() -> int:
             cdp.shot(shots / "9_stats_bars.png")
         cdp.js("document.querySelector('.option[data-style=\"gauges\"]').click()")
 
-        print("live screen settings: Now playing")
+        print("live screen settings: Now playing - players")
         cdp.js("$$('.deskrow').find((r) => r.textContent.includes('Playing')).click()")
-        check("Now playing settings: who and look", cdp.js("$$('#liveConfig .card').length") == 2 and cdp.js("$$('input[name=npmode]').length") == 3)
-        check("starts on all players, no list shown", cdp.js("radio('npmode', 0).checked") and cdp.js("!document.querySelector('#addApp')"))
-        cdp.js("radio('npmode', 1).click()")
-        check("choosing 'only' shows the list editor and warns that it is empty", cdp.js("!!document.querySelector('#addApp')") and "nothing will ever be shown" in cdp.js("document.querySelector('#filterSummary').textContent"))
-        cdp.js("setInput(document.querySelector('#addApp'), 'tidal')")
-        cdp.js("btn('Add', document.querySelector('#liveConfig')).click()")
-        check("adding a player name makes a chip", cdp.js("chips()") == ["tidal"])
-        check("the summary describes the filter", "only players whose name contains: tidal" in cdp.js("document.querySelector('#filterSummary').textContent"))
-        cdp.js("btn('Music apps').click()")
-        names = cdp.js("chips()")
-        check("a quick-add group adds its apps without duplicating", len(names) > 8 and names.count("tidal") == 1 and "spotify" in names)
-        cdp.js("document.querySelector('.appchip .x').click()")
-        check("a chip can be removed", "tidal" not in cdp.js("chips()"))
+        check("the player lists are always visible, side by side with the library", cdp.js("$$('.applist').length") == 2 and cdp.js("!!document.querySelector('.library')"))
+        check("the lists say what empty means", "any player can be shown" in cdp.js("document.querySelector('.applist[data-list=allow]').textContent") and "no player is blocked" in cdp.js("document.querySelector('.applist[data-list=block]').textContent"))
+        check("the summary describes an empty filter", cdp.js("document.querySelector('#filterSummary').textContent") == "Any player can be shown.")
+        check("running players are detected on their own", cdp.wait("document.querySelectorAll('.libsec').length > 0 && [...$$('.libsec')].some((e) => e.textContent === 'Running now')"))
+        check("...listed first, with the playing tag and the known app's name", cdp.js("$$('.arow')[0].textContent.includes('Chrome') && $$('.arow')[0].textContent.includes('playing')"))
+        check("the library has the catalog sections", cdp.js("$$('.libsec').map((e) => e.textContent)") == ["Running now", "Music apps", "Browsers", "Video players"])
+        check("catalog apps show logos or letter badges", cdp.js("$$('.library .aico.brand').length") >= 8 and cdp.js("$$('.library .aico.badge').length") >= 8)
+        check("a letter badge shows the app's initial on its color", cdp.js("$$('.library .arow').find((r) => r.querySelector('.an').textContent.startsWith('TIDAL')).querySelector('.aico').textContent") == "T")
+        check("the Spotify logo is the Spotify glyph", cdp.js("$$('.library .arow').find((r) => r.querySelector('.an').textContent.startsWith('Spotify')).querySelector('.aico .fa').textContent.codePointAt(0)") == 0xF1BC)
+        if shots:
+            cdp.shot(shots / "12_players_empty.png")
+
+        cdp.js("libButton('Spotify', 'allow').click()")
+        check("'Only' puts a player on the first list, with its icon", cdp.js("listNames('allow')") == ["Spotify"] and cdp.js("!!document.querySelector('.applist[data-list=allow] .aico.brand')"))
+        check("...and the library row shows it as selected", cdp.js("libButton('Spotify', 'allow').classList.contains('on')"))
+        cdp.js("libButton('Chrome', 'block').click()")
+        check("'Never' puts a player on the second list", cdp.js("listNames('block')") == ["Chrome"])
+        check("the summary describes both lists", "never those under" in cdp.js("document.querySelector('#filterSummary').textContent"))
+        cdp.js("libButton('Spotify', 'block').click()")
+        check("a player is on one list at a time (moving)", cdp.js("listNames('allow')") == [] and cdp.js("listNames('block')") == ["Chrome", "Spotify"])
+        cdp.js("libButton('Spotify', 'block').click()")
+        check("clicking a selected button removes the player", cdp.js("listNames('block')") == ["Chrome"])
+        cdp.js("dragApp(libRow('TIDAL'), document.querySelector('.applist[data-list=allow]'))")
+        check("dragging a library row into a list adds it", cdp.js("listNames('allow')") == ["TIDAL"])
+        cdp.js("dragApp(document.querySelector('.applist[data-list=block] .arow'), document.querySelector('.applist[data-list=allow]'))")
+        check("dragging between lists moves a player", cdp.js("listNames('allow')") == ["TIDAL", "Chrome"] and cdp.js("listNames('block')") == [])
+        cdp.js("setInput(document.querySelector('#appSearch'), 'vlc')")
+        check("the search narrows the library", cdp.js("$$('.library .arow').length") == 1 and cdp.js("$$('.library .arow')[0].textContent.includes('VLC')"))
+        cdp.js("setInput(document.querySelector('#appSearch'), 'my player')")
+        check("a custom name gets its own row with a placeholder icon", cdp.js("$$('.library .arow').length") == 1 and cdp.js("!!document.querySelector('.library .aico.placeholder')") and cdp.js("document.querySelector('.library .libsec').textContent") == "Custom name")
+        cdp.js("libButton('my player', 'block').click()")
+        check("a custom name can be added to a list and keeps the placeholder icon", cdp.js("listNames('block')") == ["my player"] and cdp.js("!!document.querySelector('.applist[data-list=block] .aico.placeholder')") and "custom name" in cdp.js("document.querySelector('.applist[data-list=block]').textContent"))
+        cdp.js("setInput(document.querySelector('#appSearch'), '')")
+        check("clearing the search shows the library again", cdp.js("$$('.library .arow').length") > 20)
+        cdp.js("document.querySelector('.applist[data-list=block] .x').click()")
+        check("the remove button takes a player off its list", cdp.js("listNames('block')") == [])
+        cdp.js("libButton('Firefox', 'block').click()")
+        check("a player with two names is one entry", cdp.js("listNames('block')") == ["Firefox"] and "firefox, 308046B0AF4A39CB" in cdp.js("document.querySelector('.applist[data-list=block]').textContent"))
+        cdp.js("libButton('Firefox', 'block').click()")
+        cdp.js("libButton('Chrome', 'block').click()")
         check("no stray 'null' text in the settings", "null" not in cdp.js("document.querySelector('#liveConfig').textContent"))
-        cdp.js("btn('Detect running players').click()")
-        check("detect lists the running players", cdp.wait("document.querySelectorAll('.foundrow').length === 2"))
-        check("...and still no stray 'null'", "null" not in cdp.js("document.querySelector('#liveConfig').textContent"))
-        check("...with the title and a playing tag", cdp.js("document.querySelector('.foundrow').textContent.includes('A video') && !!document.querySelector('.foundrow .tag')"))
-        cdp.js("btn('Add', document.querySelector('.foundrow')).click()")
-        check("a detected player can be added with one click", "Chrome" in cdp.js("chips()") and cdp.js("btn('Listed', document.querySelector('.foundrow')) !== undefined"))
-        cdp.js("radio('npmode', 2).click()")
-        check("switching to 'except' keeps the list", "Chrome" in cdp.js("chips()") and "every player except" in cdp.js("document.querySelector('#filterSummary').textContent"))
-        cdp.js("radio('npmode', 1).click()")
-        cdp.js("radio('npmode', 0).click()")
-        check("'all players' hides the list editor again", cdp.js("!document.querySelector('#addApp')") and "whatever Windows is playing" in cdp.js("document.querySelector('#filterSummary').textContent"))
-        cdp.js("radio('npmode', 1).click()")
-        check("the list survives going back and forth", "Chrome" in cdp.js("chips()"))
+        cdp.js("btn('Refresh running players').click()")
+        check("the running players can be refreshed", cdp.wait("!btn('Looking\u2026') && document.querySelectorAll('.arow').length > 20"))
+        if shots:
+            cdp.shot(shots / "13_players_lists.png")
+
+        print("live screen settings: Now playing - look")
         check("the preview starts with the album line and full controls", cdp.js("!!document.querySelector('.m-album')") and cdp.js("$$('.mock > .fa').length") == 5)
         cdp.js("[...$$('#liveConfig .check')].find((l) => l.textContent.includes('album')).querySelector('input').click()")
         check("hiding the album line", cdp.js("!document.querySelector('.m-album')") and cdp.js("document.querySelector('.mock').dataset.album") == "false")
@@ -426,11 +455,11 @@ def main() -> int:
         stats_options = next(d for d in saved["desktops"] if d.get("kind") == "stats")["options"]
         np_options = next(d for d in saved["desktops"] if d.get("kind") == "nowplaying")["options"]
         check("the saved file has the stats style and items", stats_options["style"] == "gauges" and stats_options["items"] == ["gpu", "net", "disk", "vram", "cpu", "ram"], str(stats_options))
-        check("the saved file has the player filter and the look", np_options["filter"]["mode"] == "only" and "Chrome" in np_options["filter"]["apps"]
+        check("the saved file has the player lists and the look", np_options["filter"] == {"allow": ["tidal"], "block": ["chrome"]}
               and np_options["album"] is False and np_options["controls"] == "basic" and np_options["tint"] is False, str(np_options))
         loaded = Deck(saved)
         check("the saved deck loads in the companion", loaded is not None)
-        check("the player filter reaches the companion but not the board", loaded.np_filter["mode"] == "only" and "Chrome" not in loaded.layout_text())
+        check("the player filter reaches the companion but not the board", loaded.np_filter == {"allow": ["tidal"], "block": ["chrome"]} and "Chrome" not in loaded.layout_text())
         check("a backup of the previous deck was written", (work / "deck.json.bak").exists())
         check("saved text is readable (one key per line)", max(len(l) for l in deck_path.read_text(encoding="utf-8").splitlines()) < 400)
 

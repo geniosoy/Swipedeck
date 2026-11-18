@@ -246,7 +246,7 @@ class AppTest(unittest.TestCase):
         import tempfile
 
         data = json.loads(DECK.read_text(encoding="utf-8"))
-        data["desktops"][1]["options"] = {"filter": {"mode": "only", "apps": ["tidal"]}}
+        data["desktops"][1]["options"] = {"filter": {"allow": ["tidal"], "block": ["chrome"]}}
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "deck.json"
             path.write_text(json.dumps(data), encoding="utf-8")
@@ -255,7 +255,7 @@ class AppTest(unittest.TestCase):
             app = Companion(path, executor=Recorder(), open_board_fn=lambda port: board, clock=Clock(), reader=reader)
             board.on_idle = app.stop
             app.session(board)
-        wanted = {"mode": "only", "apps": ["tidal"]}
+        wanted = {"allow": ["tidal"], "block": ["chrome"]}
         self.assertTrue(reader.filters and all(f == wanted for f in reader.filters), reader.filters)
         self.assertEqual(reader.activations[0], True)  # set before the reader was switched on
         np_msgs = [m for m in board.out if m["type"] == "np"]

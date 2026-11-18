@@ -1,0 +1,32 @@
+{
+ "categories": [
+  { "id": "music", "name": "Music apps" },
+  { "id": "browsers", "name": "Browsers" },
+  { "id": "video", "name": "Video players" }
+ ],
+ "apps": [
+  { "id": "spotify", "name": "Spotify", "category": "music", "patterns": ["spotify"], "glyph": "f1bc", "color": "#1DB954" },
+  { "id": "tidal", "name": "TIDAL", "category": "music", "patterns": ["tidal"], "letter": "T", "color": "#0E9AA7" },
+  { "id": "applemusic", "name": "Apple Music", "category": "music", "patterns": ["applemusic"], "glyph": "f3b5", "color": "#FA243C" },
+  { "id": "itunes", "name": "iTunes", "category": "music", "patterns": ["itunes"], "glyph": "f3b4", "color": "#EA4CC0" },
+  { "id": "deezer", "name": "Deezer", "category": "music", "patterns": ["deezer"], "letter": "D", "color": "#A238FF" },
+  { "id": "amazonmusic", "name": "Amazon Music", "category": "music", "patterns": ["amazonmusic"], "glyph": "f270", "color": "#FF9900" },
+  { "id": "youtubemusic", "name": "YouTube Music", "category": "music", "patterns": ["youtube-music", "youtubemusic"], "glyph": "f167", "color": "#FF0000" },
+  { "id": "soundcloud", "name": "SoundCloud", "category": "music", "patterns": ["soundcloud"], "glyph": "f1be", "color": "#FF5500" },
+  { "id": "windowsmedia", "name": "Media Player (Windows)", "category": "music", "patterns": ["zunemusic", "mediaplayer"], "glyph": "f17a", "color": "#0078D4" },
+  { "id": "foobar", "name": "foobar2000", "category": "music", "patterns": ["foobar"], "letter": "f", "color": "#3F7FD9" },
+  { "id": "musicbee", "name": "MusicBee", "category": "music", "patterns": ["musicbee"], "letter": "M", "color": "#D9534F" },
+  { "id": "winamp", "name": "Winamp", "category": "music", "patterns": ["winamp"], "letter": "W", "color": "#D98E04" },
+  { "id": "qobuz", "name": "Qobuz", "category": "music", "patterns": ["qobuz"], "letter": "Q", "color": "#2D6FE0" },
+  { "id": "chrome", "name": "Chrome", "category": "browsers", "patterns": ["chrome"], "glyph": "f268", "color": "#4C8BF5" },
+  { "id": "edge", "name": "Edge", "category": "browsers", "patterns": ["msedge"], "glyph": "f282", "color": "#0C8CE9" },
+  { "id": "firefox", "name": "Firefox", "category": "browsers", "patterns": ["firefox", "308046B0AF4A39CB"], "glyph": "f269", "color": "#FF7139" },
+  { "id": "opera", "name": "Opera", "category": "browsers", "patterns": ["opera"], "glyph": "f26a", "color": "#FF1B2D" },
+  { "id": "brave", "name": "Brave", "category": "browsers", "patterns": ["brave"], "letter": "B", "color": "#E4492A" },
+  { "id": "vivaldi", "name": "Vivaldi", "category": "browsers", "patterns": ["vivaldi"], "letter": "V", "color": "#D93636" },
+  { "id": "vlc", "name": "VLC", "category": "video", "patterns": ["vlc"], "letter": "V", "color": "#E67300" },
+  { "id": "mpv", "name": "mpv", "category": "video", "patterns": ["mpv"], "letter": "m", "color": "#7B4FB8" },
+  { "id": "potplayer", "name": "PotPlayer", "category": "video", "patterns": ["potplayer"], "letter": "P", "color": "#C98A00" },
+  { "id": "plex", "name": "Plex", "category": "video", "patterns": ["plex"], "letter": "P", "color": "#B8820A" }
+ ]
+}

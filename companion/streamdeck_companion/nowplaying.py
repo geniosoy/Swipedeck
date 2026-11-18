@@ -89,7 +89,14 @@ def cover_messages(key: str, rgb565: bytes, px: int, bg: str = "") -> list[dict]
             for off in range(0, len(rgb565), COVER_CHUNK_BYTES)]
 
 
-FILTER_MODES = ("all", "only", "except")
+def normalize_filter(flt) -> dict:
+    """The player filter as {"allow": [...], "block": [...]}. Also reads the older {"mode": "all|only|except",
+    "apps": [...]} form (only -> allow, except -> block)."""
+    flt = flt or {}
+    if "mode" in flt or "apps" in flt:
+        mode, apps = flt.get("mode", "all"), list(flt.get("apps", []))
+        return {"allow": apps if mode == "only" else [], "block": apps if mode == "except" else []}
+    return {"allow": list(flt.get("allow", [])), "block": list(flt.get("block", []))}
 
 
 def app_matches(app_id: str, patterns) -> bool:
@@ -99,12 +106,11 @@ def app_matches(app_id: str, patterns) -> bool:
 
 
 def app_allowed(app_id: str, flt: dict) -> bool:
-    mode, apps = flt.get("mode", "all"), flt.get("apps", [])
-    if mode == "only":
-        return app_matches(app_id, apps)
-    if mode == "except":
-        return not app_matches(app_id, apps)
-    return True
+    """Shown unless it is on the block list; and, when the allow list is not empty, only if it is on that list."""
+    f = normalize_filter(flt)
+    if app_matches(app_id, f["block"]):
+        return False
+    return not f["allow"] or app_matches(app_id, f["allow"])
 
 
 def choose_session(candidates: list[dict], flt: dict, previous: str | None = None) -> int | None:

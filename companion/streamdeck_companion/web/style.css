@@ -185,3 +185,35 @@ textarea { min-height: 70px; resize: vertical; font-family: Consolas, monospace;
 .srow.dragging { opacity: .4; }
 .srow.drop-before { box-shadow: 0 -3px 0 var(--accent); }
 .srow.drop-after { box-shadow: 0 3px 0 var(--accent); }
+
+/* Now playing: player lists */
+.npgrid { display: grid; grid-template-columns: minmax(360px, 1.25fr) minmax(300px, 1fr); gap: 14px; width: 100%; align-items: start; }
+.npright { display: flex; flex-direction: column; gap: 12px; }
+.npright .card, .npgrid .card { max-width: none; margin-bottom: 0; }
+.library .libhead, .applist h4 { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.library .libhead h4 { margin: 0; }
+.library input[type=text] { margin: 8px 0; }
+.liblist { max-height: 520px; overflow-y: auto; margin: 0 -4px; padding: 0 4px; }
+.libsec { margin: 10px 2px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); position: sticky; top: 0; background: var(--panel2); padding: 3px 0; z-index: 1; }
+.arow { display: flex; align-items: center; gap: 10px; padding: 5px 6px; border-radius: 8px; border: 1px solid transparent; }
+.arow:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.arow[draggable=true] { cursor: grab; }
+.ainfo { flex: 1; min-width: 0; }
+.an { font-weight: 600; display: flex; gap: 8px; align-items: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.as { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.abtns { display: flex; gap: 5px; flex: none; }
+.tog.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tog[data-list=block].on { background: var(--bad); border-color: var(--bad); }
+.aico { display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; flex: none; font-weight: 700; color: #fff; }
+.aico.brand { background: var(--bg); border: 1px solid var(--line); }
+.aico.placeholder { background: var(--bg); border: 1px dashed var(--line); color: var(--muted); }
+.applist { transition: box-shadow .1s; min-height: 72px; }
+.applist.dragover { box-shadow: 0 0 0 2px var(--accent); }
+.applist[data-list=block].dragover { box-shadow: 0 0 0 2px var(--bad); }
+.applist .count { font-weight: 400; color: var(--muted); font-size: 12px; }
+.emptylist { padding: 6px 2px; }
+@media (max-width: 1100px) { .npgrid { grid-template-columns: 1fr; } }
+
+/* the cards of the right column size to their content (the general #liveConfig card rule gives them a 340px flex basis) */
+#liveConfig .npright .card { flex: 0 0 auto; max-width: none; }
+#liveConfig .npgrid > .card { flex: none; }
