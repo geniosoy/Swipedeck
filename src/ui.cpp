@@ -20,9 +20,6 @@ constexpr lv_event_code_t kKeySoundEvent = LV_EVENT_CLICKED;
 
 struct DesktopUi {
   lv_obj_t* tile = nullptr;
-  lv_obj_t* backBtn = nullptr;
-  lv_obj_t* title = nullptr;
-  std::vector<lv_obj_t*> dots;   // one per desktop
   std::vector<lv_obj_t*> pages;  // lazily created page containers (nullptr until first visit)
   std::vector<int> stack;        // visited pages, back = visible one (stack[0] == 0, the root)
 };
@@ -30,6 +27,11 @@ struct DesktopUi {
 Deck deck;
 std::vector<DesktopUi> uis;
 lv_obj_t* tv = nullptr;
+// The top bar is one fixed object on the screen (it does not scroll with the desktops); it shows the
+// title / back button of the active desktop and the desktop dots.
+lv_obj_t* hdrTitle = nullptr;
+lv_obj_t* hdrBack = nullptr;
+std::vector<lv_obj_t*> hdrDots;
 UiEventFn sink = nullptr;
 int activeDesktop = 0;
 
@@ -76,16 +78,22 @@ uint32_t pack(int d, int p, int k) { return (static_cast<uint32_t>(d) << 16) | (
 
 void buildPage(int d, int p);
 
-void updateDots() {
-  for (auto& u : uis) {
-    for (size_t i = 0; i < u.dots.size(); i++) {
-      const bool on = static_cast<int>(i) == activeDesktop;
-      lv_obj_set_style_bg_color(u.dots[i], lv_color_hex(on ? 0xFFFFFF : 0x55657A), 0);
-    }
+// Title, back button and dots of the fixed top bar for the active desktop.
+void refreshHeader() {
+  if (activeDesktop >= static_cast<int>(uis.size())) return;
+  const DesktopUi& u = uis[activeDesktop];
+  const bool root = u.stack.size() <= 1;
+  if (root) lv_obj_add_flag(hdrBack, LV_OBJ_FLAG_HIDDEN);
+  else lv_obj_clear_flag(hdrBack, LV_OBJ_FLAG_HIDDEN);
+  lv_label_set_text(hdrTitle, deck.desktops[activeDesktop].pages[u.stack.back()].title.c_str());
+  lv_obj_align(hdrTitle, LV_ALIGN_LEFT_MID, root ? 10 : 78, 0);
+  for (size_t i = 0; i < hdrDots.size(); i++) {
+    const bool on = static_cast<int>(i) == activeDesktop;
+    lv_obj_set_style_bg_color(hdrDots[i], lv_color_hex(on ? 0xFFFFFF : 0x55657A), 0);
   }
 }
 
-// Makes page `p` the visible page of desktop `d` and refreshes the header.
+// Makes page `p` the visible page of desktop `d`.
 void showPage(int d, int p) {
   DesktopUi& u = uis[d];
   if (!u.pages[p]) buildPage(d, p);
@@ -94,11 +102,7 @@ void showPage(int d, int p) {
     if (static_cast<int>(i) == p) lv_obj_clear_flag(u.pages[i], LV_OBJ_FLAG_HIDDEN);
     else lv_obj_add_flag(u.pages[i], LV_OBJ_FLAG_HIDDEN);
   }
-  const bool root = u.stack.size() <= 1;
-  if (root) lv_obj_add_flag(u.backBtn, LV_OBJ_FLAG_HIDDEN);
-  else lv_obj_clear_flag(u.backBtn, LV_OBJ_FLAG_HIDDEN);
-  lv_label_set_text(u.title, deck.desktops[d].pages[p].title.c_str());
-  lv_obj_align(u.title, LV_ALIGN_LEFT_MID, root ? 10 : 78, 0);
+  if (d == activeDesktop) refreshHeader();
 }
 
 void emitNav(int d, int p) {
@@ -117,9 +121,9 @@ void goBack(int d) {
   emitNav(d, u.stack.back());
 }
 
-void onBack(lv_event_t* e) {
+void onBack(lv_event_t*) {
   audioPlay(Sound::Back);
-  goBack(static_cast<int>(reinterpret_cast<intptr_t>(lv_event_get_user_data(e))));
+  goBack(activeDesktop);
 }
 
 void onKey(lv_event_t* e) {
@@ -149,8 +153,7 @@ void onDesktopChanged(lv_event_t*) {
   for (size_t i = 0; i < uis.size(); i++) {
     if (uis[i].tile == act && static_cast<int>(i) != activeDesktop) {
       activeDesktop = static_cast<int>(i);
-      updateDots();
-      audioPlay(Sound::Swipe);
+      refreshHeader();  // no sound on swipe (by request)
       JsonDocument doc;
       doc["type"] = "desktop";
       doc["index"] = activeDesktop;
@@ -163,13 +166,13 @@ void buildPage(int d, int p) {
   DesktopUi& u = uis[d];
   const DeckPage& page = deck.desktops[d].pages[p];
   const int w = lv_obj_get_width(u.tile);
-  const int h = lv_obj_get_height(u.tile) - kHeaderH;
+  const int h = lv_obj_get_height(u.tile);  // the tileview already starts below the fixed top bar
 
   lv_obj_t* cont = lv_obj_create(u.tile);
   u.pages[p] = cont;
   lv_obj_remove_style_all(cont);
   lv_obj_set_size(cont, w, h);
-  lv_obj_set_pos(cont, 0, kHeaderH);
+  lv_obj_set_pos(cont, 0, 0);
   lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
 
   const int keyW = (w - 2 * kPad - (page.cols - 1) * kGap) / page.cols;
@@ -222,51 +225,32 @@ void buildDesktops() {
   const int n = static_cast<int>(deck.desktops.size());
   uis.clear();
   uis.resize(n);
+  activeDesktop = 0;
   for (int d = 0; d < n; d++) {
     DesktopUi& u = uis[d];
     u.tile = lv_tileview_add_tile(tv, d, 0, static_cast<lv_dir_t>((d > 0 ? LV_DIR_LEFT : 0) | (d < n - 1 ? LV_DIR_RIGHT : 0)));
     u.pages.assign(deck.desktops[d].pages.size(), nullptr);
     u.stack = {0};
 
-    lv_obj_t* hdr = lv_obj_create(u.tile);
-    lv_obj_remove_style_all(hdr);
-    lv_obj_set_size(hdr, lv_obj_get_width(u.tile), kHeaderH);
-    lv_obj_set_style_bg_opa(hdr, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(hdr, lv_color_hex(0x111A26), 0);
-    lv_obj_clear_flag(hdr, LV_OBJ_FLAG_SCROLLABLE);
-
-    u.title = lv_label_create(hdr);
-    lv_obj_set_style_text_font(u.title, &lv_font_montserrat_16, 0);
-
-    u.backBtn = lv_btn_create(hdr);
-    lv_obj_set_size(u.backBtn, 64, 24);
-    lv_obj_align(u.backBtn, LV_ALIGN_LEFT_MID, 4, 0);
-    lv_obj_set_style_radius(u.backBtn, 8, 0);
-    lv_obj_set_style_shadow_width(u.backBtn, 0, 0);
-    lv_obj_set_style_bg_color(u.backBtn, lv_color_hex(0x2A3A4D), 0);
-    lv_obj_set_style_bg_color(u.backBtn, lv_color_hex(0x4A6078), LV_STATE_PRESSED);
-    lv_obj_set_style_pad_all(u.backBtn, 0, 0);
-    lv_obj_add_event_cb(u.backBtn, onBack, kKeySoundEvent, reinterpret_cast<void*>(static_cast<intptr_t>(d)));
-    lv_obj_t* bl = lv_label_create(u.backBtn);
-    lv_label_set_text(bl, LV_SYMBOL_LEFT " Back");
-    lv_obj_center(bl);
-
-    // desktop indicator dots (right side), only when there is more than one desktop
-    if (n > 1) {
-      for (int i = 0; i < n; i++) {
-        lv_obj_t* dot = lv_obj_create(hdr);
-        lv_obj_remove_style_all(dot);
-        lv_obj_set_size(dot, 8, 8);
-        lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
-        lv_obj_align(dot, LV_ALIGN_RIGHT_MID, -10 - (n - 1 - i) * 14, 0);
-        u.dots.push_back(dot);
-      }
-    }
     showPage(d, 0);
   }
+
+  // Desktop indicator dots (right side of the fixed bar), only with more than one desktop.
+  for (lv_obj_t* dot : hdrDots) lv_obj_del(dot);
+  hdrDots.clear();
+  if (n > 1) {
+    for (int i = 0; i < n; i++) {
+      lv_obj_t* dot = lv_obj_create(lv_obj_get_parent(hdrTitle));
+      lv_obj_remove_style_all(dot);
+      lv_obj_set_size(dot, 8, 8);
+      lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+      lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+      lv_obj_align(dot, LV_ALIGN_RIGHT_MID, -10 - (n - 1 - i) * 14, 0);
+      hdrDots.push_back(dot);
+    }
+  }
   activeDesktop = 0;
-  updateDots();
+  refreshHeader();
   lv_obj_set_tile(tv, uis[0].tile, LV_ANIM_OFF);
 }
 
@@ -278,8 +262,35 @@ void uiInit(UiEventFn eventSink) {
   lv_obj_set_scrollbar_mode(scr, LV_SCROLLBAR_MODE_OFF);
   lv_obj_set_style_bg_color(scr, lv_color_hex(0x0B1220), 0);
   lv_obj_set_style_text_color(scr, lv_color_hex(0xE6EDF7), 0);
+  // Fixed top bar (never scrolls), then the tileview with the desktops below it.
+  lv_obj_t* hdr = lv_obj_create(scr);
+  lv_obj_remove_style_all(hdr);
+  lv_obj_set_size(hdr, lv_obj_get_width(scr), kHeaderH);
+  lv_obj_set_pos(hdr, 0, 0);
+  lv_obj_set_style_bg_opa(hdr, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(hdr, lv_color_hex(0x111A26), 0);
+  lv_obj_clear_flag(hdr, LV_OBJ_FLAG_SCROLLABLE);
+
+  hdrTitle = lv_label_create(hdr);
+  lv_obj_set_style_text_font(hdrTitle, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_color(hdrTitle, lv_color_white(), 0);
+
+  hdrBack = lv_btn_create(hdr);
+  lv_obj_set_size(hdrBack, 64, 24);
+  lv_obj_align(hdrBack, LV_ALIGN_LEFT_MID, 4, 0);
+  lv_obj_set_style_radius(hdrBack, 8, 0);
+  lv_obj_set_style_shadow_width(hdrBack, 0, 0);
+  lv_obj_set_style_bg_color(hdrBack, lv_color_hex(0x2A3A4D), 0);
+  lv_obj_set_style_bg_color(hdrBack, lv_color_hex(0x4A6078), LV_STATE_PRESSED);
+  lv_obj_set_style_pad_all(hdrBack, 0, 0);
+  lv_obj_add_event_cb(hdrBack, onBack, kKeySoundEvent, nullptr);
+  lv_obj_t* bl = lv_label_create(hdrBack);
+  lv_label_set_text(bl, LV_SYMBOL_LEFT " Back");
+  lv_obj_center(bl);
+
   tv = lv_tileview_create(scr);
-  lv_obj_set_size(tv, lv_obj_get_width(scr), lv_obj_get_height(scr));
+  lv_obj_set_size(tv, lv_obj_get_width(scr), lv_obj_get_height(scr) - kHeaderH);
+  lv_obj_set_pos(tv, 0, kHeaderH);
   lv_obj_set_scrollbar_mode(tv, LV_SCROLLBAR_MODE_OFF);
   lv_obj_set_style_bg_opa(tv, LV_OPA_TRANSP, 0);
   lv_obj_add_event_cb(tv, onDesktopChanged, LV_EVENT_VALUE_CHANGED, nullptr);

@@ -33,7 +33,7 @@ Events sent by the board, one JSON object per line:
 `{"type":"desktop","index":1}` (swipe).
 
 ## Sounds
-Tap (action key), Nav (open folder), Back, Swipe (change desktop), Error. Played on key release so a swipe that
+Tap (action key), Nav (open folder), Back. Swiping between desktops is silent; the Swipe and Error clips exist but are unused. Played on key release so a swipe that
 starts on a key does not tick; see `kKeySoundEvent` in `src/ui.cpp` to switch to touch-down.
 
 ## Third-party code
