@@ -3,16 +3,18 @@
     companion\\.venv\\Scripts\\python tools\\gen_icons.py [--preview preview.png]
 
 Each icon is drawn here with plain geometry (solid, rounded, Spotify-like style), supersampled for smooth edges.
-To use your own artwork instead, put a PNG named like the icon (play.png, pause.png, prev.png, next.png,
-shuffle.png, repeat.png) in tools/icons/ - its alpha channel (or, without alpha, its brightness) becomes the
-shape. Only use artwork you are allowed to use.
+To use your own artwork instead, put an SVG or PNG named like the icon (play, pause, prev, next, shuffle,
+repeat) in tools/icons/. SVG: the filled shape of its <path> elements is used (even-odd fill, so holes and the
+gap where the shuffle arrows cross come out right). PNG: its alpha channel (or, without alpha, its brightness)
+is the shape. If there is a prev icon but no next icon, next is prev mirrored. Only use artwork you may use.
 """
 from __future__ import annotations
 
 import argparse
+import re
 from pathlib import Path
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageChops, ImageDraw, ImageOps
 
 SIZE = 32          # final icon size in pixels (all icons share it, so all buttons look the same size)
 SS = 8             # supersampling factor
@@ -90,7 +92,105 @@ def repeat(d):
 ICONS = {"play": play, "pause": pause, "prev": prev, "next": nxt, "shuffle": shuffle, "repeat": repeat}
 
 
+# ---- minimal SVG path support (M L H V C Z, absolute and relative) ------------------------------------
+
+_NUM = r"[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?"
+_TOKEN = re.compile(rf"([MmLlHhVvCcZz])|({_NUM})")
+
+
+def parse_path(d: str) -> list[list[tuple[float, float]]]:
+    """Path data -> list of subpaths, each a polyline (curves are flattened)."""
+    toks = [(m.group(1), m.group(2)) for m in _TOKEN.finditer(d)]
+    subpaths: list[list[tuple[float, float]]] = []
+    cur: list[tuple[float, float]] = []
+    x = y = sx = sy = 0.0
+    i, cmd = 0, ""
+
+    def take(n):
+        nonlocal i
+        vals = [float(toks[i + k][1]) for k in range(n)]
+        i += n
+        return vals
+
+    while i < len(toks):
+        if toks[i][0]:
+            cmd = toks[i][0]
+            i += 1
+            if cmd in "Zz":
+                if cur:
+                    subpaths.append(cur)
+                cur, x, y = [], sx, sy
+                continue
+        elif cmd in ("M", "m"):  # extra coordinate pairs after a moveto are linetos
+            cmd = "L" if cmd == "M" else "l"
+        rel, c = cmd.islower(), cmd.upper()
+        ox, oy = (x, y) if rel else (0.0, 0.0)
+        if c == "M":
+            nx, ny = take(2)
+            if cur:
+                subpaths.append(cur)
+            x, y = nx + ox, ny + oy
+            sx, sy = x, y
+            cur = [(x, y)]
+        elif c == "L":
+            nx, ny = take(2)
+            x, y = nx + ox, ny + oy
+            cur.append((x, y))
+        elif c == "H":
+            (nx,) = take(1)
+            x = nx + ox
+            cur.append((x, y))
+        elif c == "V":
+            (ny,) = take(1)
+            y = ny + oy
+            cur.append((x, y))
+        elif c == "C":
+            x1, y1, x2, y2, nx, ny = take(6)
+            p0 = (x, y)
+            p1, p2, p3 = (x1 + ox, y1 + oy), (x2 + ox, y2 + oy), (nx + ox, ny + oy)
+            for k in range(1, 17):
+                t = k / 16
+                a, b, cc, dd = (1 - t) ** 3, 3 * (1 - t) ** 2 * t, 3 * (1 - t) * t * t, t ** 3
+                cur.append((a * p0[0] + b * p1[0] + cc * p2[0] + dd * p3[0],
+                            a * p0[1] + b * p1[1] + cc * p2[1] + dd * p3[1]))
+            x, y = p3
+        else:
+            raise ValueError(f"unsupported path command {cmd!r}")
+    if cur:
+        subpaths.append(cur)
+    return subpaths
+
+
+def render_svg(path: Path, fit: float) -> Image.Image:
+    """Rasterize the SVG's paths (even-odd) scaled to `fit` px on the longer side, centered in SIZE x SIZE."""
+    text = path.read_text(encoding="utf-8")
+    vb = re.search(r'viewBox="([^"]+)"', text)
+    _, _, vw, vh = (float(v) for v in vb.group(1).replace(",", " ").split())
+    scale = fit / max(vw, vh)
+    ox, oy = (SIZE - vw * scale) / 2, (SIZE - vh * scale) / 2
+    mask = Image.new("L", (SIZE * SS, SIZE * SS), 0)
+    for d in re.findall(r'<path[^>]*\sd="([^"]+)"', text):
+        for sub in parse_path(d):
+            layer = Image.new("L", mask.size, 0)
+            ImageDraw.Draw(layer).polygon([((px * scale + ox) * SS, (py * scale + oy) * SS) for px, py in sub], fill=255)
+            mask = ImageChops.difference(mask, layer)  # XOR of the subpaths = even-odd fill
+    return mask.resize((SIZE, SIZE), Image.LANCZOS)
+
+
+# longer side in pixels of each icon when taken from an SVG: prev/next square, wide icons a little larger
+FIT = {"prev": 24, "next": 24, "shuffle": 28, "repeat": 28, "play": 24, "pause": 24}
+
+
+def has_override(name: str) -> bool:
+    return any((OVERRIDES / f"{name}.{ext}").exists() for ext in ("svg", "png"))
+
+
 def render(name: str) -> Image.Image:
+    if name == "next" and not has_override("next") and has_override("prev"):
+        return ImageOps.mirror(render("prev"))
+    svg = OVERRIDES / f"{name}.svg"
+    if svg.exists():
+        return render_svg(svg, FIT[name])
     override = OVERRIDES / f"{name}.png"
     if override.exists():
         src = Image.open(override).convert("RGBA")
