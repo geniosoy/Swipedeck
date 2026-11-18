@@ -4,6 +4,7 @@
 #include <stdarg.h>
 
 #include "audio.h"
+#include "icons.h"
 
 namespace {
 
@@ -40,7 +41,7 @@ struct Marquee {
 // widgets (stale after npForget until npBuild runs again)
 lv_obj_t *root, *bar, *coverBox, *coverImg, *coverPlaceholder, *titleWrap, *timeLbl, *slider;
 lv_obj_t *btnShuffle, *btnPrev, *btnPlay, *btnNext, *btnRepeat;
-lv_obj_t *shuffleLbl, *playLbl, *repeatLbl, *repeatOneLbl;
+lv_obj_t *shuffleImg, *prevImg, *playImg, *nextImg, *repeatImg, *repeatOneLbl;  // icon images (child 0 of each button)
 Marquee albumM, titleM, artistM;
 bool built = false;
 bool dragging = false;
@@ -179,16 +180,30 @@ void setEnabled(lv_obj_t* obj, bool on) {
   else lv_obj_add_state(obj, LV_STATE_DISABLED);
 }
 
+// Icons are tinted bitmaps: white (green when active), dimmed when the control is unavailable.
+void tint(lv_obj_t* img, uint32_t color, bool enabled) {
+  lv_obj_set_style_img_recolor(img, lv_color_hex(color), 0);
+  lv_obj_set_style_img_recolor_opa(img, LV_OPA_COVER, 0);
+  lv_obj_set_style_img_opa(img, enabled ? LV_OPA_COVER : LV_OPA_30, 0);
+}
+
+void setSrc(lv_obj_t* img, const lv_img_dsc_t* src) {
+  if (lv_img_get_src(img) != src) lv_img_set_src(img, src);
+}
+
 void applyControls() {
   if (!built) return;
-  lv_label_set_text(playLbl, info.state == NpState::Playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
+  setSrc(playImg, info.state == NpState::Playing ? &icon_pause : &icon_play);
+  tint(playImg, 0xFFFFFF, info.state != NpState::None);
+  tint(prevImg, 0xFFFFFF, info.canPrev);
+  tint(nextImg, 0xFFFFFF, info.canNext);
+  tint(shuffleImg, info.shuffle ? kAccent : 0xFFFFFF, info.canShuffle);
+  tint(repeatImg, info.repeat ? kAccent : 0xFFFFFF, info.canRepeat);
   setEnabled(btnPrev, info.canPrev);
   setEnabled(btnNext, info.canNext);
   setEnabled(btnPlay, info.state != NpState::None);
   setEnabled(btnShuffle, info.canShuffle);
   setEnabled(btnRepeat, info.canRepeat);
-  lv_obj_set_style_text_color(shuffleLbl, lv_color_hex(info.shuffle ? kAccent : 0xFFFFFF), 0);
-  lv_obj_set_style_text_color(repeatLbl, lv_color_hex(info.repeat ? kAccent : 0xFFFFFF), 0);
   if (info.repeat == 1) lv_obj_clear_flag(repeatOneLbl, LV_OBJ_FLAG_HIDDEN);
   else lv_obj_add_flag(repeatOneLbl, LV_OBJ_FLAG_HIDDEN);
   setEnabled(slider, info.canSeek && info.durMs > 0);
@@ -250,6 +265,21 @@ void onTransport(lv_event_t* e) {
   }  // shuffle / repeat wait for the PC's answer so the board never shows a state the player does not have
 }
 
+// The icon dims while it is pressed (the child image does not follow the button's state by itself).
+void onIconPress(lv_event_t* e) {
+  switch (lv_event_get_code(e)) {
+    case LV_EVENT_PRESSED:
+      lv_obj_set_style_img_opa(lv_obj_get_child(lv_event_get_target(e), 0), LV_OPA_50, 0);
+      break;
+    case LV_EVENT_RELEASED:
+    case LV_EVENT_PRESS_LOST:
+      applyControls();  // restores the normal look of every icon
+      break;
+    default:
+      break;
+  }
+}
+
 void onSlider(lv_event_t* e) {
   switch (lv_event_get_code(e)) {
     case LV_EVENT_PRESSED:
@@ -275,21 +305,17 @@ void onSlider(lv_event_t* e) {
 // ---- building --------------------------------------------------------------------------------
 
 // A control is just its icon: no box. The touch area is the invisible w x h rectangle centered on (cx, cy);
-// the icon dims while pressed and fades when the control is unavailable. The icon label is child 0.
-lv_obj_t* makeIconButton(lv_obj_t* parent, const char* symbol, const lv_font_t* font, int cx, int cy, int w, int h,
-                         const char* cmd) {
+// the icon image is child 0. All icons are kIconPx square, so all controls look the same size.
+lv_obj_t* makeIconButton(lv_obj_t* parent, const lv_img_dsc_t* icon, int cx, int cy, int w, int h, const char* cmd) {
   lv_obj_t* b = lv_btn_create(parent);
   lv_obj_remove_style_all(b);  // no theme background, border, shadow or press animation
   lv_obj_set_size(b, w, h);
   lv_obj_set_pos(b, cx - w / 2, cy - h / 2);
-  lv_obj_set_style_text_color(b, lv_color_white(), 0);
-  lv_obj_set_style_text_opa(b, LV_OPA_50, LV_STATE_PRESSED);
-  lv_obj_set_style_text_opa(b, LV_OPA_30, LV_STATE_DISABLED);
   lv_obj_add_event_cb(b, onTransport, LV_EVENT_CLICKED, const_cast<char*>(cmd));
-  lv_obj_t* l = lv_label_create(b);
-  lv_obj_set_style_text_font(l, font, 0);
-  lv_label_set_text(l, symbol);
-  lv_obj_center(l);
+  lv_obj_add_event_cb(b, onIconPress, LV_EVENT_ALL, nullptr);
+  lv_obj_t* img = lv_img_create(b);
+  lv_img_set_src(img, icon);
+  lv_obj_center(img);
   return b;
 }
 
@@ -297,6 +323,7 @@ lv_obj_t* makeIconButton(lv_obj_t* parent, const char* symbol, const lv_font_t* 
 
 void npInit(UiEventFn eventSink) {
   sink = eventSink;
+  iconsInit();
   lv_timer_create(tick, 250, nullptr);
 }
 
@@ -375,19 +402,21 @@ void npBuild(lv_obj_t* tile) {
 
   // control bar: shuffle, previous, play/pause, next, repeat (created after the slider so they win overlaps)
   const int cy = kBarY + kBarH / 2;
-  btnShuffle = makeIconButton(root, LV_SYMBOL_SHUFFLE, &lv_font_montserrat_24, 32, cy, 64, kBarH, "shuffle");
-  btnPrev = makeIconButton(root, LV_SYMBOL_PREV, &lv_font_montserrat_28, 96, cy, 64, kBarH, "prev");
-  btnPlay = makeIconButton(root, LV_SYMBOL_PLAY, &lv_font_montserrat_40, 160, cy, 64, kBarH, "toggle");
-  btnNext = makeIconButton(root, LV_SYMBOL_NEXT, &lv_font_montserrat_28, 224, cy, 64, kBarH, "next");
-  btnRepeat = makeIconButton(root, LV_SYMBOL_LOOP, &lv_font_montserrat_24, 288, cy, 64, kBarH, "repeat");
-  shuffleLbl = lv_obj_get_child(btnShuffle, 0);
-  playLbl = lv_obj_get_child(btnPlay, 0);
-  repeatLbl = lv_obj_get_child(btnRepeat, 0);
+  btnShuffle = makeIconButton(root, &icon_shuffle, 32, cy, 64, kBarH, "shuffle");
+  btnPrev = makeIconButton(root, &icon_prev, 96, cy, 64, kBarH, "prev");
+  btnPlay = makeIconButton(root, &icon_play, 160, cy, 64, kBarH, "toggle");
+  btnNext = makeIconButton(root, &icon_next, 224, cy, 64, kBarH, "next");
+  btnRepeat = makeIconButton(root, &icon_repeat, 288, cy, 64, kBarH, "repeat");
+  shuffleImg = lv_obj_get_child(btnShuffle, 0);
+  prevImg = lv_obj_get_child(btnPrev, 0);
+  playImg = lv_obj_get_child(btnPlay, 0);
+  nextImg = lv_obj_get_child(btnNext, 0);
+  repeatImg = lv_obj_get_child(btnRepeat, 0);
   repeatOneLbl = lv_label_create(btnRepeat);  // small "1" for repeat-one
   lv_obj_set_style_text_font(repeatOneLbl, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(repeatOneLbl, lv_color_hex(kAccent), 0);
   lv_label_set_text(repeatOneLbl, "1");
-  lv_obj_align(repeatOneLbl, LV_ALIGN_CENTER, 14, 8);
+  lv_obj_align(repeatOneLbl, LV_ALIGN_CENTER, 0, 0);  // centered in the loop icon
   lv_obj_add_flag(repeatOneLbl, LV_OBJ_FLAG_HIDDEN);
 
   built = true;
