@@ -1,0 +1,73 @@
+// Demo layout used until the PC companion sends a real one (milestone 3).
+#include "deck_model.h"
+
+const char* const kDefaultLayoutJson = R"JSON(
+{"desktops":[
+ {"name":"Main","pages":[
+  {"id":"root","title":"Main","cols":4,"rows":3,"keys":[
+   {"label":"Mute","icon":"mute","id":"audio.mute","color":"#B3261E"},
+   {"label":"Vol -","icon":"volume_down","id":"audio.down"},
+   {"label":"Vol +","icon":"volume_up","id":"audio.up"},
+   {"label":"Lock","icon":"power","id":"pc.lock","color":"#5B3A8C"},
+   {"label":"Media","icon":"audio","folder":"media","color":"#1F6F5C"},
+   {"label":"Apps","icon":"list","folder":"apps","color":"#1F6F5C"},
+   {"label":"Files","icon":"directory","id":"app.files"},
+   {"label":"Shot","icon":"image","id":"pc.screenshot"}
+  ]},
+  {"id":"media","title":"Media","cols":3,"rows":2,"keys":[
+   {"label":"Prev","icon":"prev","id":"media.prev"},
+   {"label":"Play","icon":"play","id":"media.playpause","color":"#2E7D32"},
+   {"label":"Next","icon":"next","id":"media.next"},
+   {"label":"Stop","icon":"stop","id":"media.stop"},
+   {"label":"Shuffle","icon":"shuffle","id":"media.shuffle"},
+   {"label":"Loop","icon":"loop","id":"media.loop"}
+  ]},
+  {"id":"apps","title":"Apps","cols":3,"rows":2,"keys":[
+   {"label":"Browser","icon":"home","id":"app.browser"},
+   {"label":"Terminal","icon":"keyboard","id":"app.terminal"},
+   {"label":"Code","icon":"edit","id":"app.code"},
+   {"label":"Chat","icon":"bell","id":"app.chat"},
+   {"label":"Music","icon":"audio","id":"app.music"},
+   {"label":"Games","icon":"eye","id":"app.games"}
+  ]}
+ ]},
+ {"name":"Work","pages":[
+  {"id":"root","title":"Work","cols":4,"rows":3,"keys":[
+   {"label":"Copy","icon":"copy","id":"key.copy"},
+   {"label":"Paste","icon":"paste","id":"key.paste"},
+   {"label":"Cut","icon":"cut","id":"key.cut"},
+   {"label":"Save","icon":"save","id":"key.save","color":"#2E7D32"},
+   {"label":"Undo","icon":"left","id":"key.undo"},
+   {"label":"Redo","icon":"right","id":"key.redo"},
+   {"label":"Find","icon":"eye","id":"key.find"},
+   {"label":"Git","icon":"upload","folder":"git","color":"#1F6F5C"}
+  ]},
+  {"id":"git","title":"Git","cols":3,"rows":2,"keys":[
+   {"label":"Pull","icon":"download","id":"git.pull"},
+   {"label":"Push","icon":"upload","id":"git.push"},
+   {"label":"Commit","icon":"ok","id":"git.commit","color":"#2E7D32"},
+   {"label":"Status","icon":"list","id":"git.status"},
+   {"label":"Diff","icon":"edit","id":"git.diff"},
+   {"label":"Log","icon":"file","id":"git.log"}
+  ]}
+ ]},
+ {"name":"Stream","pages":[
+  {"id":"root","title":"Stream","cols":3,"rows":2,"keys":[
+   {"label":"Record","icon":"video","id":"obs.record","color":"#B3261E"},
+   {"label":"Live","icon":"wifi","id":"obs.live","color":"#B3261E"},
+   {"label":"Mic","icon":"mute","id":"obs.mic"},
+   {"label":"Scenes","icon":"image","folder":"scenes","color":"#1F6F5C"},
+   {"label":"Clip","icon":"cut","id":"obs.clip"},
+   {}
+  ]},
+  {"id":"scenes","title":"Scenes","cols":3,"rows":2,"keys":[
+   {"label":"Game","icon":"play","id":"obs.scene.game"},
+   {"label":"Chat","icon":"bell","id":"obs.scene.chat"},
+   {"label":"BRB","icon":"pause","id":"obs.scene.brb"},
+   {"label":"Start","icon":"home","id":"obs.scene.start"},
+   {"label":"End","icon":"power","id":"obs.scene.end"},
+   {}
+  ]}
+ ]}
+]}
+)JSON";
