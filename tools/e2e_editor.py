@@ -128,6 +128,7 @@ window.dragApp = (from, to) => {
 window.lookCheck = (text) => [...$$('#liveConfig .check')].find((l) => l.textContent.includes(text)).querySelector('input');
 window.press = (key, opts = {}) => document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...opts }));
 window.setInput = (el, value) => { el.value = value; el.dispatchEvent(new Event('input', { bubbles: true })); };
+window.setSelect = (el, value) => { el.value = value; el.dispatchEvent(new Event('change', { bubbles: true })); };
 window.drag = (from, to) => {
   const dt = new DataTransfer();
   from.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
@@ -156,7 +157,9 @@ def main() -> int:
     shutil.copyfile(ROOT / "companion" / "tests" / "fixtures" / "deck.json", deck_path)
     players = [{"id": "Chrome", "title": "A video", "artist": "A channel", "playing": True, "current": True},
                {"id": "Spotify.exe", "title": "", "artist": "", "playing": False, "current": False}]
-    server = EditorServer(deck_path, port=0, status_fn=lambda: {"connected": False}, media_sources_fn=lambda: players)
+    board_commands: list = []  # what the editor asked the (pretend) companion to send to the board
+    server = EditorServer(deck_path, port=0, status_fn=lambda: {"connected": False}, media_sources_fn=lambda: players,
+                          command_fn=lambda c: board_commands.append(c) or True)
     server.start()
     port = free_port()
     proc = subprocess.Popen([browser, "--headless=new", "--disable-gpu", "--no-first-run", f"--remote-debugging-port={port}",
@@ -436,7 +439,7 @@ def main() -> int:
         cdp.js("btn('General settings').click()")
         check("the General settings tab replaces the editor", cdp.js("document.querySelector('#deckView').hidden && !document.querySelector('#settingsPage').hidden"))
         check("the tab shows which view is active", cdp.js("btn('General settings').classList.contains('on') && !btn('Desktops').classList.contains('on')"))
-        check("sound, display and deck cards", cdp.js("$$('#settingsPage .card h4').map((h) => h.textContent)") == ["Sound", "Display", "This deck"])
+        check("sound, screen, start, key look and deck cards", cdp.js("$$('#settingsPage .card h4').map((h) => h.textContent)") == ["Sound", "Screen", "Start", "Key look", "This deck"])
         check("the deck card shows the number of desktops", cdp.js("document.querySelector('#settingsPage').textContent.includes('Desktops5')"))
         cdp.js("setInput(document.querySelector('#setVolume'), '40')")
         check("the volume label follows the slider", cdp.js("document.querySelector('#setVolume').closest('.field').querySelector('b').textContent") == "40")
@@ -446,8 +449,59 @@ def main() -> int:
         cdp.js("press('z', { ctrlKey: true })")
         check("undo works on the settings page", cdp.js("document.querySelector('#settingsPage .check input').checked") is True)
         cdp.js("$$('#settingsPage .check input')[0].click()")  # sounds off again for the saved-file check
+        def wait_py(cond, timeout=4.0):
+            end = time.time() + timeout
+            while time.time() < end:
+                if cond():
+                    return True
+                time.sleep(0.05)
+            return False
+
+        # sound theme, tests, screen power, start desktop, key look
+        check("the classic theme is selected by default", cdp.js("document.querySelector('#themeSeg .on').dataset.theme") == "classic")
+        board_commands.clear()
+        cdp.js("document.querySelector('#themeSeg [data-theme=soft]').click()")
+        check("choosing a theme selects it and makes the deck unsaved", cdp.js("document.querySelector('#themeSeg .on').dataset.theme") == "soft")
+        check("the change reaches the board as a live preview", wait_py(lambda: any(c.get("kind") == "settings" and c["settings"]["soundTheme"] == "soft" for c in board_commands)), str(board_commands[-1:]))
+        # key sounds are off here (switched off above for the saved-file check): the Test buttons must be disabled
+        check("with key sounds off the Test buttons are disabled", cdp.js("[...document.querySelectorAll('#testRow button')].every((b) => b.disabled)"))
+        cdp.js("$$('#settingsPage .check input')[0].click()")  # key sounds on
+        check("...and enabled with them on", cdp.js("[...document.querySelectorAll('#testRow button')].every((b) => !b.disabled)"))
+        cdp.js("document.querySelector('#testRow [data-sound=nav]').click()")
+        check("a Test button asks the board to play that sound", wait_py(lambda: {"kind": "sound", "name": "nav"} in board_commands))
+        theme_at = max((i for i, c in enumerate(board_commands) if c.get("kind") == "settings" and c["settings"]["soundTheme"] == "soft"), default=-1)
+        sound_at = max((i for i, c in enumerate(board_commands) if c == {"kind": "sound", "name": "nav"}), default=-1)
+        check("the chosen theme reaches the board before the test sound", 0 <= theme_at < sound_at, str(board_commands))
+        cdp.js("$$('#settingsPage .check input')[0].click()")  # key sounds off again for the saved-file check
+        cdp.js("setSelect(document.querySelector('#setDim'), '30')")
+        cdp.js("setSelect(document.querySelector('#setSleep'), '60')")
+        check("dim and sleep choices are kept", cdp.js("document.querySelector('#setDim').value") == "30" and cdp.js("document.querySelector('#setSleep').value") == "60")
+        check("no warning when the screen dims before it sleeps", cdp.js("!document.querySelector('#dimClash')"))
+        cdp.js("setSelect(document.querySelector('#setSleep'), '60')")
+        cdp.js("setSelect(document.querySelector('#setDim'), '120')")
+        check("dimming after the screen turns off is flagged", cdp.js("!!document.querySelector('#dimClash')"))
+        cdp.js("setSelect(document.querySelector('#setDim'), '30')")
+        cdp.js("$$('#settingsPage .check input')[2].click()")  # flip
+        check("flip is stored", cdp.js("$$('#settingsPage .check input')[2].checked") is True)
+        cdp.js("$$('#settingsPage .check input')[2].click()")  # and back
+        cdp.js("setSelect(document.querySelector('#setStart'), '1')")
+        check("the start desktop is stored", cdp.js("document.querySelector('#setStart').value") == "1")
+        cdp.js("setSelect(document.querySelector('#setStart'), '0')")
+        before = cdp.js("document.querySelector('#lookSample .sampleKey').style.borderRadius")
+        left_before = cdp.js("document.querySelectorAll('#lookSample .sampleKey')[1].style.left")
+        cdp.js("setInput(document.querySelector('#setRadius'), '3')")
+        cdp.js("setInput(document.querySelector('#setGap'), '10')")
+        check("the key look sliders redraw the sample", cdp.js("document.querySelector('#lookSample .sampleKey').style.borderRadius") != before)
+        check("the sample follows the gap", cdp.js("document.querySelectorAll('#lookSample .sampleKey')[1].style.left") != left_before and cdp.js("document.querySelector('#lookSample').children.length") == 12)
+        check("a radius label follows the slider", cdp.js("document.querySelector('#setRadius').closest('.field').querySelector('b').textContent") == "3 px")
         if shots:
             cdp.shot(shots / "11_general_settings.png")
+        cdp.js("btn('Desktops').click()")
+        check("the desktop preview uses the key look (radius 3 px, shown at 2x)", cdp.js("document.querySelector('.key').style.borderRadius") == "6px")
+        cdp.js("btn('General settings').click()")
+        cdp.js("setInput(document.querySelector('#setRadius'), '12')")
+        cdp.js("setInput(document.querySelector('#setGap'), '6')")
+        cdp.js("document.querySelector('#themeSeg [data-theme=classic]').click()")
         cdp.js("btn('Desktops').click()")
         check("the Desktops tab brings the editor back", cdp.js("!document.querySelector('#deckView').hidden && document.querySelector('#settingsPage').hidden"))
         cdp.js("keyAt(11).click()")
@@ -458,6 +512,9 @@ def main() -> int:
         saved = json.loads(deck_path.read_text(encoding="utf-8"))
         check("the file has the new key", any(k.get("label") == "Mute" for k in saved["desktops"][0]["pages"][0]["keys"][8:]))
         check("the file has the volume, brightness and sounds settings", saved["settings"]["volume"] == 40 and saved["settings"]["brightness"] == 120 and saved["settings"]["sounds"] is False, str(saved["settings"]))
+        check("the file has the new settings too", saved["settings"]["dimAfter"] == 30 and saved["settings"]["sleepAfter"] == 60
+              and saved["settings"]["soundTheme"] == "classic" and saved["settings"]["keyRadius"] == 12 and saved["settings"]["keyGap"] == 6, str(saved["settings"]))
+        check("a saved deck with these settings loads in the companion", Deck(saved).effective_settings()["dimAfter"] == 30)
         stats_options = next(d for d in saved["desktops"] if d.get("kind") == "stats")["options"]
         np_options = next(d for d in saved["desktops"] if d.get("kind") == "nowplaying")["options"]
         check("the saved file has the stats style and items", stats_options["style"] == "gauges" and stats_options["items"] == ["gpu", "net", "disk", "vram", "cpu", "ram"], str(stats_options))

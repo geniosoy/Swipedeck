@@ -166,6 +166,54 @@ class AppTest(unittest.TestCase):
         self.assertEqual("".join(board.layout_parts), app.deck.layout_text())
         self.assertEqual(rec.ran, [("0/0/1", {"type": "hotkey", "keys": "volume_down"})])
 
+    def test_editor_commands_reach_the_board_while_connected(self):
+        board = FakeBoard()
+        app, _ = make(board)
+        self.assertFalse(app.submit({"kind": "sound", "name": "tap"}))  # no connection yet: refused, not queued
+        step = {"n": 0}
+
+        def idle():
+            step["n"] += 1
+            if step["n"] == 1:
+                self.assertTrue(app.submit({"kind": "sound", "name": "nav"}))
+                self.assertTrue(app.submit({"kind": "settings", "settings": {"volume": 10}}))
+                self.assertTrue(app.submit({"kind": "settings", "settings": {"volume": 20, "flip": True}}))
+            else:
+                app.stop()
+
+        board.on_idle = idle
+        app.session(board)
+        sounds = [m for m in board.out if m["type"] == "sound"]
+        self.assertEqual(sounds, [{"type": "sound", "name": "nav"}])
+        previews = [m for m in board.out if m["type"] == "settings" and m.get("preview")]
+        self.assertEqual(previews, [{"type": "settings", "volume": 20, "flip": True, "preview": True}])  # only the newest
+        stored = [m for m in board.out if m["type"] == "settings" and not m.get("preview")]
+        self.assertEqual(len(stored), 1)  # the one pushed at connect, from the deck
+
+    def test_commands_from_before_a_connection_are_dropped(self):
+        board = FakeBoard()
+        app, _ = make(board)
+        app.status["connected"] = True
+        app.submit({"kind": "sound", "name": "tap"})
+        app.status["connected"] = False
+        app.session(board)
+        self.assertNotIn("sound", [m["type"] for m in board.out])
+
+    def test_start_desktop_is_where_a_new_layout_opens(self):
+        import json, shutil, tempfile
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        data = json.loads(DECK.read_text(encoding="utf-8"))
+        data["settings"]["startDesktop"] = 2
+        path = tmp / "deck.json"
+        path.write_text(json.dumps(data), encoding="utf-8")
+        board = FakeBoard()
+        app = Companion(path, executor=Recorder(), open_board_fn=lambda port: board, clock=Clock())
+        board.on_idle = app.stop
+        app.session(board)
+        self.assertEqual(app._active_desktop, 2)
+        self.assertEqual(board.settings["startDesktop"], 2)
+
     def test_matching_crc_skips_layout(self):
         probe = FakeBoard()
         app, _ = make(probe)

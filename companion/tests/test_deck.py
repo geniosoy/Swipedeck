@@ -54,6 +54,48 @@ class DeckTest(unittest.TestCase):
             with self.assertRaises(DeckError, msg=str(data)[:80]):
                 Deck(data)
 
+    def test_general_settings(self):
+        full = {"volume": 40, "sounds": False, "soundTheme": "chirp", "navSounds": False, "brightness": 90,
+                "dimAfter": 30, "sleepAfter": 300, "flip": True, "startDesktop": 0, "keyRadius": 20, "keyGap": 3}
+        self.assertEqual(Deck({"settings": full, **simple([])}).settings, full)
+        self.assertEqual(Deck({"settings": {"volume": 5, "bogus": 1}, **simple([])}).settings, {"volume": 5})
+        self.assertEqual(Deck(simple([])).settings, {})
+        for bad in ({"soundTheme": "loud"}, {"soundTheme": 3}, {"navSounds": 1}, {"flip": "yes"}, {"dimAfter": -1},
+                    {"sleepAfter": 99999}, {"keyRadius": 25}, {"keyGap": 1}, {"keyGap": 2.5}, {"startDesktop": 8},
+                    {"volume": True}, {"brightness": 4}, {"sounds": 0}):
+            with self.assertRaises(DeckError, msg=str(bad)):
+                Deck({"settings": bad, **simple([])})
+        with self.assertRaises(DeckError):
+            Deck({"settings": [], **simple([])})
+
+    def test_effective_settings_fill_in_defaults_and_match_the_editor(self):
+        from streamdeck_companion.deck import SETTINGS_SPEC, default_settings
+
+        deck = Deck({"settings": {"volume": 5}, **simple([])})
+        eff = deck.effective_settings()
+        self.assertEqual(eff["volume"], 5)
+        self.assertEqual(eff["soundTheme"], "classic")
+        self.assertEqual(set(eff), set(SETTINGS_SPEC))
+        self.assertEqual(Deck(simple([])).effective_settings(), default_settings())
+        # the editor (web/model.js) has its own copy of the defaults: they must agree
+        import re
+        js = (ROOT / "streamdeck_companion" / "web" / "model.js").read_text(encoding="utf-8")
+        block = re.search(r"SETTING_DEFAULTS = \{(.*?)\};", js, re.S).group(1)
+        js_defaults = {}
+        for name, value in re.findall(r"(\w+): ('?[\w]+'?)", block):
+            if value in ("true", "false"):
+                js_defaults[name] = value == "true"
+            elif value.startswith("'"):
+                js_defaults[name] = value.strip("'")
+            else:
+                js_defaults[name] = int(value)
+        self.assertEqual(js_defaults, default_settings())
+
+    def test_start_desktop_beyond_the_last_desktop_warns(self):
+        deck = Deck({"settings": {"startDesktop": 3}, **simple([])})
+        self.assertTrue(any("startDesktop" in w for w in deck.warnings))
+        self.assertEqual(Deck({"settings": {"startDesktop": 0}, **simple([])}).warnings, [])
+
     def test_nowplaying_desktop_rules(self):
         np = {"name": "P", "kind": "nowplaying"}
         Deck({"desktops": [np]})  # needs no pages

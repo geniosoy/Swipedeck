@@ -6,8 +6,11 @@
 //   {"type":"ping","id":7}                        {"type":"pong","id":7}
 //   {"type":"layout","seq":0,"of":3,"data":"..."} {"type":"layout-part","seq":0}  per chunk, then
 //        (chunks of the layout JSON text)         {"type":"layout-ack","ok":true,"crc":"1a2b3c4d"} (or ok:false,"error")
-//   {"type":"settings","volume":70,"sounds":true,"brightness":255}
-//                                                 {"type":"settings-ack", ...current settings...}
+//   {"type":"settings","volume":70,"sounds":true,"brightness":255,"soundTheme":"classic","navSounds":true,
+//     "dimAfter":0,"sleepAfter":0,"flip":false,"startDesktop":0,"keyRadius":12,"keyGap":6,"preview":false}
+//                                                 {"type":"settings-ack", ...current settings...,"preview":false}
+//        (every key is optional; out-of-range values are clamped; "preview":true applies without storing)
+//   {"type":"sound","name":"tap|nav|back|error"}  (plays a UI sound, e.g. the editor's Test buttons; wakes the screen)
 //   {"type":"focus","desktop":1}                  (switch the visible desktop)
 //   {"type":"reset-layout"}                       (forget the stored layout, show the built-in demo)
 //   {"type":"np","state":"playing","title":..,"artist":..,"album":..,"posMs":..,"durMs":..,"rate":1,

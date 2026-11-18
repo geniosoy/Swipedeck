@@ -46,7 +46,7 @@ def main() -> int:
 
         try:
             editor = EditorServer(args.deck, port=args.editor_port, status_fn=lambda: dict(app.status),
-                                  media_sources_fn=media_sources)
+                                  media_sources_fn=media_sources, command_fn=app.submit)
             logging.getLogger("companion").info("web editor: %s", editor.start())
             if args.open_editor:
                 import webbrowser

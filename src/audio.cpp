@@ -20,11 +20,15 @@ QueueHandle_t queue = nullptr;
 es8311_handle_t codec = nullptr;
 bool ready = false;
 bool enabled = true;
+bool navSounds = true;  // folder / back / error sounds (key presses are always governed by `enabled` alone)
+int theme = 0;
 int volume = 70;
+SemaphoreHandle_t clipLock = nullptr;  // held while a clip plays and while the clips are rebuilt for a new theme
 
 // Sine burst with a fast attack and exponential decay; the pitch glides from f0 to f1.
 void synth(Sound s, float f0, float f1, float ms, float amp, float decayMs) {
   Clip& c = clips[static_cast<int>(s)];
+  if (c.pcm) { heap_caps_free(c.pcm); c.pcm = nullptr; }
   c.frames = static_cast<size_t>(kRate * ms / 1000.0f);
   c.pcm = static_cast<int16_t*>(heap_caps_malloc(c.frames * 2 * sizeof(int16_t), MALLOC_CAP_8BIT));
   if (!c.pcm) { c.frames = 0; return; }
@@ -41,22 +45,52 @@ void synth(Sound s, float f0, float f1, float ms, float amp, float decayMs) {
   }
 }
 
+// Each theme is five short synthesised clips (see synth): freq start/end in Hz, length, amplitude, decay.
 void buildClips() {
-  synth(Sound::Tap, 2400, 2400, 40, 0.55f, 9);    // crisp tick
-  synth(Sound::Nav, 1500, 2300, 70, 0.50f, 24);   // rising "open"
-  synth(Sound::Back, 2300, 1500, 70, 0.50f, 24);  // falling "back"
-  synth(Sound::Swipe, 900, 700, 35, 0.35f, 12);   // soft thud
-  synth(Sound::Error, 500, 420, 160, 0.55f, 70);  // low buzz-ish
+  switch (theme) {
+    default:
+    case 0:  // classic: crisp tick, rising "open", falling "back"
+      synth(Sound::Tap, 2400, 2400, 40, 0.55f, 9);
+      synth(Sound::Nav, 1500, 2300, 70, 0.50f, 24);
+      synth(Sound::Back, 2300, 1500, 70, 0.50f, 24);
+      synth(Sound::Swipe, 900, 700, 35, 0.35f, 12);
+      synth(Sound::Error, 500, 420, 160, 0.55f, 70);
+      break;
+    case 1:  // soft: low and round
+      synth(Sound::Tap, 900, 800, 55, 0.55f, 16);
+      synth(Sound::Nav, 700, 1000, 90, 0.50f, 34);
+      synth(Sound::Back, 1000, 700, 90, 0.50f, 34);
+      synth(Sound::Swipe, 500, 450, 40, 0.30f, 14);
+      synth(Sound::Error, 300, 240, 200, 0.55f, 90);
+      break;
+    case 2:  // click: a very short high tick, like a mechanical switch
+      synth(Sound::Tap, 3600, 3000, 18, 0.60f, 4);
+      synth(Sound::Nav, 3000, 4200, 30, 0.55f, 8);
+      synth(Sound::Back, 4200, 3000, 30, 0.55f, 8);
+      synth(Sound::Swipe, 1800, 1500, 20, 0.30f, 6);
+      synth(Sound::Error, 700, 600, 120, 0.55f, 50);
+      break;
+    case 3:  // chirp: bubbly, retro game
+      synth(Sound::Tap, 1200, 2200, 55, 0.50f, 22);
+      synth(Sound::Nav, 800, 2800, 110, 0.50f, 50);
+      synth(Sound::Back, 2800, 800, 110, 0.50f, 50);
+      synth(Sound::Swipe, 1000, 1300, 40, 0.30f, 16);
+      synth(Sound::Error, 400, 150, 220, 0.55f, 100);
+      break;
+  }
 }
 
 void audioTask(void*) {
   uint8_t id;
   for (;;) {
     if (xQueueReceive(queue, &id, portMAX_DELAY) != pdTRUE) continue;
+    xSemaphoreTake(clipLock, portMAX_DELAY);
     const Clip& c = clips[id];
-    if (!c.pcm || !enabled) continue;
-    size_t written = 0;
-    i2s_write(kPort, c.pcm, c.frames * 2 * sizeof(int16_t), &written, portMAX_DELAY);
+    if (c.pcm && enabled) {
+      size_t written = 0;
+      i2s_write(kPort, c.pcm, c.frames * 2 * sizeof(int16_t), &written, portMAX_DELAY);
+    }
+    xSemaphoreGive(clipLock);
   }
 }
 }  // namespace
@@ -102,6 +136,7 @@ bool audioBegin() {
   es8311_voice_volume_set(codec, volume, nullptr);
   es8311_voice_mute(codec, false);
 
+  clipLock = xSemaphoreCreateMutex();
   buildClips();
   queue = xQueueCreate(8, sizeof(uint8_t));
   xTaskCreatePinnedToCore(audioTask, "audio", 4096, nullptr, 2, nullptr, 0);
@@ -116,6 +151,7 @@ bool audioReady() { return ready; }
 
 void audioPlay(Sound s) {
   if (!ready || !enabled) return;
+  if (!navSounds && (s == Sound::Nav || s == Sound::Back)) return;
   const uint8_t id = static_cast<uint8_t>(s);
   xQueueSend(queue, &id, 0);
 }
@@ -127,3 +163,15 @@ void audioSetVolume(int pct) {
 int audioVolume() { return volume; }
 void audioSetAmp(bool on) { digitalWrite(PIN_AMP_EN, on ? HIGH : LOW); }
 void audioSetEnabled(bool on) { enabled = on; }
+void audioSetNavSounds(bool on) { navSounds = on; }
+
+void audioSetTheme(int t) {
+  t = constrain(t, 0, kAudioThemes - 1);
+  if (t == theme && ready) return;
+  if (!ready) { theme = t; return; }
+  xSemaphoreTake(clipLock, portMAX_DELAY);  // waits for a clip that is playing right now
+  theme = t;
+  buildClips();
+  xSemaphoreGive(clipLock);
+}
+int audioTheme() { return theme; }

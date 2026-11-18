@@ -48,8 +48,10 @@ The companion serves a layout editor at **http://127.0.0.1:8765/** (`Streamdeck-
   sequences with waits.
 * **Structure:** add, rename and delete desktops and pages, reorder desktops by **dragging** them in the list (or with
   the arrows), and change a page's grid size (keys keep their row and column; you are asked before keys are removed).
-* **General settings** (the second tab at the top): key sounds, volume and brightness of the board, plus a summary of the
-  deck (desktops, layout size, whether the board is connected).
+* **General settings** (the second tab at the top), see [Settings](#settings) below: sound theme and which sounds play,
+  volume with **Test** buttons that play a sound on the board, brightness, auto-dim and screen-off after no touch,
+  flipping the screen, which desktop the board opens on, and how the keys look (corner roundness, spacing). Changes show
+  on the board **right away** (a live preview that is not stored) and are kept when you save.
 * **Add desktop menu** (`+ Add desktop`): the **live screens** (Now playing, PC stats; one each) and **ready-made
   desktops** you can add and then tweak: Discord, Coding (VS Code, with Git and Debug pages), OBS & streaming (F13-F24
   hotkeys to bind in OBS, with a Scenes page), Music, Windows, Browser, Editing and Gaming. They live in
@@ -106,8 +108,8 @@ for explanation: the real file is plain JSON.
 * Icons on keys come from a built-in list of about 50 names (`mute`, `play`, `home`, `copy` ...), see `ICONS` in
   `companion/streamdeck_companion/deck.py`; an unknown name shows a warning symbol and a log warning.
 * Layouts have only been tried at a few KB; the editor warns above 30 KB.
-* **Firmware 0.8.0** (the app icon) is built but, at the time of writing, has not been flashed or tried on the board:
-  flash it before turning `appIcon` on (older firmware ignores the option and the icon messages).
+* **Firmware 0.8.0 or newer** is needed for `appIcon` (older firmware ignores the option and the icon messages), and
+  **0.9.0 or newer** for the general settings below beyond volume, sounds and brightness.
 * The live-screen options are checked by the companion when it loads the deck (a wrong value is an error with a clear
   message); the board never receives the Now playing player filter.
 
@@ -183,13 +185,39 @@ server incl. its security checks) and `node --test companion/tests/js/model.test
 test of the editor, which drives it in headless Edge/Chrome against a copy of the deck, is `tools/e2e_editor.py`
 (needs `pip install websocket-client`; `--shots DIR` saves screenshots).
 
+## Settings
+The `settings` object of `deck.json` (all keys optional; a missing one is its default). They go to the board when the
+companion connects and when the deck is saved, and the board stores them. Wrong values are an error when the deck loads.
+
+| Key | Values | Default | |
+|---|---|---|---|
+| `volume` | 0..100 | 70 | |
+| `sounds` | true / false | true | the tick when a key is pressed |
+| `navSounds` | true / false | true | the chirps for opening a folder and Back |
+| `soundTheme` | `classic`, `soft`, `click`, `chirp` | `classic` | the four sounds are synthesised on the board (no audio files) |
+| `brightness` | 5..255 | 255 | |
+| `dimAfter` | seconds, 0..3600 | 0 (never) | dims the backlight (to one eighth of `brightness`) after no touch |
+| `sleepAfter` | seconds, 0..3600 | 0 (never) | switches the backlight off after no touch |
+| `flip` | true / false | false | the screen upside down, touch included (for a case mounted the other way up) |
+| `startDesktop` | 0..7 | 0 | desktop shown at boot and after a layout loads (the first one if the number does not exist) |
+| `keyRadius` | 0..24 | 12 | corner roundness of the keys, px |
+| `keyGap` | 2..12 | 6 | space between keys, px |
+
+* **Waking the screen:** the touch that wakes a dimmed or sleeping screen is swallowed: it does not press anything, and
+  neither does a swipe started with it. Sounds played by the Test buttons also wake the screen.
+* **Live preview:** the editor sends the settings page's values with `"preview": true`: the board applies them but does
+  not store them, so a reboot or reconnect brings back the saved ones. Saving the deck stores them.
+* **Font:** there is no font setting. The board's fonts are the ones compiled into the firmware (Montserrat without
+  accents); a different or accented font needs a generated font file, which is the open "accented fonts" item below.
+
 ## Milestones
 1. Bring-up (display, touch, sound, serial) - done
 2. Firmware UI (swipeable desktops, folders, back, key sounds) - done
 3. Serial protocol and PC companion (actions, layout sync, stored layout and settings) - done
 4. Now playing screen, PC stats screen, on-demand live screens - done
 5. Layout editor (web) with button presets - done
-6. Polish: brightness / sleep, settings screen on the board, accented fonts - open
+6. Settings: sound themes, auto-dim and sleep, flip, start desktop, key look, live preview - done
+7. Open: accented fonts (needs generated font files), a settings screen on the board itself
 
 ## Third-party code
 `lib/TFT_eSPI` (patched, from the vendor package), `lib/FT6336`, `lib/ES8311` (Espressif, Apache-2.0, patched to use

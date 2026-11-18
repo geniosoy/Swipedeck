@@ -100,6 +100,7 @@ function commit(fn, { coalesce = null, rerender = 'all' } = {}) {
   fn(state.deck);
   clampSel();
   if (rerender === 'all') renderAll();
+  else if (rerender === 'sample') { renderTopbar(); if (state.drawSample) state.drawSample(); }
   else renderLive();
 }
 
@@ -107,9 +108,49 @@ function restore(text) {
   state.deck = JSON.parse(text);
   clampSel();
   renderAll();
+  previewSettings(); // undo / redo may have changed a setting
 }
 const undo = () => { const t = history.undo(deckText()); if (t) restore(t); };
 const redo = () => { const t = history.redo(deckText()); if (t) restore(t); };
+
+// ---- live preview of the general settings on the board -----------------------------------------------------
+
+let previewTimer = null;
+let lastPreviewed = '';
+
+async function previewSettings(now = false) {
+  clearTimeout(previewTimer);
+  const send = async () => {
+    const settings = M.resolveSettings(state.deck);
+    const text = JSON.stringify(settings);
+    if (text === lastPreviewed) return;
+    lastPreviewed = text;
+    try {
+      const res = await api('POST', '/api/board/settings', { settings });
+      state.previewSent = res.sent;
+    } catch (e) {
+      state.previewSent = false;
+    }
+    const note = document.querySelector('#previewNote');
+    if (note) note.textContent = previewNoteText();
+  };
+  if (now) await send();
+  else previewTimer = setTimeout(send, 150);
+}
+
+const previewNoteText = () => (state.previewSent === false || !(state.status && state.status.connected)
+  ? 'The board is not connected: changes will reach it when it is, after you save.'
+  : 'Changes show on the board right away. They are kept when you save.');
+
+async function testSound(name) {
+  await previewSettings(true); // the board should play the theme that is chosen here, not the one it had
+  try {
+    const res = await api('POST', '/api/board/sound', { name });
+    if (!res.sent) toast('The board is not connected.');
+  } catch (e) {
+    toast('Could not play the sound: ' + e.message);
+  }
+}
 
 // ---- api ---------------------------------------------------------------------------------------------
 
@@ -161,7 +202,14 @@ async function save() {
 
 async function revert() {
   if (isDirty() && !confirm('Discard all unsaved changes?')) return;
+  const shown = lastPreviewed;
   await loadDeck();
+  if (shown !== lastPreviewed) { // the board was showing previewed settings: put the saved ones back
+    const saved = lastPreviewed;
+    lastPreviewed = shown;
+    await previewSettings(true);
+    lastPreviewed = saved;
+  }
   renderAll();
 }
 
@@ -171,6 +219,7 @@ async function loadDeck() {
   history.past = [];
   history.future = [];
   clampSel();
+  lastPreviewed = JSON.stringify(M.resolveSettings(state.deck)); // what the board holds after loading (or discarding changes)
 }
 
 async function refreshStatus() {
@@ -327,6 +376,7 @@ function keyEl(k, i, geo) {
     dataset: { i },
     title: kind === 'empty' ? 'Empty slot' : kind === 'folder' ? `Folder \u2192 ${k.folder}` : M.describeAction(k.action),
     style: { left: x * S + 'px', top: y * S + 'px', width: geo.keyW * S + 'px', height: geo.keyH * S + 'px',
+      borderRadius: (geo.radius ?? M.SETTING_DEFAULTS.keyRadius) * S + 'px',
       background: kind === 'empty' ? '' : (k.color || M.DEFAULT_KEY_COLOR) },
   });
   if (kind !== 'empty') {
@@ -488,7 +538,9 @@ function renderScreen() {
     h('span', { class: 'title' }, title), dots));
   const content = h('div', { class: 'content', style: { top: hdrH + 'px', height: (M.SCREEN.h - M.SCREEN.header) * S + 'px' } });
   if (kind === 'keys') {
-    const geo = M.geometry(pg.cols, pg.rows);
+    const look = M.resolveSettings(state.deck);
+    const geo = M.geometry(pg.cols, pg.rows, undefined, undefined, look.keyGap);
+    geo.radius = look.keyRadius;
     for (let i = 0; i < pg.cols * pg.rows; i++) content.append(keyEl(pg.keys[i] || {}, i, geo));
   } else {
     content.append(kind === 'nowplaying' ? mockNowPlaying(M.liveOptions(d)) : mockStats(M.liveOptions(d)));
@@ -1047,30 +1099,81 @@ function setView(view) {
 
 // ---- general settings page ---------------------------------------------------------------------------
 
+const DIM_CHOICES = [[0, 'Never'], [15, '15 seconds'], [30, '30 seconds'], [60, '1 minute'], [120, '2 minutes'], [300, '5 minutes']];
+const SLEEP_CHOICES = [[0, 'Never'], [60, '1 minute'], [120, '2 minutes'], [300, '5 minutes'], [600, '10 minutes'], [1800, '30 minutes']];
+
 function renderSettingsPage() {
-  const s = state.deck.settings || {};
-  const setting = (name, value) => commit((d) => { d.settings = d.settings || {}; d.settings[name] = value; }, { coalesce: 'setting-' + name, rerender: 'live' });
-  const vol = h('b', {}, String(s.volume ?? 70));
-  const bri = h('b', {}, String(s.brightness ?? 255));
+  const s = M.resolveSettings(state.deck);
+  const setting = (name, value, rerender = 'live') => {
+    commit((d) => { d.settings = d.settings || {}; d.settings[name] = value; }, { coalesce: 'setting-' + name, rerender });
+    previewSettings();
+  };
+  const slider = (id, label, min, max, value, name, unit = '') => {
+    const out = h('b', {}, value + unit);
+    return h('div', { class: 'field' }, h('label', {}, label + ' ', out),
+      h('input', { type: 'range', id, min, max, value, oninput: (e) => { out.textContent = e.target.value + unit; setting(name, +e.target.value, 'sample'); } }));
+  };
+  const choice = (id, label, options, value, name, hint) => h('div', { class: 'field' }, h('label', {}, label),
+    h('select', { id, onchange: (e) => setting(name, +e.target.value, 'all') },
+      options.map(([v, t]) => h('option', { value: v, selected: v === value }, t))),
+    hint ? h('div', { class: 'hint' }, hint) : null);
   const st = state.status;
   const info = (label, value) => h('div', { class: 'inforow' }, h('span', { class: 'lab' }, label), h('span', {}, value));
+  const desktops = state.deck.desktops.map((d, i) => [i, `${i + 1}. ${d.name || 'Desktop'}`]);
+  const dimClash = s.dimAfter && s.sleepAfter && s.sleepAfter <= s.dimAfter;
+
+  // a small sample of the key look (same math as the board); the look sliders redraw only this
+  const sample = h('div', { class: 'lookSample', id: 'lookSample', style: { width: M.SCREEN.w * 0.75 + 'px', height: (M.SCREEN.h - M.SCREEN.header) * 0.75 + 'px' } });
+  const drawSample = () => {
+    const look = M.resolveSettings(state.deck);
+    const geo = M.geometry(4, 3, undefined, undefined, look.keyGap);
+    const colors = ['#2A3A4D', '#1F6FEB', '#2EA043', '#8957E5', '#D29922', '#DA3633'];
+    sample.replaceChildren(...Array.from({ length: 12 }, (_, i) => {
+      const { x, y } = geo.pos(i);
+      return h('div', { class: 'sampleKey', style: { left: x * 0.75 + 'px', top: y * 0.75 + 'px', width: geo.keyW * 0.75 + 'px',
+        height: geo.keyH * 0.75 + 'px', borderRadius: look.keyRadius * 0.75 + 'px', background: colors[i % colors.length] } });
+    }));
+  };
+  state.drawSample = drawSample;
+  drawSample();
+
   $('#settingsPage').replaceChildren(h('div', { class: 'settingsWrap' },
     h('h2', {}, 'General settings'),
-    h('p', { class: 'hint' }, 'These apply to the whole board. They are sent to the board when you save, and the board remembers them.'),
+    h('p', { class: 'hint', id: 'previewNote' }, previewNoteText()),
     h('div', { class: 'cards' },
       h('div', { class: 'card' }, h('h4', {}, 'Sound'),
-        checkRow('Key sounds (a tick when you press a key, a chirp for folders and Back)', s.sounds ?? true, (v) => setting('sounds', v)),
-        h('div', { class: 'field' }, h('label', {}, 'Volume ', vol),
-          h('input', { type: 'range', id: 'setVolume', min: 0, max: 100, value: s.volume ?? 70, oninput: (e) => { vol.textContent = e.target.value; setting('volume', +e.target.value); } }))),
-      h('div', { class: 'card' }, h('h4', {}, 'Display'),
-        h('div', { class: 'field' }, h('label', {}, 'Brightness ', bri),
-          h('input', { type: 'range', id: 'setBrightness', min: 5, max: 255, value: s.brightness ?? 255, oninput: (e) => { bri.textContent = e.target.value; setting('brightness', +e.target.value); } })),
-        h('div', { class: 'hint' }, 'The lowest value is 5 out of 255: very dim, but not off.')),
+        checkRow('Key sounds (a tick when you press a key)', s.sounds, (v) => setting('sounds', v, 'all')),
+        checkRow('Folder and Back sounds', s.navSounds, (v) => setting('navSounds', v, 'all')),
+        h('div', { class: 'field' }, h('label', {}, 'Sound'),
+          h('div', { class: 'seg', id: 'themeSeg' }, M.SOUND_THEMES.map(([v, t, hint]) =>
+            h('button', { class: s.soundTheme === v ? 'on' : '', title: hint, dataset: { theme: v }, onclick: () => setting('soundTheme', v, 'all') }, t))),
+          h('div', { class: 'hint' }, M.SOUND_THEMES.find(([v]) => v === s.soundTheme)[2])),
+        h('div', { class: 'field' }, h('label', {}, 'Try it on the board'),
+          h('div', { class: 'row tight', id: 'testRow' },
+            [['tap', 'Key'], ['nav', 'Folder'], ['back', 'Back'], ['error', 'Error']].map(([n, t]) =>
+              h('button', { class: 'small', dataset: { sound: n }, disabled: !s.sounds, onclick: () => testSound(n) }, t)))),
+        slider('setVolume', 'Volume', 0, 100, s.volume, 'volume')),
+      h('div', { class: 'card' }, h('h4', {}, 'Screen'),
+        slider('setBrightness', 'Brightness', 5, 255, s.brightness, 'brightness'),
+        h('div', { class: 'hint' }, 'The lowest value is 5 out of 255: very dim, but not off.'),
+        choice('setDim', 'Dim after no touch for', DIM_CHOICES, s.dimAfter, 'dimAfter'),
+        choice('setSleep', 'Turn the screen off after no touch for', SLEEP_CHOICES, s.sleepAfter, 'sleepAfter',
+          'The first touch only wakes the screen; it does not press a key.'),
+        dimClash ? h('div', { class: 'hint bad', id: 'dimClash' }, 'The screen turns off before it would dim, so dimming is skipped.') : null,
+        checkRow('Flip the screen upside down (for a case mounted the other way up)', s.flip, (v) => setting('flip', v, 'all'))),
+      h('div', { class: 'card' }, h('h4', {}, 'Start'),
+        choice('setStart', 'Open on desktop', desktops, Math.min(s.startDesktop, desktops.length - 1), 'startDesktop',
+          'Shown when the board starts and after a new layout arrives.')),
+      h('div', { class: 'card' }, h('h4', {}, 'Key look'),
+        sample,
+        slider('setRadius', 'Corner roundness', 0, 24, s.keyRadius, 'keyRadius', ' px'),
+        slider('setGap', 'Space between keys', 2, 12, s.keyGap, 'keyGap', ' px')),
       h('div', { class: 'card' }, h('h4', {}, 'This deck'),
         info('Desktops', String(state.deck.desktops.length)),
         info('Layout sent to the board', `${(M.layoutBytes(state.deck) / 1024).toFixed(1)} KB`),
         info('Board', st ? (st.connected ? `connected on ${st.port || '?'}, firmware ${st.firmware || '?'}` : 'not connected') : 'companion not reachable'),
-        h('div', { class: 'hint', style: { marginTop: '8px' } }, 'Every save keeps the previous deck as deck.json.bak next to deck.json.'))),
+        h('div', { class: 'hint', style: { marginTop: '8px' } }, 'Every save keeps the previous deck as deck.json.bak next to deck.json.'),
+        h('div', { class: 'hint', style: { marginTop: '8px' } }, 'The key font is fixed for now: the board only has a built-in font without accents.'))),
   ));
 }
 

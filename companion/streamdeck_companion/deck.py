@@ -23,6 +23,48 @@ MAX_DESKTOPS, MAX_PAGES = 8, 16
 NP_CONTROLS = ("full", "basic")
 STATS_STYLES = ("gauges", "bars", "tiles")
 STAT_ITEMS = ("cpu", "gpu", "ram", "vram", "disk", "net")
+SOUND_THEMES = ("classic", "soft", "click", "chirp")
+# General settings of the board: name -> (kind, default, extra). Ints carry (low, high); "theme" is one of SOUND_THEMES.
+SETTINGS_SPEC = {
+    "volume": ("int", 70, (0, 100)),
+    "sounds": ("bool", True, None),            # key press sounds
+    "soundTheme": ("theme", "classic", None),
+    "navSounds": ("bool", True, None),         # folder / back sounds
+    "brightness": ("int", 255, (5, 255)),
+    "dimAfter": ("int", 0, (0, 3600)),         # seconds without a touch before the screen dims (0 = never)
+    "sleepAfter": ("int", 0, (0, 3600)),       # ... before the backlight goes off (0 = never)
+    "flip": ("bool", False, None),             # screen upside down
+    "startDesktop": ("int", 0, (0, MAX_DESKTOPS - 1)),
+    "keyRadius": ("int", 12, (0, 24)),
+    "keyGap": ("int", 6, (2, 12)),
+}
+
+
+def default_settings() -> dict:
+    return {name: default for name, (_kind, default, _extra) in SETTINGS_SPEC.items()}
+
+
+def check_settings(settings) -> dict:
+    """The settings object of a deck (or of an editor request), checked; only the keys that are present are returned."""
+    if not isinstance(settings, dict):
+        raise DeckError("'settings' must be an object")
+    out = {}
+    for name, (kind, _default, extra) in SETTINGS_SPEC.items():
+        if name not in settings:
+            continue
+        v = settings[name]
+        if kind == "int":
+            if isinstance(v, bool) or not isinstance(v, int) or not extra[0] <= v <= extra[1]:
+                raise DeckError(f"settings.{name} must be an integer {extra[0]}..{extra[1]}")
+        elif kind == "bool":
+            if not isinstance(v, bool):
+                raise DeckError(f"settings.{name} must be true or false")
+        elif v not in SOUND_THEMES:
+            raise DeckError(f"settings.{name} must be one of {', '.join(SOUND_THEMES)}")
+        out[name] = v
+    return out
+
+
 COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
@@ -56,6 +98,10 @@ class Deck:
         """The exact text sent to the board (and hashed for the CRC)."""
         return json.dumps(self.layout, separators=(",", ":"), ensure_ascii=False)
 
+    def effective_settings(self) -> dict:
+        """Every setting with its value: what deck.json says, else the default."""
+        return {**default_settings(), **self.settings}
+
     def action_at(self, desktop: int, page: int, key: int) -> dict | None:
         return self._actions.get((desktop, page, key))
 
@@ -70,21 +116,16 @@ class Deck:
         for aid, act in shared.items():
             self._check_action(act, f"actions[{aid!r}]")
 
-        settings = data.get("settings", {})
-        if not isinstance(settings, dict):
-            raise DeckError("'settings' must be an object")
-        for name, lo, hi in (("volume", 0, 100), ("brightness", 5, 255)):
-            if name in settings and not (isinstance(settings[name], int) and lo <= settings[name] <= hi):
-                raise DeckError(f"settings.{name} must be an integer {lo}..{hi}")
-        if "sounds" in settings and not isinstance(settings["sounds"], bool):
-            raise DeckError("settings.sounds must be true or false")
-        self.settings = {k: settings[k] for k in ("volume", "sounds", "brightness") if k in settings}
+        self.settings = check_settings(data.get("settings", {}))
 
         desktops = data.get("desktops")
         if not isinstance(desktops, list) or not desktops:
             raise DeckError("'desktops' must be a non-empty list")
         if len(desktops) > MAX_DESKTOPS:
             raise DeckError(f"at most {MAX_DESKTOPS} desktops")
+        if self.settings.get("startDesktop", 0) >= len(desktops):
+            self.warnings.append(f"settings.startDesktop is {self.settings['startDesktop']} but there are only "
+                                 f"{len(desktops)} desktop(s); the first one is used")
 
         out_desktops = []
         for di, d in enumerate(desktops):

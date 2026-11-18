@@ -64,6 +64,41 @@ class EditorServerTest(unittest.TestCase):
         for path in ("/app.js", "/model.js", "/style.css", "/icons.json", "/presets.json", "/templates.json", "/apps.json", "/fonts/fa.woff", "/favicon.svg", "/favicon.ico"):
             self.assertEqual(self.call("GET", path)[0], 200, path)
 
+    def test_board_settings_and_sound_endpoints(self):
+        sent = []
+        srv = EditorServer(self.deck_path, port=0, command_fn=lambda c: sent.append(c) or True)
+        srv.start()
+        self.addCleanup(srv.stop)
+        host = f"127.0.0.1:{srv.port}"
+
+        def post(path, body, **kw):
+            conn = http.client.HTTPConnection("127.0.0.1", srv.port, timeout=5)
+            h = {"Host": host, "Origin": f"http://{host}", "X-Streamdeck-Token": srv.token, "Content-Type": "application/json"}
+            h.update(kw)
+            conn.request("POST", path, body=json.dumps(body).encode("utf-8"), headers=h)
+            r = conn.getresponse()
+            out = (r.status, json.loads(r.read()))
+            conn.close()
+            return out
+
+        self.assertEqual(post("/api/board/settings", {"settings": {"volume": 30, "soundTheme": "soft", "flip": True}}),
+                         (200, {"ok": True, "sent": True}))
+        self.assertEqual(sent[-1], {"kind": "settings", "settings": {"volume": 30, "soundTheme": "soft", "flip": True}})
+        self.assertEqual(post("/api/board/sound", {"name": "nav"}), (200, {"ok": True, "sent": True}))
+        self.assertEqual(sent[-1], {"kind": "sound", "name": "nav"})
+        self.assertEqual(post("/api/board/settings", {"settings": {"volume": 300}})[0], 400)
+        self.assertEqual(post("/api/board/settings", {"nothing": 1})[0], 400)
+        self.assertEqual(post("/api/board/sound", {"name": "boom"})[0], 400)
+        self.assertEqual(post("/api/board/other", {})[0], 404)
+        self.assertEqual(post("/api/board/sound", {"name": "tap"}, **{"X-Streamdeck-Token": "wrong"})[0], 403)
+        self.assertEqual(post("/api/board/sound", {"name": "tap"}, Origin="http://evil.example")[0], 403)
+        self.assertEqual(len(sent), 2)  # nothing refused reached the board
+        # no board connected: the request is fine but nothing is sent
+        down = EditorServer(self.deck_path, port=0, command_fn=lambda c: False)
+        self.assertEqual(down.board_sound({"name": "tap"}), (200, {"ok": True, "sent": False}))
+        self.assertEqual(self.server.board_sound({"name": "tap"}), (200, {"ok": True, "sent": False}))  # no command function
+        down._httpd.server_close()
+
     def test_media_sources_endpoint(self):
         self.assertEqual(self.call("GET", "/api/media-sources")[0], 501)  # this server has no source function
         ok = EditorServer(self.deck_path, port=0, media_sources_fn=lambda: [{"id": "Chrome", "playing": True}])

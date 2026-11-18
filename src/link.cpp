@@ -15,15 +15,26 @@
 
 namespace {
 
-constexpr const char* kFirmware = "0.8.0";
+constexpr const char* kFirmware = "0.9.0";
 constexpr const char* kLayoutFile = "/layout.json";
 constexpr const char* kLayoutTmp = "/layout.tmp";
 
 struct Settings {
   int volume = 70;
-  bool sounds = true;
+  bool sounds = true;        // key sounds on / off
   int brightness = 255;
+  int theme = 0;             // sound theme, see kThemes
+  bool navSounds = true;     // folder / back sounds
+  int dimAfter = 0;          // seconds without a touch before the screen dims (0 = never)
+  int sleepAfter = 0;        // ... before the backlight switches off (0 = never)
+  bool flip = false;         // screen upside down
+  int startDesktop = 0;      // desktop shown after a layout loads / the board boots
+  int keyRadius = 12;        // key corner radius, px
+  int keyGap = 6;            // gap between keys, px
 };
+
+const char* const kThemes[] = {"classic", "soft", "click", "chirp"};
+static_assert(sizeof(kThemes) / sizeof(kThemes[0]) == kAudioThemes, "theme names and audio themes must match");
 
 Settings settings;
 Preferences prefs;
@@ -61,12 +72,37 @@ void putSettings(JsonObject o) {
   o["volume"] = settings.volume;
   o["sounds"] = settings.sounds;
   o["brightness"] = settings.brightness;
+  o["soundTheme"] = kThemes[settings.theme];
+  o["navSounds"] = settings.navSounds;
+  o["dimAfter"] = settings.dimAfter;
+  o["sleepAfter"] = settings.sleepAfter;
+  o["flip"] = settings.flip;
+  o["startDesktop"] = settings.startDesktop;
+  o["keyRadius"] = settings.keyRadius;
+  o["keyGap"] = settings.keyGap;
 }
 
 void applySettings() {
+  static int rotation = 1;
+  audioSetTheme(settings.theme);
   audioSetVolume(settings.volume);
   audioSetEnabled(settings.sounds);
-  setBacklight(static_cast<uint8_t>(settings.brightness));
+  audioSetNavSounds(settings.navSounds);
+  displaySetBrightness(settings.brightness);
+  displaySetPower(settings.dimAfter, settings.sleepAfter);
+  const int want = settings.flip ? 3 : 1;
+  if (want != rotation) {
+    rotation = want;
+    displaySetRotation(rotation);
+  }
+  uiSetKeyLook(settings.keyRadius, settings.keyGap);
+}
+
+// The desktop the board opens on; a start desktop that no longer exists means the first one.
+void showStartDesktop() {
+  const int n = uiDesktopCount();
+  const int d = settings.startDesktop < n ? settings.startDesktop : 0;
+  if (d > 0) uiShowDesktop(d, false);
 }
 
 void saveSettings() {
@@ -74,6 +110,14 @@ void saveSettings() {
   prefs.putInt("vol", settings.volume);
   prefs.putBool("snd", settings.sounds);
   prefs.putInt("bri", settings.brightness);
+  prefs.putInt("thm", settings.theme);
+  prefs.putBool("nsn", settings.navSounds);
+  prefs.putInt("dim", settings.dimAfter);
+  prefs.putInt("slp", settings.sleepAfter);
+  prefs.putBool("flp", settings.flip);
+  prefs.putInt("std", settings.startDesktop);
+  prefs.putInt("krd", settings.keyRadius);
+  prefs.putInt("kgp", settings.keyGap);
   prefs.end();
 }
 
@@ -82,6 +126,14 @@ void loadSettings() {
   settings.volume = prefs.getInt("vol", settings.volume);
   settings.sounds = prefs.getBool("snd", settings.sounds);
   settings.brightness = prefs.getInt("bri", settings.brightness);
+  settings.theme = constrain(prefs.getInt("thm", settings.theme), 0, kAudioThemes - 1);
+  settings.navSounds = prefs.getBool("nsn", settings.navSounds);
+  settings.dimAfter = prefs.getInt("dim", settings.dimAfter);
+  settings.sleepAfter = prefs.getInt("slp", settings.sleepAfter);
+  settings.flip = prefs.getBool("flp", settings.flip);
+  settings.startDesktop = prefs.getInt("std", settings.startDesktop);
+  settings.keyRadius = prefs.getInt("krd", settings.keyRadius);
+  settings.keyGap = prefs.getInt("kgp", settings.keyGap);
   prefs.end();
 }
 
@@ -101,6 +153,7 @@ bool applyLayout(const String& text, bool save, String& err) {
   if (!uiLoadLayout(text.c_str(), err)) return false;
   layoutJson = text;
   layoutCrc = fnv1a(text);
+  showStartDesktop();
   if (save && !writeLayoutFile(text)) Serial.println("[link] warning: could not store the layout");
   return true;
 }
@@ -251,16 +304,41 @@ void onAppIcon(JsonDocument& m) {
   send(d);
 }
 
+// "preview": true applies the values without storing them (the editor's live preview); they are
+// stored when the PC sends the same settings without it (on save).
 void onSettings(JsonDocument& m) {
   if (m["volume"].is<int>()) settings.volume = constrain(m["volume"].as<int>(), 0, 100);
   if (m["sounds"].is<bool>()) settings.sounds = m["sounds"].as<bool>();
   if (m["brightness"].is<int>()) settings.brightness = constrain(m["brightness"].as<int>(), 5, 255);
+  if (m["soundTheme"].is<const char*>()) {
+    const String name = m["soundTheme"].as<const char*>();
+    for (int i = 0; i < kAudioThemes; i++)
+      if (name == kThemes[i]) settings.theme = i;
+  }
+  if (m["navSounds"].is<bool>()) settings.navSounds = m["navSounds"].as<bool>();
+  if (m["dimAfter"].is<int>()) settings.dimAfter = constrain(m["dimAfter"].as<int>(), 0, 3600);
+  if (m["sleepAfter"].is<int>()) settings.sleepAfter = constrain(m["sleepAfter"].as<int>(), 0, 3600);
+  if (m["flip"].is<bool>()) settings.flip = m["flip"].as<bool>();
+  if (m["startDesktop"].is<int>()) settings.startDesktop = constrain(m["startDesktop"].as<int>(), 0, 31);
+  if (m["keyRadius"].is<int>()) settings.keyRadius = constrain(m["keyRadius"].as<int>(), 0, 24);
+  if (m["keyGap"].is<int>()) settings.keyGap = constrain(m["keyGap"].as<int>(), 2, 12);
   applySettings();
-  saveSettings();
+  if (!(m["preview"] | false)) saveSettings();
   JsonDocument d;
   d["type"] = "settings-ack";
+  d["preview"] = m["preview"] | false;
   putSettings(d.as<JsonObject>());
   send(d);
+}
+
+// {"type":"sound","name":"tap|nav|back|error"}: plays one of the UI sounds (the editor's Test buttons).
+void onSound(JsonDocument& m) {
+  const String name = m["name"] | "tap";
+  displayWake();
+  if (name == "nav") audioPlay(Sound::Nav);
+  else if (name == "back") audioPlay(Sound::Back);
+  else if (name == "error") audioPlay(Sound::Error);
+  else audioPlay(Sound::Tap);
 }
 
 void onJson(const String& line) {
@@ -278,6 +356,7 @@ void onJson(const String& line) {
     send(d);
   } else if (type == "layout") onLayoutChunk(m);
   else if (type == "settings") onSettings(m);
+  else if (type == "sound") onSound(m);
   else if (type == "np") onNowPlaying(m);
   else if (type == "stats") onStats(m);
   else if (type == "cover") onCover(m);
@@ -291,6 +370,7 @@ void onJson(const String& line) {
     layoutJson = "";
     layoutCrc = 0;
     uiLoadLayout(kDefaultLayoutJson, err);
+    showStartDesktop();
     sendLayoutAck(true, "");
   } else {
     JsonDocument d;

@@ -15,5 +15,9 @@ void uiInit(UiEventFn sink);
 bool uiLoadLayout(const char* json, String& err);
 
 int uiActiveDesktop();          // index of the desktop currently shown
-void uiShowDesktop(int index);  // programmatic swipe (debug / PC "focus" feature later)
+void uiShowDesktop(int index, bool animate = true);  // programmatic swipe (PC "focus", start desktop)
+int uiDesktopCount();
+// Look of the key grid: corner radius 0..24 and gap 2..12 px. Rebuilds the screen when it changes
+// (keeping the desktop that is shown) and returns true in that case.
+bool uiSetKeyLook(int radius, int gap);
 void uiGoBack();                // same as the on-screen back button

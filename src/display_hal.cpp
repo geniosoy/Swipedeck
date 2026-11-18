@@ -26,9 +26,45 @@ static void flushCb(lv_disp_drv_t* drv, const lv_area_t* area, lv_color_t* px) {
   lv_disp_flush_ready(drv);
 }
 
+// Screen power: after dimAfter seconds without a touch the backlight drops, after sleepAfter it goes off.
+// The touch that wakes a dimmed or sleeping screen is swallowed (reported as "not pressed" until the finger
+// lifts), so waking the board can never press a key by accident.
+namespace {
+int baseLevel = 255;
+uint32_t dimAfterMs = 0, sleepAfterMs = 0;
+uint32_t lastActivity = 0;
+enum class Power : uint8_t { Awake, Dimmed, Asleep } power = Power::Awake;
+bool swallowTouch = false;
+
+void applyLevel() {
+  switch (power) {
+    case Power::Awake: setBacklight(static_cast<uint8_t>(baseLevel)); break;
+    case Power::Dimmed: setBacklight(static_cast<uint8_t>(max(6, baseLevel / 8))); break;
+    case Power::Asleep: setBacklight(0); break;
+  }
+}
+}  // namespace
+
+void displayWake() {
+  lastActivity = millis();
+  if (power != Power::Awake) {
+    power = Power::Awake;
+    applyLevel();
+  }
+}
+
 static void touchCb(lv_indev_drv_t*, lv_indev_data_t* data) {
   touch.read();
   if (touch.isTouched) {
+    if (power != Power::Awake) {
+      displayWake();
+      swallowTouch = true;
+    }
+    lastActivity = millis();
+  } else {
+    swallowTouch = false;
+  }
+  if (touch.isTouched && !swallowTouch) {
     data->state = LV_INDEV_STATE_PR;
     data->point.x = constrain(touch.points[0].x, 0, tft.width() - 1);
     data->point.y = constrain(touch.points[0].y, 0, tft.height() - 1);
@@ -38,6 +74,24 @@ static void touchCb(lv_indev_drv_t*, lv_indev_data_t* data) {
 }
 
 void setBacklight(uint8_t level) { ledcWrite(BL_CHANNEL, level); }
+
+void displaySetBrightness(int level) {
+  baseLevel = constrain(level, 5, 255);
+  applyLevel();
+}
+
+void displaySetPower(int dimAfterSec, int sleepAfterSec) {
+  dimAfterMs = static_cast<uint32_t>(max(0, dimAfterSec)) * 1000u;
+  sleepAfterMs = static_cast<uint32_t>(max(0, sleepAfterSec)) * 1000u;
+  displayWake();  // changing the setting counts as activity (and lets the preview be seen)
+}
+
+void displaySetRotation(int rotation) {
+  rotation = constrain(rotation, 0, 3);
+  tft.setRotation(rotation);
+  touch.setRotation(rotation);
+  lv_obj_invalidate(lv_scr_act());
+}
 
 void displayBegin(int rotation) {
   rotation = constrain(rotation, 0, 3);
@@ -72,4 +126,15 @@ void displayBegin(int rotation) {
   lv_indev_drv_register(&indevDrv);
 }
 
-void displayLoop() { lv_timer_handler(); }
+void displayLoop() {
+  lv_timer_handler();
+  const uint32_t idle = millis() - lastActivity;
+  if (power == Power::Awake && dimAfterMs && idle >= dimAfterMs) {
+    power = Power::Dimmed;
+    applyLevel();
+  }
+  if (power != Power::Asleep && sleepAfterMs && idle >= sleepAfterMs) {
+    power = Power::Asleep;
+    applyLevel();
+  }
+}

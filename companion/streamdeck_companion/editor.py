@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Callable
 from urllib.parse import unquote, urlparse
 
-from .deck import Deck, DeckError
+from .deck import Deck, DeckError, check_settings
 
 log = logging.getLogger("editor")
 
@@ -102,8 +102,10 @@ def validate_preset_key(key) -> None:
 
 class EditorServer:
     def __init__(self, deck_path: str | Path, host: str = "127.0.0.1", port: int = 8765,
-                 status_fn: Callable[[], dict] | None = None, media_sources_fn: Callable[[], list] | None = None):
+                 status_fn: Callable[[], dict] | None = None, media_sources_fn: Callable[[], list] | None = None,
+                 command_fn: Callable[[dict], bool] | None = None):
         self.deck_path = Path(deck_path)
+        self._command_fn = command_fn  # Companion.submit: sends a live command to the board
         self._media_sources_fn = media_sources_fn
         self.presets_user_path = self.deck_path.with_name("presets.user.json")
         self.token = secrets.token_urlsafe(24)
@@ -236,6 +238,22 @@ class EditorServer:
                     return self._json(404, {"error": "not found"})
                 self._send(200, target.read_bytes(), ctype)
 
+            def do_POST(self):  # noqa: N802
+                raw = self._read_body()
+                if not self._guard(write=True):
+                    return
+                path = unquote(urlparse(self.path).path)
+                body = self._parse_json(raw)
+                if body is None:
+                    return
+                if path == "/api/board/settings":
+                    status, result = server.board_settings(body)
+                elif path == "/api/board/sound":
+                    status, result = server.board_sound(body)
+                else:
+                    status, result = 404, {"error": "not found"}
+                self._json(status, result)
+
             def do_PUT(self):  # noqa: N802
                 raw = self._read_body()
                 if not self._guard(write=True):
@@ -271,6 +289,24 @@ class EditorServer:
             atomic_write(self.deck_path, format_deck(data), backup=True)
         log.info("deck saved from the editor (%d bytes of layout)", size)
         return 200, {"ok": True, "warnings": warnings, "layoutBytes": size}
+
+    def board_settings(self, data) -> tuple[int, dict]:
+        """Live preview: the board applies these settings now but does not store them (saving the deck does)."""
+        try:
+            settings = check_settings(data.get("settings") if isinstance(data, dict) else None)
+        except DeckError as e:
+            return 400, {"error": str(e)}
+        if self._command_fn is None:
+            return 200, {"ok": True, "sent": False}
+        return 200, {"ok": True, "sent": bool(self._command_fn({"kind": "settings", "settings": settings}))}
+
+    def board_sound(self, data) -> tuple[int, dict]:
+        name = data.get("name") if isinstance(data, dict) else None
+        if name not in ("tap", "nav", "back", "error"):
+            return 400, {"error": "name must be tap, nav, back or error"}
+        if self._command_fn is None:
+            return 200, {"ok": True, "sent": False}
+        return 200, {"ok": True, "sent": bool(self._command_fn({"kind": "sound", "name": name}))}
 
     def presets(self) -> dict:
         builtin = json.loads((WEB / "presets.json").read_text(encoding="utf-8"))

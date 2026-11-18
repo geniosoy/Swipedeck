@@ -15,3 +15,8 @@ void audioSetVolume(int pct);  // 0..100 (codec DAC volume)
 int audioVolume();
 void audioSetAmp(bool on);     // debug: force the amplifier pin
 void audioSetEnabled(bool on); // user preference "key sounds on/off"
+void audioSetNavSounds(bool on);  // folder / back sounds on or off (key presses follow audioSetEnabled)
+
+constexpr int kAudioThemes = 4;   // 0 classic, 1 soft, 2 click, 3 chirp
+void audioSetTheme(int theme);    // rebuilds the clips (waits for a playing clip to end)
+int audioTheme();

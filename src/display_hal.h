@@ -13,5 +13,12 @@ void displayBegin(int rotation = 1);
 // Backlight brightness 0..255 (PWM on IO45).
 void setBacklight(uint8_t level);
 
+// User brightness 5..255; the screen power state (dimmed / asleep) is applied on top of it.
+void displaySetBrightness(int level);
+// Seconds of no touch before the backlight dims / switches off (0 = never). Also wakes the screen.
+void displaySetPower(int dimAfterSec, int sleepAfterSec);
+void displayWake();                 // as if the screen had been touched (without touching anything)
+void displaySetRotation(int rotation);  // 1 = normal landscape, 3 = upside down (the case mounted the other way)
+
 // Call regularly from loop() (or the UI task); runs LVGL timers and redraws.
 void displayLoop();

@@ -7,14 +7,29 @@ export const DEFAULT_KEY_COLOR = '#2A3A4D';
 
 export const clone = (v) => JSON.parse(JSON.stringify(v));
 
+// ---- general settings -----------------------------------------------------------------------------------
+
+// Mirrors SETTINGS_SPEC in deck.py. A setting that is missing from deck.json means its default.
+export const SETTING_DEFAULTS = {
+  volume: 70, sounds: true, soundTheme: 'classic', navSounds: true, brightness: 255, dimAfter: 0, sleepAfter: 0,
+  flip: false, startDesktop: 0, keyRadius: 12, keyGap: 6,
+};
+export const SOUND_THEMES = [
+  ['classic', 'Classic', 'A crisp tick; a rising chirp for folders'],
+  ['soft', 'Soft', 'Low and round'],
+  ['click', 'Click', 'Very short, like a mechanical switch'],
+  ['chirp', 'Chirp', 'Bubbly, like an old game'],
+];
+export const resolveSettings = (deck) => ({ ...SETTING_DEFAULTS, ...((deck && deck.settings) || {}) });
+
 // ---- keys ------------------------------------------------------------------------------------------
 
 export const isEmptyKey = (k) => !k || Object.keys(k).length === 0;
 export const keyKind = (k) => (isEmptyKey(k) ? 'empty' : k.folder ? 'folder' : 'action');
 
 // Same math as the firmware (buildPage in src/ui.cpp): padding 6, gap 6, the tile is 320 x 210.
-export function geometry(cols, rows, w = SCREEN.w, h = SCREEN.h - SCREEN.header) {
-  const pad = 6, gap = 6;
+export function geometry(cols, rows, w = SCREEN.w, h = SCREEN.h - SCREEN.header, gap = SETTING_DEFAULTS.keyGap) {
+  const pad = 6;
   const keyW = Math.floor((w - 2 * pad - (cols - 1) * gap) / cols);
   const keyH = Math.floor((h - 2 * pad - (rows - 1) * gap) / rows);
   return {

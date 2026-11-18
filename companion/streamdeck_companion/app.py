@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import queue
 import time
 from pathlib import Path
 from typing import Callable
@@ -44,6 +45,7 @@ class Companion:
         self._active_desktop = 0       # which desktop the board is showing
         self._shown_kind = "keys"      # kind of that desktop: keys | nowplaying | stats
         # What the web editor shows in its status line (read from another thread; plain values only).
+        self._commands: queue.Queue = queue.Queue(maxsize=64)  # from the web editor's thread (see submit)
         self.status: dict = {"connected": False, "port": None, "firmware": None, "layoutCrc": None,
                              "desktop": 0, "kind": "keys"}
         self.load_deck(first=True)
@@ -73,6 +75,39 @@ class Companion:
             return self.deck_path.stat().st_mtime != self._deck_mtime
         except OSError:
             return False
+
+    # -- commands from the web editor (another thread) ------------------------------------------
+
+    def submit(self, command: dict) -> bool:
+        """Queues a command for the board: {"kind": "settings", "settings": {...}} (live preview, not stored on the
+        board) or {"kind": "sound", "name": "tap|nav|back|error"}. Returns False when no board is connected."""
+        if not self.status.get("connected"):
+            return False
+        try:
+            self._commands.put_nowait(command)
+        except queue.Full:
+            return False
+        return True
+
+    def _run_commands(self, board) -> None:
+        pending: list[dict] = []
+        while True:
+            try:
+                pending.append(self._commands.get_nowait())
+            except queue.Empty:
+                break
+        if not pending:
+            return
+        last_settings = None
+        for cmd in pending:
+            if cmd.get("kind") == "settings":
+                last_settings = cmd  # a slider drag sends many; only the newest matters
+        if last_settings is not None:  # first, so that a sound asked for in the same breath uses the new theme
+            board.send({"type": "settings", **last_settings["settings"], "preview": True})
+            self._wait_for(board, {"settings-ack"})
+        for cmd in pending:
+            if cmd.get("kind") == "sound":
+                board.send({"type": "sound", "name": str(cmd.get("name", "tap"))})
 
     # -- run loop ------------------------------------------------------------------------------
 
@@ -105,6 +140,8 @@ class Companion:
         self._active_desktop = int(hello.get("desktop") or 0)
         self._shown_kind = "keys"
         self.status.update(connected=True, firmware=hello.get("firmware"), layoutCrc=hello.get("layoutCrc"))
+        while not self._commands.empty():  # stale commands from before this connection
+            self._commands.get_nowait()
         self._push_settings(board)
         board_crc = self._sync_layout(board, hello.get("layoutCrc", ""))
         nps = NowPlayingSync()  # a new connection starts from scratch: the board may have lost its state
@@ -124,6 +161,7 @@ class Companion:
                     ping_id += 1
                     board.send({"type": "ping", "id": ping_id})
                     last_ping = now
+                self._run_commands(board)
                 self._update_live(board, nps, now)
                 if self._deck_changed() and self.load_deck():
                     self._push_settings(board)
@@ -147,8 +185,8 @@ class Companion:
         raise ConnectionError("no hello from the board (is the Streamdeck firmware flashed?)")
 
     def _push_settings(self, board) -> None:
-        if self.deck and self.deck.settings:
-            board.send({"type": "settings", **self.deck.settings})
+        if self.deck:  # the deck file is the whole truth: a setting it does not mention is at its default
+            board.send({"type": "settings", **self.deck.effective_settings()})
             self._wait_for(board, {"settings-ack"})
 
     def _sync_layout(self, board, board_crc: str) -> str:
@@ -171,7 +209,8 @@ class Companion:
                 if reply.get("crc") != crc:
                     log.warning("layout crc differs: board %s, pc %s", reply.get("crc"), crc)
                 log.info("layout accepted (crc %s)", reply.get("crc"))
-                self._active_desktop = 0  # a freshly loaded layout starts on the first desktop
+                start = int(self.deck.settings.get("startDesktop", 0))  # a freshly loaded layout opens on this one
+                self._active_desktop = start if start < len(self.deck.layout["desktops"]) else 0
                 self.status.update(layoutCrc=crc)
                 return crc
         raise ConnectionError("layout transfer ended without an acknowledgement")

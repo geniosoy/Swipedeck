@@ -14,7 +14,8 @@ namespace {
 
 constexpr int kHeaderH = 30;
 constexpr int kPad = 6;  // outer padding of the key grid
-constexpr int kGap = 6;  // gap between keys
+int keyGap = 6;     // gap between keys (user setting)
+int keyRadius = 12; // corner radius of the keys (user setting)
 
 // Key sound is played on CLICKED (release without scrolling) so that starting a swipe on top of a
 // key does not tick. Switch to LV_EVENT_PRESSED for an instant tick at touch-down.
@@ -179,8 +180,8 @@ void buildPage(int d, int p) {
   lv_obj_set_pos(cont, 0, 0);
   lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
 
-  const int keyW = (w - 2 * kPad - (page.cols - 1) * kGap) / page.cols;
-  const int keyH = (h - 2 * kPad - (page.rows - 1) * kGap) / page.rows;
+  const int keyW = (w - 2 * kPad - (page.cols - 1) * keyGap) / page.cols;
+  const int keyH = (h - 2 * kPad - (page.rows - 1) * keyGap) / page.rows;
   const lv_font_t* iconFont = keyH >= 86 ? &lv_font_montserrat_32 : keyH >= 62 ? &lv_font_montserrat_24 : &lv_font_montserrat_20;
   const lv_font_t* textFont = keyH >= 86 ? &lv_font_montserrat_16 : &lv_font_montserrat_14;
 
@@ -189,8 +190,8 @@ void buildPage(int d, int p) {
     if (key.empty) continue;
     lv_obj_t* b = lv_btn_create(cont);
     lv_obj_set_size(b, keyW, keyH);
-    lv_obj_set_pos(b, kPad + (k % page.cols) * (keyW + kGap), kPad + (k / page.cols) * (keyH + kGap));
-    lv_obj_set_style_radius(b, 12, 0);
+    lv_obj_set_pos(b, kPad + (k % page.cols) * (keyW + keyGap), kPad + (k / page.cols) * (keyH + keyGap));
+    lv_obj_set_style_radius(b, keyRadius, 0);
     lv_obj_set_style_shadow_width(b, 0, 0);
     lv_obj_set_style_border_width(b, 0, 0);
     lv_obj_set_style_bg_color(b, lv_color_hex(key.color), 0);
@@ -327,9 +328,32 @@ bool uiLoadLayout(const char* json, String& err) {
 
 int uiActiveDesktop() { return activeDesktop; }
 
-void uiShowDesktop(int index) {
+void uiShowDesktop(int index, bool animate) {
   if (index < 0 || index >= static_cast<int>(uis.size())) return;
-  lv_obj_set_tile(tv, uis[index].tile, LV_ANIM_ON);
+  lv_obj_set_tile(tv, uis[index].tile, animate ? LV_ANIM_ON : LV_ANIM_OFF);
+}
+
+int uiDesktopCount() { return static_cast<int>(uis.size()); }
+
+bool uiSetKeyLook(int radius, int gap) {
+  radius = constrain(radius, 0, 24);
+  gap = constrain(gap, 2, 12);
+  if (radius == keyRadius && gap == keyGap) return false;
+  keyRadius = radius;
+  keyGap = gap;
+  if (deck.desktops.empty()) return true;  // nothing built yet; the next layout uses the new look
+  // Only the key pages are rebuilt (their containers are deleted and the visible page is built again, the
+  // others lazily when they are opened); Now playing / stats screens keep their state.
+  for (size_t d = 0; d < uis.size(); d++) {
+    if (deck.desktops[d].kind != DeskKind::Keys) continue;
+    DesktopUi& u = uis[d];
+    for (lv_obj_t*& page : u.pages) {
+      if (page) lv_obj_del(page);
+      page = nullptr;
+    }
+    showPage(static_cast<int>(d), u.stack.back());
+  }
+  return true;
 }
 
 void uiGoBack() {

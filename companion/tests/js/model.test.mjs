@@ -20,6 +20,27 @@ test('geometry matches the firmware for the layouts in deck.json', () => {
   assert.equal(g.iconPx, 20);
 });
 
+test('the key gap changes the geometry like the firmware does', () => {
+  // 4x3 with a gap of 2: keyW = (320 - 12 - 3 * 2) / 4 = 75, keyH = (210 - 12 - 2 * 2) / 3 = 64
+  let g = M.geometry(4, 3, undefined, undefined, 2);
+  assert.deepEqual([g.keyW, g.keyH, g.gap], [75, 64, 2]);
+  assert.deepEqual(g.pos(5), { x: 6 + 77, y: 6 + 66 });
+  g = M.geometry(4, 3, undefined, undefined, 12); // the widest gap
+  assert.deepEqual([g.keyW, g.keyH], [(320 - 12 - 36) / 4, Math.floor((210 - 12 - 24) / 3)]);
+  assert.deepEqual([M.geometry(4, 3).keyW, M.geometry(4, 3).gap], [72, 6]); // no gap given: the default
+});
+
+test('settings missing from the deck are at their defaults, and the defaults match the board', () => {
+  assert.deepEqual(M.resolveSettings({}), M.SETTING_DEFAULTS);
+  assert.deepEqual(M.resolveSettings(null), M.SETTING_DEFAULTS);
+  const got = M.resolveSettings({ settings: { volume: 10, flip: true } });
+  assert.equal(got.volume, 10);
+  assert.equal(got.flip, true);
+  assert.equal(got.keyGap, 6);
+  assert.deepEqual(M.SOUND_THEMES.map(([id]) => id), ['classic', 'soft', 'click', 'chirp']);
+  assert.ok(M.SOUND_THEMES.some(([id]) => id === M.SETTING_DEFAULTS.soundTheme));
+});
+
 test('resizePage keeps keys at their row and column and reports what is lost', () => {
   const page = { cols: 3, rows: 2, keys: [{ label: 'a' }, { label: 'b' }, { label: 'c' }, { label: 'd' }, {}, { label: 'f' }] };
   assert.equal(M.resizeLoss(page, 2, 2), 2); // b? c and f fall off (column 3) -> 'c' and 'f'
