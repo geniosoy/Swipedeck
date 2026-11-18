@@ -4,15 +4,17 @@
 #include <LittleFS.h>
 #include <Preferences.h>
 #include <lvgl.h>
+#include <mbedtls/base64.h>
 
 #include "audio.h"
 #include "deck_model.h"
 #include "display_hal.h"
+#include "nowplaying.h"
 #include "ui.h"
 
 namespace {
 
-constexpr const char* kFirmware = "0.3.0";
+constexpr const char* kFirmware = "0.4.0";
 constexpr const char* kLayoutFile = "/layout.json";
 constexpr const char* kLayoutTmp = "/layout.tmp";
 
@@ -117,6 +119,7 @@ void onHello() {
   d["protocol"] = 1;
   d["firmware"] = kFirmware;
   d["uptimeMs"] = millis();
+  d["coverPx"] = kCoverPx;
   d["screen"]["w"] = lv_disp_get_hor_res(nullptr);
   d["screen"]["h"] = lv_disp_get_ver_res(nullptr);
   d["layoutCrc"] = layoutJson.isEmpty() ? "" : crcHex(layoutCrc);
@@ -154,6 +157,55 @@ void onLayoutChunk(JsonDocument& m) {
   sendLayoutAck(ok, err);
 }
 
+void onNowPlaying(JsonDocument& m) {
+  NpInfo n;
+  const String st = m["state"] | "none";
+  n.state = st == "playing" ? NpState::Playing : st == "paused" ? NpState::Paused : st == "stopped" ? NpState::Stopped : NpState::None;
+  n.title = m["title"] | "";
+  n.artist = m["artist"] | "";
+  n.album = m["album"] | "";
+  n.posMs = m["posMs"] | 0;
+  n.durMs = m["durMs"] | 0;
+  n.rate = m["rate"] | 1.0f;
+  n.canSeek = m["canSeek"] | false;
+  n.canPrev = m["canPrev"] | false;
+  n.canNext = m["canNext"] | false;
+  n.canPlay = m["canPlay"] | false;
+  npSetInfo(n);
+}
+
+void sendCoverAck(bool ok, const char* id, const char* err) {
+  JsonDocument d;
+  d["type"] = "cover-ack";
+  d["ok"] = ok;
+  if (ok) d["id"] = id;
+  else d["error"] = err;
+  send(d);
+}
+
+// Cover image in pieces of raw RGB565 (base64 in the message); stop-and-wait: one ack per piece.
+void onCover(JsonDocument& m) {
+  static uint8_t raw[4096];
+  const size_t off = m["off"] | 0;
+  const size_t total = m["total"] | 0;
+  const char* data = m["data"] | "";
+  const char* id = m["id"] | "";
+  if (off == 0 && !npCoverBegin(m["px"] | 0, total)) return sendCoverAck(false, id, "unsupported cover size");
+  size_t n = 0;
+  if (mbedtls_base64_decode(raw, sizeof raw, &n, reinterpret_cast<const uint8_t*>(data), strlen(data)) != 0 ||
+      !npCoverWrite(off, raw, n)) {
+    return sendCoverAck(false, id, "bad cover piece");
+  }
+  if (off + n < total) {
+    JsonDocument d;
+    d["type"] = "cover-part";
+    d["off"] = off;
+    send(d);
+    return;
+  }
+  sendCoverAck(npCoverEnd(), id, "incomplete cover");
+}
+
 void onSettings(JsonDocument& m) {
   if (m["volume"].is<int>()) settings.volume = constrain(m["volume"].as<int>(), 0, 100);
   if (m["sounds"].is<bool>()) settings.sounds = m["sounds"].as<bool>();
@@ -181,6 +233,9 @@ void onJson(const String& line) {
     send(d);
   } else if (type == "layout") onLayoutChunk(m);
   else if (type == "settings") onSettings(m);
+  else if (type == "np") onNowPlaying(m);
+  else if (type == "cover") onCover(m);
+  else if (type == "cover-clear") npCoverClear();
   else if (type == "focus") uiShowDesktop(m["desktop"] | 0);
   else if (type == "reset-layout") {
     if (fsOk) LittleFS.remove(kLayoutFile);

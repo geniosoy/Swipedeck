@@ -21,10 +21,26 @@ bool deckParse(const char* json, Deck& out, String& err) {
   }
 
   Deck deck;
+  bool hasNowPlaying = false;
   for (JsonObject d : ds) {
     if (static_cast<int>(deck.desktops.size()) >= kMaxDesktops) break;
     DeckDesktop dk;
     dk.name = d["name"] | "Desktop";
+    const String kind = d["kind"] | "keys";
+    if (kind == "nowplaying") {
+      if (hasNowPlaying) {
+        err = "only one nowplaying desktop is supported";
+        return false;
+      }
+      hasNowPlaying = true;
+      dk.kind = DeskKind::NowPlaying;
+      deck.desktops.push_back(std::move(dk));
+      continue;
+    }
+    if (kind != "keys") {
+      err = "unknown desktop kind '" + kind + "'";
+      return false;
+    }
     JsonArray ps = d["pages"];
     if (ps.isNull() || ps.size() == 0) {
       err = "desktop '" + dk.name + "' has no pages";

@@ -7,6 +7,7 @@
 
 #include "audio.h"
 #include "deck_model.h"
+#include "nowplaying.h"
 
 namespace {
 
@@ -82,10 +83,12 @@ void buildPage(int d, int p);
 void refreshHeader() {
   if (activeDesktop >= static_cast<int>(uis.size())) return;
   const DesktopUi& u = uis[activeDesktop];
-  const bool root = u.stack.size() <= 1;
+  const DeckDesktop& dd = deck.desktops[activeDesktop];
+  const bool media = dd.kind == DeskKind::NowPlaying;
+  const bool root = media || u.stack.size() <= 1;
   if (root) lv_obj_add_flag(hdrBack, LV_OBJ_FLAG_HIDDEN);
   else lv_obj_clear_flag(hdrBack, LV_OBJ_FLAG_HIDDEN);
-  lv_label_set_text(hdrTitle, deck.desktops[activeDesktop].pages[u.stack.back()].title.c_str());
+  lv_label_set_text(hdrTitle, media ? dd.name.c_str() : dd.pages[u.stack.back()].title.c_str());
   lv_obj_align(hdrTitle, LV_ALIGN_LEFT_MID, root ? 10 : 78, 0);
   for (size_t i = 0; i < hdrDots.size(); i++) {
     const bool on = static_cast<int>(i) == activeDesktop;
@@ -223,6 +226,7 @@ void buildPage(int d, int p) {
 
 void buildDesktops() {
   const int n = static_cast<int>(deck.desktops.size());
+  npForget();  // the old widgets are gone (lv_obj_clean of the tileview)
   uis.clear();
   uis.resize(n);
   activeDesktop = 0;
@@ -232,6 +236,10 @@ void buildDesktops() {
     u.pages.assign(deck.desktops[d].pages.size(), nullptr);
     u.stack = {0};
 
+    if (deck.desktops[d].kind == DeskKind::NowPlaying) {
+      npBuild(u.tile);
+      continue;
+    }
     showPage(d, 0);
   }
 
@@ -258,6 +266,7 @@ void buildDesktops() {
 
 void uiInit(UiEventFn eventSink) {
   sink = eventSink;
+  npInit(eventSink);
   lv_obj_t* scr = lv_scr_act();
   lv_obj_set_scrollbar_mode(scr, LV_SCROLLBAR_MODE_OFF);
   lv_obj_set_style_bg_color(scr, lv_color_hex(0x0B1220), 0);

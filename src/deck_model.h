@@ -10,6 +10,8 @@
 //    {"id":"media","title":"Media","cols":3,"rows":2,"keys":[ ... ]}
 // ]}]}
 //
+// A desktop can also be {"name":"Playing","kind":"nowplaying"}: the media screen, no pages.
+//
 // The first page of a desktop is its root. A key with "folder" opens that page (by page id);
 // every other key is an action: pressing it reports its "id" to the PC.
 #pragma once
@@ -37,9 +39,15 @@ struct DeckPage {
   std::vector<DeckKey> keys;  // cols * rows entries (row-major)
 };
 
+enum class DeskKind : uint8_t {
+  Keys,        // pages of keys (default)
+  NowPlaying,  // the live media screen (nowplaying.cpp); has no pages. At most one per deck.
+};
+
 struct DeckDesktop {
   String name;
-  std::vector<DeckPage> pages;  // pages[0] is the root
+  DeskKind kind = DeskKind::Keys;
+  std::vector<DeckPage> pages;  // pages[0] is the root (empty for NowPlaying)
 };
 
 struct Deck {
