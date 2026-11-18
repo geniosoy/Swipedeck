@@ -11,7 +11,7 @@ import io
 import unicodedata
 from dataclasses import dataclass
 
-COVER_PX_DEFAULT = 112
+COVER_PX_DEFAULT = 160  # the firmware announces its real size in hello (coverPx)
 COVER_CHUNK_BYTES = 3000   # raw bytes per message (4000 base64 chars, well below the board's line limit)
 POS_DRIFT_MS = 1500        # resend the position when the board's own clock drifts from the player's
 RESYNC_S = 10.0            # ...and anyway this often while something is playing

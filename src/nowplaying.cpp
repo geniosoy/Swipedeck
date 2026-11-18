@@ -172,17 +172,17 @@ lv_obj_t* makeLabel(lv_obj_t* parent, const lv_font_t* font, uint32_t color, int
   return l;
 }
 
+// A transport control is just its icon: no box. The touch area is the (invisible) w x h rectangle;
+// the icon turns blue while pressed and fades when the control is unavailable.
 lv_obj_t* makeButton(lv_obj_t* parent, const char* symbol, const lv_font_t* font, int x, int y, int w, int h,
-                     uint32_t color, const char* cmd, lv_obj_t** labelOut = nullptr) {
+                     const char* cmd, lv_obj_t** labelOut = nullptr) {
   lv_obj_t* b = lv_btn_create(parent);
+  lv_obj_remove_style_all(b);  // no theme background, border, shadow or press animation
   lv_obj_set_pos(b, x, y);
   lv_obj_set_size(b, w, h);
-  lv_obj_set_style_radius(b, 14, 0);
-  lv_obj_set_style_shadow_width(b, 0, 0);
-  lv_obj_set_style_bg_color(b, lv_color_hex(color), 0);
-  lv_obj_set_style_bg_color(b, lv_color_lighten(lv_color_hex(color), 70), LV_STATE_PRESSED);
-  lv_obj_set_style_bg_opa(b, LV_OPA_40, LV_STATE_DISABLED);
-  lv_obj_set_style_text_opa(b, LV_OPA_40, LV_STATE_DISABLED);
+  lv_obj_set_style_text_color(b, lv_color_white(), 0);
+  lv_obj_set_style_text_color(b, lv_color_hex(0x5B9BFF), LV_STATE_PRESSED);
+  lv_obj_set_style_text_opa(b, LV_OPA_30, LV_STATE_DISABLED);
   lv_obj_add_event_cb(b, onTransport, LV_EVENT_CLICKED, const_cast<char*>(cmd));
   lv_obj_t* l = lv_label_create(b);
   lv_obj_set_style_text_font(l, font, 0);
@@ -218,15 +218,13 @@ void npBuild(lv_obj_t* tile) {
   // cover: placeholder box with a note symbol, image on top once a cover has arrived
   coverBox = lv_obj_create(root);
   lv_obj_remove_style_all(coverBox);
-  lv_obj_set_pos(coverBox, 10, 8);
+  lv_obj_set_pos(coverBox, 8, 8);
   lv_obj_set_size(coverBox, kCoverPx, kCoverPx);
-  lv_obj_set_style_radius(coverBox, 10, 0);
-  lv_obj_set_style_clip_corner(coverBox, true, 0);
   lv_obj_set_style_bg_opa(coverBox, LV_OPA_COVER, 0);
   lv_obj_set_style_bg_color(coverBox, lv_color_hex(0x1B2838), 0);
   lv_obj_clear_flag(coverBox, LV_OBJ_FLAG_SCROLLABLE);
   coverPlaceholder = lv_label_create(coverBox);
-  lv_obj_set_style_text_font(coverPlaceholder, &lv_font_montserrat_32, 0);
+  lv_obj_set_style_text_font(coverPlaceholder, &lv_font_montserrat_40, 0);
   lv_obj_set_style_text_color(coverPlaceholder, lv_color_hex(0x55657A), 0);
   lv_label_set_text(coverPlaceholder, LV_SYMBOL_AUDIO);
   lv_obj_center(coverPlaceholder);
@@ -234,23 +232,25 @@ void npBuild(lv_obj_t* tile) {
   lv_obj_set_pos(coverImg, 0, 0);
   lv_obj_add_flag(coverImg, LV_OBJ_FLAG_HIDDEN);
 
-  const int tx = 10 + kCoverPx + 12, tw = 320 - tx - 10;
-  titleLbl = makeLabel(root, &lv_font_montserrat_20, 0xFFFFFF, tx, 10, tw);
-  artistLbl = makeLabel(root, &lv_font_montserrat_16, 0xB8C4D6, tx, 42, tw);
-  albumLbl = makeLabel(root, &lv_font_montserrat_14, 0x7F8FA6, tx, 68, tw);
+  const int tx = 8 + kCoverPx + 10, tw = 320 - tx - 8;  // text/controls column right of the cover
+  titleLbl = makeLabel(root, &lv_font_montserrat_20, 0xFFFFFF, tx, 8, tw);
+  artistLbl = makeLabel(root, &lv_font_montserrat_16, 0xB8C4D6, tx, 40, tw);
+  albumLbl = makeLabel(root, &lv_font_montserrat_14, 0x7F8FA6, tx, 64, tw);
 
-  btnPrev = makeButton(root, LV_SYMBOL_PREV, &lv_font_montserrat_24, 44, 130, 64, 44, 0x2A3A4D, "prev");
-  btnPlay = makeButton(root, LV_SYMBOL_PLAY, &lv_font_montserrat_28, 118, 128, 84, 48, 0x2F6FDB, "toggle", &playLbl);
-  btnNext = makeButton(root, LV_SYMBOL_NEXT, &lv_font_montserrat_24, 212, 130, 64, 44, 0x2A3A4D, "next");
+  // three icons side by side across the column, vertically centered on the cover
+  const int cy = 8 + kCoverPx / 2 + 14;
+  btnPrev = makeButton(root, LV_SYMBOL_PREV, &lv_font_montserrat_28, tx, cy - 26, 42, 52, "prev");
+  btnPlay = makeButton(root, LV_SYMBOL_PLAY, &lv_font_montserrat_40, tx + 42, cy - 30, 50, 60, "toggle", &playLbl);
+  btnNext = makeButton(root, LV_SYMBOL_NEXT, &lv_font_montserrat_28, tx + 92, cy - 26, 42, 52, "next");
 
-  elapsedLbl = makeLabel(root, &lv_font_montserrat_14, 0xB8C4D6, 8, 188, 46);
+  elapsedLbl = makeLabel(root, &lv_font_montserrat_14, 0xB8C4D6, 8, 184, 46);
   lv_label_set_long_mode(elapsedLbl, LV_LABEL_LONG_CLIP);
-  totalLbl = makeLabel(root, &lv_font_montserrat_14, 0xB8C4D6, 270, 188, 46);
+  totalLbl = makeLabel(root, &lv_font_montserrat_14, 0xB8C4D6, 270, 184, 46);
   lv_label_set_long_mode(totalLbl, LV_LABEL_LONG_CLIP);
   lv_obj_set_style_text_align(totalLbl, LV_TEXT_ALIGN_RIGHT, 0);
 
   slider = lv_slider_create(root);
-  lv_obj_set_pos(slider, 58, 192);
+  lv_obj_set_pos(slider, 58, 188);
   lv_obj_set_size(slider, 204, 8);
   lv_obj_set_ext_click_area(slider, 14);  // generous touch target for a small bar
   lv_obj_clear_flag(slider, LV_OBJ_FLAG_SCROLL_CHAIN);  // dragging the bar must not swipe the desktop

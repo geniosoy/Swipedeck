@@ -7,7 +7,7 @@
 
 #include "ui.h"
 
-constexpr int kCoverPx = 112;  // the PC converts covers to this square size (RGB565, little-endian)
+constexpr int kCoverPx = 160;  // the PC converts covers to this square size (RGB565, little-endian)
 
 enum class NpState : uint8_t { None, Playing, Paused, Stopped };
 
