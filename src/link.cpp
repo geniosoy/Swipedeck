@@ -14,7 +14,7 @@
 
 namespace {
 
-constexpr const char* kFirmware = "0.4.0";
+constexpr const char* kFirmware = "0.5.0";
 constexpr const char* kLayoutFile = "/layout.json";
 constexpr const char* kLayoutTmp = "/layout.tmp";
 
@@ -171,6 +171,10 @@ void onNowPlaying(JsonDocument& m) {
   n.canPrev = m["canPrev"] | false;
   n.canNext = m["canNext"] | false;
   n.canPlay = m["canPlay"] | false;
+  n.shuffle = m["shuffle"] | false;
+  n.repeat = m["repeat"] | 0;
+  n.canShuffle = m["canShuffle"] | false;
+  n.canRepeat = m["canRepeat"] | false;
   npSetInfo(n);
 }
 
@@ -190,7 +194,11 @@ void onCover(JsonDocument& m) {
   const size_t total = m["total"] | 0;
   const char* data = m["data"] | "";
   const char* id = m["id"] | "";
-  if (off == 0 && !npCoverBegin(m["px"] | 0, total)) return sendCoverAck(false, id, "unsupported cover size");
+  if (off == 0) {
+    const char* bg = m["bg"] | "";  // "#RRGGBB": screen background derived from the cover
+    const uint32_t color = (bg[0] == '#' && strlen(bg) == 7) ? strtoul(bg + 1, nullptr, 16) : 0x1B2535;
+    if (!npCoverBegin(m["px"] | 0, total, color)) return sendCoverAck(false, id, "unsupported cover size");
+  }
   size_t n = 0;
   if (mbedtls_base64_decode(raw, sizeof raw, &n, reinterpret_cast<const uint8_t*>(data), strlen(data)) != 0 ||
       !npCoverWrite(off, raw, n)) {

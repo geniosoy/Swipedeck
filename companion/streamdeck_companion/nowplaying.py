@@ -6,12 +6,13 @@ Pure logic (no Windows API here) so it can be tested: `NowPlayingSync` decides w
 from __future__ import annotations
 
 import base64
+import colorsys
 import hashlib
 import io
 import unicodedata
 from dataclasses import dataclass
 
-COVER_PX_DEFAULT = 160  # the firmware announces its real size in hello (coverPx)
+COVER_PX_DEFAULT = 140  # the firmware announces its real size in hello (coverPx)
 COVER_CHUNK_BYTES = 3000   # raw bytes per message (4000 base64 chars, well below the board's line limit)
 POS_DRIFT_MS = 1500        # resend the position when the board's own clock drifts from the player's
 RESYNC_S = 10.0            # ...and anyway this often while something is playing
@@ -30,6 +31,10 @@ class Snapshot:
     can_prev: bool = False
     can_next: bool = False
     can_play: bool = False
+    shuffle: bool = False
+    repeat: int = 0              # 0 off, 1 repeat track, 2 repeat list
+    can_shuffle: bool = False
+    can_repeat: bool = False
     cover_key: str | None = None  # id of the cover image of this track, None = no cover (yet)
 
 
@@ -67,8 +72,19 @@ def cover_key(image_bytes: bytes) -> str:
     return hashlib.sha1(image_bytes).hexdigest()[:8]
 
 
-def cover_messages(key: str, rgb565: bytes, px: int) -> list[dict]:
-    return [{"type": "cover", "id": key, "px": px, "off": off, "total": len(rgb565),
+def background_color(image_bytes: bytes) -> str:
+    """A dark, muted version of the cover's average color, "#RRGGBB" - the screen background."""
+    from PIL import Image
+
+    r, g, b = Image.open(io.BytesIO(image_bytes)).convert("RGB").resize((1, 1), Image.BOX).getpixel((0, 0))
+    h, l, s = colorsys.rgb_to_hls(r / 255, g / 255, b / 255)
+    l, s = 0.16 + 0.12 * l, min(s, 0.6)  # always dark enough for white text, hue and some color kept
+    r, g, b = (round(c * 255) for c in colorsys.hls_to_rgb(h, l, s))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def cover_messages(key: str, rgb565: bytes, px: int, bg: str = "") -> list[dict]:
+    return [{"type": "cover", "id": key, "px": px, "off": off, "total": len(rgb565), "bg": bg,
              "data": base64.b64encode(rgb565[off:off + COVER_CHUNK_BYTES]).decode("ascii")}
             for off in range(0, len(rgb565), COVER_CHUNK_BYTES)]
 
@@ -86,7 +102,8 @@ class NowPlayingSync:
         return {"type": "np", "state": s.state, "title": sanitize(s.title), "artist": sanitize(s.artist),
                 "album": sanitize(s.album), "posMs": max(0, int(s.pos_ms)), "durMs": max(0, int(s.dur_ms)),
                 "rate": round(s.rate, 3), "canSeek": s.can_seek and s.dur_ms > 0, "canPrev": s.can_prev,
-                "canNext": s.can_next, "canPlay": s.can_play}
+                "canNext": s.can_next, "canPlay": s.can_play, "shuffle": s.shuffle, "repeat": s.repeat,
+                "canShuffle": s.can_shuffle, "canRepeat": s.can_repeat}
 
     def update(self, snap: Snapshot, now: float) -> dict | None:
         """The `np` message to send now, or None when the board's own clock is still right."""

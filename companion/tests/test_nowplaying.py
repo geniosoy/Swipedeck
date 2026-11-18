@@ -4,8 +4,8 @@ import unittest
 
 from PIL import Image
 
-from streamdeck_companion.nowplaying import (NowPlayingSync, Snapshot, cover_key, cover_messages, cover_to_rgb565,
-                                             sanitize)
+from streamdeck_companion.nowplaying import (NowPlayingSync, Snapshot, background_color, cover_key, cover_messages,
+                                             cover_to_rgb565, sanitize)
 
 
 def png(w, h, color):
@@ -47,6 +47,17 @@ class CoverTest(unittest.TestCase):
         self.assertEqual(b"".join(base64.b64decode(m["data"]) for m in msgs), raw)
         self.assertEqual([m["off"] for m in msgs], list(range(0, len(raw), 3000)))
         self.assertTrue(all(m["total"] == len(raw) and len(m["data"]) <= 4000 for m in msgs))
+
+    def test_background_is_dark_and_keeps_the_hue(self):
+        for color in [(255, 0, 0), (0, 200, 255), (255, 255, 255), (0, 0, 0), (40, 200, 60)]:
+            bg = background_color(png(8, 8, color))
+            r, g, b = (int(bg[i:i + 2], 16) for i in (1, 3, 5))
+            self.assertLessEqual(max(r, g, b), 0x90, (color, bg))  # dark enough for white text
+        r, g, b = (int(background_color(png(8, 8, (255, 0, 0)))[i:i + 2], 16) for i in (1, 3, 5))
+        self.assertTrue(r > g and r > b)
+
+    def test_messages_carry_background(self):
+        self.assertEqual({m["bg"] for m in cover_messages("k", bytes(100), 10, "#112233")}, {"#112233"})
 
     def test_key_is_stable(self):
         self.assertEqual(cover_key(b"abc"), cover_key(b"abc"))
@@ -90,6 +101,14 @@ class SyncTest(unittest.TestCase):
         self.assertEqual(s.cover_action(self.snap(cover_key=None)), "clear")
         s.cover_sent = ""
         self.assertEqual(s.cover_action(self.snap(cover_key=None)), "none")
+
+    def test_shuffle_and_repeat_changes_are_sent(self):
+        s = NowPlayingSync()
+        s.update(self.snap(can_shuffle=True, can_repeat=True), 0)
+        m = s.update(self.snap(can_shuffle=True, can_repeat=True, shuffle=True, pos_ms=11_000), 1)
+        self.assertTrue(m["shuffle"])
+        m = s.update(self.snap(can_shuffle=True, can_repeat=True, shuffle=True, repeat=2, pos_ms=12_000), 2)
+        self.assertEqual((m["repeat"], m["canShuffle"], m["canRepeat"]), (2, True, True))
 
     def test_cannot_seek_without_duration(self):
         m = NowPlayingSync.message(self.snap(dur_ms=0))

@@ -5,3 +5,4 @@ winrt-Windows.Media.Control>=2
 winrt-Windows.Storage.Streams>=2
 winrt-Windows.Foundation>=2
 winrt-Windows.Foundation.Collections>=2
+winrt-Windows.Media>=2

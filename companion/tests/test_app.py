@@ -161,7 +161,7 @@ class AppTest(unittest.TestCase):
 
     def test_now_playing_sends_cover_then_state(self):
         reader = FakeReader(Snapshot(state="playing", title="Canción", artist="Ñandú", pos_ms=5000, dur_ms=200000,
-                                     can_seek=True, can_play=True), cover=("abcd1234", bytes(112 * 112 * 2)))
+                                     can_seek=True, can_play=True), cover=("abcd1234", bytes(112 * 112 * 2), "#202840"))
         board = FakeBoard(script=[None] * 3)
         app, _ = make(board, reader=reader)
         app.session(board)
@@ -172,6 +172,7 @@ class AppTest(unittest.TestCase):
         np_msg = next(m for m in board.out if m["type"] == "np")
         self.assertEqual((np_msg["title"], np_msg["artist"], np_msg["posMs"]), ("Cancion", "Nandu", 5000))
         self.assertEqual(types.count("np"), 1)  # unchanged state is not repeated
+        self.assertTrue(all(m["bg"] == "#202840" for m in board.out if m["type"] == "cover"))
 
     def test_no_cover_means_nothing_sent(self):
         reader = FakeReader(Snapshot(state="playing", title="x"), cover=None)

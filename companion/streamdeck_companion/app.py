@@ -191,14 +191,14 @@ class Companion:
             board.send({"type": "cover-clear"})
             nps.cover_sent = ""
         elif action == "send" and cover:
-            self._send_cover(board, cover[0], cover[1])
+            self._send_cover(board, cover[0], cover[1], cover[2])
             nps.cover_sent = cover[0]
         msg = nps.update(snap, now)
         if msg:
             board.send(msg)
 
-    def _send_cover(self, board, key: str, rgb565: bytes) -> None:
-        msgs = cover_messages(key, rgb565, self._cover_px)
+    def _send_cover(self, board, key: str, rgb565: bytes, bg: str) -> None:
+        msgs = cover_messages(key, rgb565, self._cover_px, bg)
         log.info("sending cover %s: %d bytes in %d message(s)", key, len(rgb565), len(msgs))
         for i, m in enumerate(msgs):
             board.send(m)

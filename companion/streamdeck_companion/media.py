@@ -11,7 +11,7 @@ import threading
 import time
 from datetime import datetime, timezone
 
-from .nowplaying import COVER_PX_DEFAULT, Snapshot, cover_key, cover_to_rgb565
+from .nowplaying import COVER_PX_DEFAULT, Snapshot, background_color, cover_key, cover_to_rgb565
 
 log = logging.getLogger("media")
 
@@ -24,7 +24,7 @@ class MediaReader:
         self.cover_px = cover_px
         self._lock = threading.Lock()
         self._snap = Snapshot()
-        self._cover: tuple[str, bytes] | None = None
+        self._cover: tuple[str, bytes, str] | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
@@ -46,13 +46,14 @@ class MediaReader:
         with self._lock:
             return self._snap
 
-    def cover(self) -> tuple[str, bytes] | None:
-        """(id, little-endian RGB565 bytes) of the current track's cover, or None."""
+    def cover(self) -> tuple[str, bytes, str] | None:
+        """(id, little-endian RGB565 bytes, background "#RRGGBB") of the current track's cover, or None."""
         with self._lock:
             return self._cover
 
     def command(self, cmd: str) -> bool:
-        """play | pause | toggle | next | prev on the current session. False if there is no session."""
+        """play | pause | toggle | next | prev | shuffle | repeat on the current session.
+        False if there is no session."""
         return self._submit(self._command(cmd))
 
     def seek(self, ms: int) -> bool:
@@ -99,10 +100,20 @@ class MediaReader:
             return
         action = {"play": s.try_play_async, "pause": s.try_pause_async, "toggle": s.try_toggle_play_pause_async,
                   "next": s.try_skip_next_async, "prev": s.try_skip_previous_async}.get(cmd)
-        if action:
+        if cmd == "shuffle":
+            await s.try_change_shuffle_active_async(not bool(s.get_playback_info().is_shuffle_active))
+        elif cmd == "repeat":
+            from winrt.windows.media import MediaPlaybackAutoRepeatMode as Repeat
+
+            current = s.get_playback_info().auto_repeat_mode
+            # off -> repeat list -> repeat track -> off (the order Spotify uses)
+            await s.try_change_auto_repeat_mode_async(Repeat({0: 2, 2: 1, 1: 0}.get(int(current or 0), 2)))
+        elif action:
             await action()
-            await asyncio.sleep(0.25)  # let the player update, then show it right away
-            await self._refresh()
+        else:
+            return
+        await asyncio.sleep(0.25)  # let the player update, then show it right away
+        await self._refresh()
 
     async def _seek(self, ms: int) -> None:
         s = self._session()
@@ -158,6 +169,8 @@ class MediaReader:
                 can_seek=bool(ctl.is_playback_position_enabled), can_prev=bool(ctl.is_previous_enabled),
                 can_next=bool(ctl.is_next_enabled),
                 can_play=bool(ctl.is_play_enabled or ctl.is_pause_enabled or ctl.is_play_pause_toggle_enabled),
+                shuffle=bool(info.is_shuffle_active), repeat=int(info.auto_repeat_mode or 0),
+                can_shuffle=bool(ctl.is_shuffle_enabled), can_repeat=bool(ctl.is_repeat_enabled),
                 cover_key=self._cover[0] if self._cover else None)
 
     async def _read_cover(self, thumbnail) -> tuple[str, bytes] | None:
@@ -171,7 +184,7 @@ class MediaReader:
             buf = Buffer(size)
             await stream.read_async(buf, size, InputStreamOptions.READ_AHEAD)
             data = bytes(memoryview(buf))
-            return cover_key(data), cover_to_rgb565(data, self.cover_px)
+            return cover_key(data), cover_to_rgb565(data, self.cover_px), background_color(data)
         except Exception as e:
             log.debug("cover not readable: %s", e)
             return None
