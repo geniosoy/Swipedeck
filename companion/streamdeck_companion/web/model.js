@@ -282,7 +282,7 @@ export function boardLayout(deck) {
       if (d.kind && d.kind !== 'keys') {
         const o = liveOptions(d);
         // the player filter stays on the PC: the board only gets how the screen looks
-        const board = d.kind === 'nowplaying' ? { tint: o.tint, album: o.album, controls: o.controls } : { style: o.style, items: o.items };
+        const board = d.kind === 'nowplaying' ? { tint: o.tint, album: o.album, controls: o.controls, appIcon: o.appIcon } : { style: o.style, items: o.items };
         return { name: d.name, kind: d.kind, options: board };
       }
       return {
@@ -353,7 +353,7 @@ export const STAT_STYLES = [
 export function liveOptions(d) {
   const o = d.options || {};
   if (d.kind === 'nowplaying') {
-    return { filter: normalizeFilter(o.filter), tint: o.tint ?? true, album: o.album ?? true, controls: o.controls || 'full' };
+    return { filter: normalizeFilter(o.filter), tint: o.tint ?? true, album: o.album ?? true, controls: o.controls || 'full', appIcon: o.appIcon ?? false };
   }
   return { style: o.style || 'gauges', items: o.items && o.items.length ? [...o.items] : STAT_ITEMS.map((x) => x.id) };
 }

@@ -11,6 +11,7 @@ import threading
 import time
 from datetime import datetime, timezone
 
+from .appicon import APP_ICON_PX, app_icon
 from .nowplaying import (COVER_PX_DEFAULT, Snapshot, background_color, choose_session, cover_key, cover_to_rgb565,
                          normalize_filter)
 
@@ -60,6 +61,9 @@ class MediaReader:
         self._fresh = threading.Event()    # a reading taken since the screen became active
         self._filter: dict = {"allow": [], "block": []}  # which players may be shown (see deck.json)
         self._selected = None   # the media session currently shown; commands go to it
+        self._icon_enabled = False                       # show the playing app's icon (option appIcon)
+        self._icon_px = APP_ICON_PX
+        self._app_icon: tuple[str, bytes] | None = None  # (key, bytes for the board) of the shown player's app
         self._previous_id: str | None = None
         self.error: str | None = None
 
@@ -86,6 +90,18 @@ class MediaReader:
         """Which players may be shown: {"allow": [name parts], "block": [name parts]} (see normalize_filter)."""
         with self._lock:
             self._filter = normalize_filter(flt)
+
+    def set_app_icon(self, enabled: bool, px: int = APP_ICON_PX) -> None:
+        """Work out the icon of the player that is shown (off by default: no work is done while it is off)."""
+        with self._lock:
+            self._icon_enabled, self._icon_px = bool(enabled), px
+            if not enabled:
+                self._app_icon = None
+
+    def app_icon(self) -> tuple[str, bytes] | None:
+        """(key, RGB565 + alpha bytes) of the icon of the player that is shown, or None."""
+        with self._lock:
+            return self._app_icon
 
     def ready(self) -> bool:
         """True once a reading taken after the last activation is available (older data would be stale)."""
@@ -196,6 +212,11 @@ class MediaReader:
 
     async def _refresh(self) -> None:
         s = self._selected = self._pick_session()
+        with self._lock:
+            want_icon, icon_px = self._icon_enabled, self._icon_px
+        icon = app_icon(s.source_app_user_model_id, icon_px) if (s is not None and want_icon) else None  # cached per app
+        with self._lock:
+            self._app_icon = icon if self._icon_enabled else None
         if s is None:
             with self._lock:
                 self._snap, self._cover, self._track = Snapshot(), None, None

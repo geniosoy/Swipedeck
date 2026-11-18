@@ -125,6 +125,7 @@ window.dragApp = (from, to) => {
   to.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }));
   to.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
 };
+window.lookCheck = (text) => [...$$('#liveConfig .check')].find((l) => l.textContent.includes(text)).querySelector('input');
 window.press = (key, opts = {}) => document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...opts }));
 window.setInput = (el, value) => { el.value = value; el.dispatchEvent(new Event('input', { bubbles: true })); };
 window.drag = (from, to) => {
@@ -421,6 +422,11 @@ def main() -> int:
         cdp.js("btn('Undo').click()")
         check("undo works for settings", cdp.js("document.querySelector('.mock').dataset.tint") == "true")
         cdp.js("btn('Redo').click()")
+        check("the app icon option is off by default (nothing in the preview)", cdp.js("!lookCheck('icon of the app').checked") and cdp.js("!document.querySelector('.m-appicon')") and cdp.js("document.querySelector('.mock').dataset.appicon") == "false")
+        cdp.js("lookCheck('icon of the app').click()")
+        check("turning it on puts an icon in the preview, at the end of the time row", cdp.js("!!document.querySelector('.m-appicon')") and cdp.js("document.querySelector('.mock').dataset.appicon") == "true")
+        if shots:
+            cdp.shot(shots / "14_app_icon_option.png")
 
         print("saving")
         cdp.js("$$('.deskrow')[0].click()")  # back to the first keys desktop
@@ -455,6 +461,7 @@ def main() -> int:
         stats_options = next(d for d in saved["desktops"] if d.get("kind") == "stats")["options"]
         np_options = next(d for d in saved["desktops"] if d.get("kind") == "nowplaying")["options"]
         check("the saved file has the stats style and items", stats_options["style"] == "gauges" and stats_options["items"] == ["gpu", "net", "disk", "vram", "cpu", "ram"], str(stats_options))
+        check("the saved file turns the app icon on (it is off unless chosen)", np_options.get("appIcon") is True, str(np_options))
         check("the saved file has the player lists and the look", np_options["filter"] == {"allow": ["tidal"], "block": ["chrome"]}
               and np_options["album"] is False and np_options["controls"] == "basic" and np_options["tint"] is False, str(np_options))
         loaded = Deck(saved)

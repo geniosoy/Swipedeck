@@ -139,6 +139,7 @@ class NowPlayingSync:
         self._sent: dict | None = None
         self._sent_at = 0.0
         self.cover_sent: str | None = None  # cover id the board holds ("" = cleared)
+        self.icon_sent: str | None = None   # app icon key the board holds ("" = cleared)
 
     @staticmethod
     def message(s: Snapshot) -> dict:
@@ -174,6 +175,13 @@ class NowPlayingSync:
         """'none' | 'clear' | 'send' for the cover of this snapshot."""
         want = snap.cover_key or ""
         if want == (self.cover_sent or ""):
+            return "none"
+        return "send" if want else "clear"
+
+    def icon_action(self, key: str | None) -> str:
+        """'none' | 'clear' | 'send' for the app icon of the player that is shown (None = no player)."""
+        want = key or ""
+        if want == (self.icon_sent or ""):
             return "none"
         return "send" if want else "clear"
 

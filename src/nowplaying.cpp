@@ -57,6 +57,12 @@ size_t coverTotal = 0, coverGot = 0;
 lv_img_dsc_t coverDsc;
 uint32_t bgColor = kDefaultBg, pendingBg = kDefaultBg;
 
+// app icon: a small picture of the app that is playing, drawn next to the time when the option is on
+uint8_t* appIconBuf = nullptr;
+bool haveAppIcon = false;
+lv_img_dsc_t appIconDsc;
+lv_obj_t* appIconImg = nullptr;
+
 void emitf(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 void emitf(const char* fmt, ...) {
   if (!sink) return;
@@ -242,6 +248,18 @@ void applyCover() {
   applyBackground();
 }
 
+void applyAppIcon() {
+  if (!built || !appIconImg) return;
+  if (opts.appIcon && haveAppIcon) {
+    lv_img_cache_invalidate_src(&appIconDsc);
+    lv_img_set_src(appIconImg, &appIconDsc);
+    lv_obj_clear_flag(appIconImg, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_invalidate(appIconImg);
+  } else {
+    lv_obj_add_flag(appIconImg, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
 void tick(lv_timer_t*) { applyProgress(); }
 
 // ---- input -----------------------------------------------------------------------------------
@@ -376,6 +394,9 @@ void npBuild(lv_obj_t* tile, const NpOptions& options) {
   lv_obj_set_style_text_color(timeLbl, lv_color_white(), 0);
   lv_obj_set_style_text_opa(timeLbl, LV_OPA_60, 0);
   lv_label_set_text(timeLbl, "");
+  appIconImg = lv_img_create(root);  // right end of the time row; hidden until an icon is there and the option is on
+  lv_obj_set_pos(appIconImg, kTextX + kTextW - kAppIconPx, kTimeY + shift - 2);
+  lv_obj_add_flag(appIconImg, LV_OBJ_FLAG_HIDDEN);
 
   // thin progress line: draggable, the knob only appears while touching it
   slider = lv_slider_create(root);
@@ -426,6 +447,7 @@ void npBuild(lv_obj_t* tile, const NpOptions& options) {
   applyControls();
   applyProgress();
   applyCover();
+  applyAppIcon();
 }
 
 void npSetInfo(const NpInfo& n) {
@@ -443,6 +465,28 @@ void npSetInfo(const NpInfo& n) {
   applyTexts();
   applyControls();
   applyProgress();
+}
+
+bool npAppIconSet(int px, const uint8_t* data, size_t len) {
+  const size_t need = static_cast<size_t>(px) * px * 3;
+  if (px != kAppIconPx || len != need) return false;
+  if (!appIconBuf) appIconBuf = static_cast<uint8_t*>(heap_caps_malloc(need, MALLOC_CAP_SPIRAM));
+  if (!appIconBuf) return false;
+  memcpy(appIconBuf, data, len);
+  memset(&appIconDsc, 0, sizeof appIconDsc);
+  appIconDsc.header.cf = LV_IMG_CF_TRUE_COLOR_ALPHA;
+  appIconDsc.header.w = px;
+  appIconDsc.header.h = px;
+  appIconDsc.data_size = need;
+  appIconDsc.data = appIconBuf;
+  haveAppIcon = true;
+  applyAppIcon();
+  return true;
+}
+
+void npAppIconClear() {
+  haveAppIcon = false;
+  applyAppIcon();
 }
 
 bool npCoverBegin(int px, size_t total, uint32_t bg) {

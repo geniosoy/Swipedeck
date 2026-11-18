@@ -47,17 +47,21 @@ The companion serves a layout editor at **http://127.0.0.1:8765/** (`Streamdeck-
   the Windows key cannot be captured by a browser, so it is a tick box), typed text, open, run, lock, and multi-step
   sequences with waits.
 * **Structure:** add, rename and delete desktops and pages, reorder desktops by **dragging** them in the list (or with
-  the arrows), change a page's grid size (keys keep their row and column; you are asked before keys are removed), and set
-  the board's volume, key sounds and brightness.
+  the arrows), and change a page's grid size (keys keep their row and column; you are asked before keys are removed).
+* **General settings** (the second tab at the top): key sounds, volume and brightness of the board, plus a summary of the
+  deck (desktops, layout size, whether the board is connected).
 * **Add desktop menu** (`+ Add desktop`): the **live screens** (Now playing, PC stats; one each) and **ready-made
   desktops** you can add and then tweak: Discord, Coding (VS Code, with Git and Debug pages), OBS & streaming (F13-F24
   hotkeys to bind in OBS, with a Scenes page), Music, Windows, Browser, Editing and Gaming. They live in
   `companion/streamdeck_companion/web/templates.json`; add your own entries there (the tests validate every one).
 * **Live screen settings:** Now playing and PC stats have no keys, so the presets area gives way to their settings
   (below the preview, which follows every option):
-  * *Now playing*: which players are shown (all, only these, or all except these; add names, quick-add groups such as
-    music apps / browsers / video players, or click **Detect running players** to see what Windows has right now),
-    tint the background with the cover colors, show the album line, full or basic controls (previous / play / next).
+  * *Now playing*: two player lists that are always visible, **Only show these players** and **Never show these players**
+    (empty = no restriction), next to a searchable library of players: the ones running right now (detected on their own),
+    and common music apps, browsers and video players with their logos (a letter badge where there is no logo; names of
+    your own get a placeholder icon). Click **Only** or **Never** on a player, or drag it into a list; a player is on one
+    list at a time. Below: tint the background with the cover colors, show the album line, show the icon of the app that is
+    playing (off by default), full or basic controls (previous / play / next).
   * *PC stats*: the style (gauges, bars or tiles) and which items to show and in which order (drag or arrows).
 * **Button presets** (about 90, in 12 categories: audio, media, system, windows, editing, browser, apps, git, streaming,
   text ...): click one to place it in the selected or first empty slot, drag it onto a slot, search them, or fill the
@@ -86,8 +90,9 @@ for explanation: the real file is plain JSON.
       { "id": "media", "title": "Media", "cols": 3, "rows": 2, "keys": [ /* ... */ ] }
     ] },
     { "name": "Playing", "kind": "nowplaying", "options": {        // the media screen (at most one); options are optional
-        "filter": { "mode": "only", "apps": ["tidal", "spotify"] },  // mode: all | only | except; names matched by part
-        "tint": true, "album": true, "controls": "full" } },         // controls: full | basic
+        "filter": { "allow": ["tidal", "spotify"], "block": ["chrome"] },  // names matched by part; both lists optional
+        "tint": true, "album": true, "appIcon": false,               // appIcon: the icon of the playing app (off by default)
+        "controls": "full" } },                                      // controls: full | basic
     { "name": "PC", "kind": "stats", "options": {                   // the stats screen (at most one)
         "style": "tiles", "items": ["cpu", "gpu", "ram", "vram", "disk", "net"] } }  // style: gauges | bars | tiles
   ]
@@ -101,6 +106,8 @@ for explanation: the real file is plain JSON.
 * Icons on keys come from a built-in list of about 50 names (`mute`, `play`, `home`, `copy` ...), see `ICONS` in
   `companion/streamdeck_companion/deck.py`; an unknown name shows a warning symbol and a log warning.
 * Layouts have only been tried at a few KB; the editor warns above 30 KB.
+* **Firmware 0.8.0** (the app icon) is built but, at the time of writing, has not been flashed or tried on the board:
+  flash it before turning `appIcon` on (older firmware ignores the option and the icon messages).
 * The live-screen options are checked by the companion when it loads the deck (a wrong value is an error with a clear
   message); the board never receives the Now playing player filter.
 
@@ -112,13 +119,19 @@ draw off-screen objects, so nothing needs switching there.
 
 ## Now playing
 * **Which player:** Windows can have several media players at once (Chrome, Spotify, TIDAL ...). The `filter` option picks
-  among them: players are matched by a part of the name Windows gives them (case-insensitive: `tidal` matches
-  `TIDAL.exe`), "only" is a whitelist, "except" a blacklist. Of the allowed players one that is playing wins, and the one
-  already shown stays (two players playing at once do not make the screen flip). With nothing allowed running, the screen
-  says "Nothing playing". The filter only exists on the PC; the board just shows what it is sent. Firefox's Windows name is
-  a code rather than "firefox": use **Detect running players** in the editor to see the exact names.
+  among them with two lists of names: a player is shown unless it matches the `block` list, and, when the `allow` list is
+  not empty, only if it matches that. Names are matched by a part of the name Windows gives the player (case-insensitive:
+  `tidal` matches `TIDAL.exe`); a player on both lists is blocked. (The older `{"mode": "only|except", "apps": [...]}` form
+  is still read.) Of the allowed players one that is playing wins, and the one already shown stays (two players playing
+  at once do not make the screen flip). With no allowed player running, the screen says "Nothing playing". The filter
+  only exists on the PC; the board just shows what it is sent. Firefox's Windows name is a code rather than "firefox"
+  (the catalog lists the usual one); the editor's running-players list always shows the exact names.
+* **App icon** (`appIcon`, off by default): a small icon of the app that is playing, at the right end of the time row. The
+  companion takes the real icon Windows shows for that app (the Shell's icon for its AppUserModelID, e.g. Chrome's), and if
+  there is none, the app's logo or letter badge from the catalog (`web/apps.json`), and for unknown apps a music note.
+  It is sent once per player as a 20 x 20 picture (RGB565 + alpha). Needs firmware 0.8.0 or newer.
 * **Look options** (sent to the board): `tint` (background from the cover), `album` (album line), `controls` (`full` or
-  `basic`).
+  `basic`), `appIcon`.
 * Cover (140 x 140, square) converted on the PC to RGB565; the screen background is a dark, muted tone of the cover's
   average color. The title uses up to two lines (largest font that fits, then an ellipsis); album and artist scroll
   once in a while only when they do not fit (pause, scroll, pause, scroll back).
@@ -148,9 +161,9 @@ read shows as n/a. AMD / Intel GPUs are not read.
 
 ## Link protocol
 JSON lines over the USB serial port; the full table is in `src/link.h`. PC to board: `hello`, `ping`, chunked `layout`,
-`settings`, `focus`, `reset-layout`, `np` (media state), `cover` / `cover-clear`, `stats`. Board to PC: `hello`
-(firmware, screen size, layout CRC, cover size, visible desktop), `pong`, `layout-part` / `layout-ack`, `settings-ack`,
-`cover-part` / `cover-ack`, and the events `press`, `nav`, `desktop`, `media` (`toggle|next|prev|shuffle|repeat`),
+`settings`, `focus`, `reset-layout`, `np` (media state), `cover` / `cover-clear`, `appicon` / `appicon-clear`, `stats`.
+Board to PC: `hello` (firmware, screen size, layout CRC, cover and icon sizes, visible desktop), `pong`,
+`layout-part` / `layout-ack`, `settings-ack`, `cover-part` / `cover-ack`, `appicon-ack`, and the events `press`, `nav`, `desktop`, `media` (`toggle|next|prev|shuffle|repeat`),
 `seek`. An unchanged layout is not re-sent (FNV-1a CRC). Plain-text debug commands work on the same port:
 `ping`, `beep`, `info`, `reboot`, `vol N`, `amp 0|1`, `desktop N`, `back`.
 

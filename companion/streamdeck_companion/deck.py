@@ -40,6 +40,7 @@ class Deck:
         self.has_stats = False       # a desktop with "kind": "stats" (PC statistics)
         # Which media players the Now playing screen may show; stays on the PC (the board never sees it).
         self.np_filter: dict = {"allow": [], "block": []}
+        self.np_app_icon = False     # show the icon of the playing app (the companion draws and sends it)
         self._actions: dict[tuple[int, int, int], dict] = {}
         self.layout = self._build(data)
 
@@ -130,7 +131,7 @@ class Deck:
             opts = {}
         if not isinstance(opts, dict):
             raise DeckError(f"{where}.options must be an object")
-        known = {"nowplaying": {"filter", "tint", "album", "controls"}, "stats": {"style", "items"}}[kind]
+        known = {"nowplaying": {"filter", "tint", "album", "controls", "appIcon"}, "stats": {"style", "items"}}[kind]
         for extra in sorted(set(opts) - known):
             self.warnings.append(f"{where}.options: unknown option '{extra}' ignored")
 
@@ -161,7 +162,9 @@ class Deck:
             both = {a.lower() for a in self.np_filter["allow"]} & {b.lower() for b in self.np_filter["block"]}
             if both:
                 self.warnings.append(f"{where}.options.filter: {', '.join(sorted(both))} is on both lists (it will never be shown)")
-            return {"tint": flag("tint", True), "album": flag("album", True), "controls": choice("controls", NP_CONTROLS, "full")}
+            self.np_app_icon = flag("appIcon", False)
+            return {"tint": flag("tint", True), "album": flag("album", True), "controls": choice("controls", NP_CONTROLS, "full"),
+                    "appIcon": self.np_app_icon}
 
         items = opts.get("items", list(STAT_ITEMS))
         if not (isinstance(items, list) and items and len(items) == len(set(items)) and all(i in STAT_ITEMS for i in items)):

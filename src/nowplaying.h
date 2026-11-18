@@ -9,7 +9,8 @@
 #include "live_options.h"
 #include "ui.h"
 
-constexpr int kCoverPx = 140;  // the PC converts covers to this square size (RGB565, little-endian)
+constexpr int kCoverPx = 140;    // the PC converts covers to this square size (RGB565, little-endian)
+constexpr int kAppIconPx = 20;   // ... and the icon of the playing app to this one (RGB565 + one alpha byte per pixel)
 
 enum class NpState : uint8_t { None, Playing, Paused, Stopped };
 
@@ -31,6 +32,11 @@ void npSetInfo(const NpInfo& info);   // new state from the PC (the progress bar
 
 // Cover image, sent in pieces: Begin, Write (sequential offsets) ..., End. Shown only when complete.
 // `bg` is the screen background derived from the cover (0xRRGGBB), applied together with the image.
+// App icon: one piece, px x px pixels of RGB565 (little endian) + alpha. Shown (next to the time) only when the
+// layout's appIcon option is on.
+bool npAppIconSet(int px, const uint8_t* data, size_t len);
+void npAppIconClear();
+
 bool npCoverBegin(int px, size_t total, uint32_t bg);
 bool npCoverWrite(size_t off, const uint8_t* data, size_t len);
 bool npCoverEnd();

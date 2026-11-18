@@ -22,7 +22,8 @@ class DeckTest(unittest.TestCase):
         self.assertEqual(deck.layout["desktops"][2], {"name": "PC", "kind": "stats", "options": {
             "style": "gauges", "items": ["cpu", "gpu", "ram", "vram", "disk", "net"]}})
         self.assertEqual(deck.layout["desktops"][1], {"name": "Playing", "kind": "nowplaying", "options": {
-            "tint": True, "album": True, "controls": "full"}})
+            "tint": True, "album": True, "controls": "full", "appIcon": False}})
+        self.assertFalse(deck.np_app_icon)  # the app icon is off unless asked for
         self.assertEqual(deck.np_filter, {"allow": [], "block": []})
         self.assertEqual(deck.action_at(0, 0, 0), {"type": "hotkey", "keys": "volume_mute"})
         self.assertIsNone(deck.action_at(0, 0, 4))  # folder key has no action
@@ -72,7 +73,7 @@ class DeckTest(unittest.TestCase):
             {"name": "S", "kind": "stats", "options": {"style": "tiles", "items": ["ram", "cpu"]}}]})
         np, stats = deck.layout["desktops"]
         # the player filter stays on the PC: the board only gets how the screen looks
-        self.assertEqual(np["options"], {"tint": False, "album": True, "controls": "basic"})
+        self.assertEqual(np["options"], {"tint": False, "album": True, "controls": "basic", "appIcon": False})
         self.assertNotIn("filter", json.dumps(deck.layout))
         self.assertEqual(deck.np_filter, {"allow": ["tidal", "spotify"], "block": []})  # the older form is converted
         newer = Deck({"desktops": [{"name": "P", "kind": "nowplaying", "options": {"filter": {"allow": ["tidal"], "block": ["chrome"]}}}]})
@@ -96,6 +97,13 @@ class DeckTest(unittest.TestCase):
         for data in bad:
             with self.assertRaises(DeckError, msg=str(data)):
                 Deck(data)
+
+    def test_app_icon_option(self):
+        on = Deck({"desktops": [{"name": "P", "kind": "nowplaying", "options": {"appIcon": True}}]})
+        self.assertTrue(on.np_app_icon)
+        self.assertTrue(on.layout["desktops"][0]["options"]["appIcon"])   # the board needs to know
+        with self.assertRaises(DeckError):
+            Deck({"desktops": [{"name": "P", "kind": "nowplaying", "options": {"appIcon": "yes"}}]})
 
     def test_an_app_on_both_lists_is_reported(self):
         deck = Deck({"desktops": [{"name": "P", "kind": "nowplaying", "options": {"filter": {"allow": ["Tidal"], "block": ["tidal"]}}}]})

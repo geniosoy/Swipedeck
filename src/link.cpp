@@ -15,7 +15,7 @@
 
 namespace {
 
-constexpr const char* kFirmware = "0.7.0";
+constexpr const char* kFirmware = "0.8.0";
 constexpr const char* kLayoutFile = "/layout.json";
 constexpr const char* kLayoutTmp = "/layout.tmp";
 
@@ -121,6 +121,7 @@ void onHello() {
   d["firmware"] = kFirmware;
   d["uptimeMs"] = millis();
   d["coverPx"] = kCoverPx;
+  d["iconPx"] = kAppIconPx;
   d["desktop"] = uiActiveDesktop();
   d["screen"]["w"] = lv_disp_get_hor_res(nullptr);
   d["screen"]["h"] = lv_disp_get_ver_res(nullptr);
@@ -236,6 +237,20 @@ void onCover(JsonDocument& m) {
   sendCoverAck(npCoverEnd(), id, "incomplete cover");
 }
 
+// The icon of the playing app: one small message (20 x 20 x 3 bytes as base64).
+void onAppIcon(JsonDocument& m) {
+  static uint8_t raw[2048];
+  const char* data = m["data"] | "";
+  size_t n = 0;
+  const bool ok = strlen(data) < 3000 &&
+                  mbedtls_base64_decode(raw, sizeof raw, &n, reinterpret_cast<const uint8_t*>(data), strlen(data)) == 0 &&
+                  npAppIconSet(m["px"] | 0, raw, n);
+  JsonDocument d;
+  d["type"] = "appicon-ack";
+  d["ok"] = ok;
+  send(d);
+}
+
 void onSettings(JsonDocument& m) {
   if (m["volume"].is<int>()) settings.volume = constrain(m["volume"].as<int>(), 0, 100);
   if (m["sounds"].is<bool>()) settings.sounds = m["sounds"].as<bool>();
@@ -267,6 +282,8 @@ void onJson(const String& line) {
   else if (type == "stats") onStats(m);
   else if (type == "cover") onCover(m);
   else if (type == "cover-clear") npCoverClear();
+  else if (type == "appicon") onAppIcon(m);
+  else if (type == "appicon-clear") npAppIconClear();
   else if (type == "focus") uiShowDesktop(m["desktop"] | 0);
   else if (type == "reset-layout") {
     if (fsOk) LittleFS.remove(kLayoutFile);

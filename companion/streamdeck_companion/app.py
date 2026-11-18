@@ -10,6 +10,7 @@ from typing import Callable
 from .actions import Executor
 from .deck import Deck, DeckError
 from .link import open_board
+from .appicon import APP_ICON_PX, appicon_message
 from .nowplaying import COVER_PX_DEFAULT, NowPlayingSync, cover_messages
 from .protocol import crc_hex, layout_messages
 
@@ -36,6 +37,7 @@ class Companion:
         self._reader = reader          # MediaReader-like: snapshot(), cover(), command(), seek()
         self._media = media            # False (--no-media) never touches the Windows media API
         self._cover_px = COVER_PX_DEFAULT
+        self._icon_px = APP_ICON_PX
         self._stats = stats            # StatsReader-like: set_active(), latest()
         self._stats_enabled = stats_enabled
         self._stats_sent = 0           # sequence number of the last sample sent to the board
@@ -61,6 +63,7 @@ class Companion:
         self.deck = deck
         if self._reader is not None:
             self._reader.set_filter(deck.np_filter)
+            self._reader.set_app_icon(deck.np_app_icon, self._icon_px)
         self._deck_mtime = self.deck_path.stat().st_mtime
         log.info("deck loaded: %d desktop(s)", len(deck.layout["desktops"]))
         return True
@@ -98,6 +101,7 @@ class Companion:
         log.info("board firmware %s, screen %sx%s, layout crc %r", hello.get("firmware"),
                  hello.get("screen", {}).get("w"), hello.get("screen", {}).get("h"), hello.get("layoutCrc"))
         self._cover_px = int(hello.get("coverPx") or COVER_PX_DEFAULT)
+        self._icon_px = int(hello.get("iconPx") or APP_ICON_PX)
         self._active_desktop = int(hello.get("desktop") or 0)
         self._shown_kind = "keys"
         self.status.update(connected=True, firmware=hello.get("firmware"), layoutCrc=hello.get("layoutCrc"))
@@ -212,6 +216,7 @@ class Companion:
             reader = self._media_reader()
             if reader is not None:
                 reader.set_filter(self.deck.np_filter)
+                reader.set_app_icon(self.deck.np_app_icon, self._icon_px)
                 reader.set_active(True)
                 nps.resend()  # the board shows what we sent last: send the current state again
         if new == "stats" and old != new:
@@ -272,6 +277,15 @@ class Companion:
         elif action == "send" and cover:
             self._send_cover(board, cover[0], cover[1], cover[2])
             nps.cover_sent = cover[0]
+        if self.deck and self.deck.np_app_icon:  # the icon of the player that is shown, once per player
+            icon = reader.app_icon()
+            action = nps.icon_action(icon[0] if icon else None)
+            if action == "clear":
+                board.send({"type": "appicon-clear"})
+                nps.icon_sent = ""
+            elif action == "send" and icon:
+                board.send(appicon_message(icon[0], icon[1], self._icon_px))
+                nps.icon_sent = icon[0]
         msg = nps.update(snap, now)
         if msg:
             board.send(msg)

@@ -42,6 +42,7 @@ bool deckParse(const char* json, Deck& out, String& err) {
         dk.np.tint = options["tint"] | true;
         dk.np.album = options["album"] | true;
         dk.np.basicControls = String(options["controls"] | "full") == "basic";
+        dk.np.appIcon = options["appIcon"] | false;
       } else {
         const String style = options["style"] | "gauges";
         dk.stats.style = style == "bars" ? StatsStyle::Bars : style == "tiles" ? StatsStyle::Tiles : StatsStyle::Gauges;

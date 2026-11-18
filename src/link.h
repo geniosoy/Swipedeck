@@ -17,6 +17,10 @@
 //                                                 {"type":"cover-part","off":N} per piece, then
 //                                                 {"type":"cover-ack","ok":true,"id":".."}
 //   {"type":"cover-clear"}                        (no cover for this track)
+//   {"type":"appicon","id":"..","px":20,"data":"<base64: px*px pixels of RGB565 little endian + 1 alpha byte>"}
+//                                                 {"type":"appicon-ack","ok":true}   (icon of the playing app; shown only
+//                                                 when the layout's nowplaying option appIcon is on; hello has "iconPx")
+//   {"type":"appicon-clear"}                      (no player shown)
 //   {"type":"stats","cpu":..,"gpu":..,"ramPct":..,...}  (-1 = not available; see stats.h)
 //
 // board -> PC events from the UI (see ui.h, nowplaying.h):

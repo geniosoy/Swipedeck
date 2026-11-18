@@ -1,3 +1,4 @@
+import base64
 import unittest
 from pathlib import Path
 
@@ -93,6 +94,8 @@ class FakeReader:
         self.active = False
         self.activations = []   # every set_active call, in order
         self.filters = []       # every set_filter call
+        self.icon_calls = []    # every set_app_icon call
+        self.icon = None        # what app_icon() returns: (key, bytes) or None
 
     def set_active(self, on):
         self.active = on
@@ -100,6 +103,12 @@ class FakeReader:
 
     def set_filter(self, flt):
         self.filters.append(flt)
+
+    def set_app_icon(self, enabled, px=20):
+        self.icon_calls.append(enabled)
+
+    def app_icon(self):
+        return self.icon
 
     def ready(self):
         return self.active
@@ -260,6 +269,62 @@ class AppTest(unittest.TestCase):
         self.assertEqual(reader.activations[0], True)  # set before the reader was switched on
         np_msgs = [m for m in board.out if m["type"] == "np"]
         self.assertTrue(np_msgs)  # and the screen still works
+
+    def _icon_deck(self, enabled):
+        import json
+        import tempfile
+
+        data = json.loads(DECK.read_text(encoding="utf-8"))
+        data["desktops"][1]["options"] = {"appIcon": enabled}
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "deck.json"
+        path.write_text(json.dumps(data), encoding="utf-8")
+        return path
+
+    def test_app_icon_is_sent_once_per_player_when_enabled(self):
+        reader = FakeReader(Snapshot(state="playing", title="x"))
+        reader.icon = ("abc12345", bytes(1200))
+        board = FakeBoard(crc="x", script=[{"type": "desktop", "index": 1}, None, None, None])
+        app = Companion(self._icon_deck(True), executor=Recorder(), open_board_fn=lambda port: board, clock=Clock(), reader=reader)
+        board.on_idle = app.stop
+        app.session(board)
+        icons = [m for m in board.out if m["type"] == "appicon"]
+        self.assertEqual(len(icons), 1)                                    # not repeated while the player stays the same
+        self.assertEqual((icons[0]["id"], icons[0]["px"]), ("abc12345", 20))
+        self.assertEqual(len(base64.b64decode(icons[0]["data"])), 1200)    # 20 x 20 pixels, 3 bytes each
+        self.assertTrue(reader.icon_calls and all(reader.icon_calls))      # the reader was told to work the icon out
+
+    def test_app_icon_follows_the_player_and_is_cleared_when_none_is_shown(self):
+        reader = FakeReader(Snapshot(state="playing", title="x"))
+        reader.icon = ("one00000", bytes(1200))
+        board = FakeBoard(crc="x", script=[{"type": "desktop", "index": 1}, None, None])
+        app = Companion(self._icon_deck(True), executor=Recorder(), open_board_fn=lambda port: board, clock=Clock(), reader=reader)
+        steps = {"n": 0}
+
+        def idle():
+            steps["n"] += 1
+            if steps["n"] == 1:
+                reader.icon = ("two00000", bytes(1200))   # another player
+            elif steps["n"] == 2:
+                reader.icon = None                         # no player any more
+            elif steps["n"] > 4:
+                app.stop()
+
+        board.on_idle = idle
+        app.session(board)
+        kinds = [(m["type"], m.get("id")) for m in board.out if m["type"] in ("appicon", "appicon-clear")]
+        self.assertEqual(kinds, [("appicon", "one00000"), ("appicon", "two00000"), ("appicon-clear", None)])
+
+    def test_app_icon_is_never_sent_unless_enabled(self):
+        reader = FakeReader(Snapshot(state="playing", title="x"))
+        reader.icon = ("abc12345", bytes(1200))
+        board = FakeBoard(crc="x", script=[{"type": "desktop", "index": 1}, None, None, None])
+        app = Companion(self._icon_deck(False), executor=Recorder(), open_board_fn=lambda port: board, clock=Clock(), reader=reader)
+        board.on_idle = app.stop
+        app.session(board)
+        self.assertFalse(any(m["type"] in ("appicon", "appicon-clear") for m in board.out))
+        self.assertTrue(reader.icon_calls and not any(reader.icon_calls))  # ...and the reader does no icon work either
 
     def test_hello_tells_which_desktop_is_showing(self):
         reader = FakeReader(Snapshot(state="paused", title="x"))

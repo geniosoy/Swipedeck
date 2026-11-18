@@ -9,6 +9,7 @@ struct NpOptions {
   bool tint = true;            // background takes a muted color from the cover
   bool album = true;           // show the album line above the title
   bool basicControls = false;  // only previous / play-pause / next (no shuffle, no repeat)
+  bool appIcon = false;        // show the icon of the app that is playing (the PC sends the picture)
 };
 
 // What the PC stats screen can show, in this numbering.

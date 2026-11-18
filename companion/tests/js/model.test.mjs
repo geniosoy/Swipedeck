@@ -127,7 +127,7 @@ test('default deck: board layout has no actions and the size is small', () => {
   assert.ok(!JSON.stringify(layout).includes('"action"'));
   assert.equal(layout.desktops.length, deck.desktops.length);
   assert.ok(M.layoutBytes(deck) > 500 && M.layoutBytes(deck) < 6000);
-  assert.deepEqual(layout.desktops[1], { name: 'Playing', kind: 'nowplaying', options: { tint: true, album: true, controls: 'full' } });
+  assert.deepEqual(layout.desktops[1], { name: 'Playing', kind: 'nowplaying', options: { tint: true, album: true, controls: 'full', appIcon: false } });
 });
 
 test('history: undo, redo, and a new change clears redo', () => {
@@ -180,14 +180,18 @@ const catalog = JSON.parse(readFileSync(new URL('../../streamdeck_companion/web/
 
 test('live options: defaults, partial options, and what the board receives', () => {
   const np = { name: 'P', kind: 'nowplaying' };
-  assert.deepEqual(M.liveOptions(np), { filter: { allow: [], block: [] }, tint: true, album: true, controls: 'full' });
+  assert.deepEqual(M.liveOptions(np), { filter: { allow: [], block: [] }, tint: true, album: true, controls: 'full', appIcon: false });
   M.setOptions(np, { tint: false, filter: { allow: ['tidal'], block: ['chrome'] } });
-  assert.deepEqual(M.liveOptions(np), { filter: { allow: ['tidal'], block: ['chrome'] }, tint: false, album: true, controls: 'full' });
+  assert.deepEqual(M.liveOptions(np), { filter: { allow: ['tidal'], block: ['chrome'] }, tint: false, album: true, controls: 'full', appIcon: false });
+  M.setOptions(np, { appIcon: true });
+  assert.equal(M.liveOptions(np).appIcon, true);
+  assert.equal(M.boardLayout({ desktops: [np] }).desktops[0].options.appIcon, true); // the board has to know
+  M.setOptions(np, { appIcon: false });
   const stats = { name: 'S', kind: 'stats', options: { style: 'tiles', items: [] } };
   assert.deepEqual(M.liveOptions(stats).items, ['cpu', 'gpu', 'ram', 'vram', 'disk', 'net']); // empty = all
   assert.equal(M.liveOptions(stats).style, 'tiles');
   const board = M.boardLayout({ desktops: [np, stats] }).desktops;
-  assert.deepEqual(board[0].options, { tint: false, album: true, controls: 'full' });
+  assert.deepEqual(board[0].options, { tint: false, album: true, controls: 'full', appIcon: false });
   assert.ok(!JSON.stringify(board).includes('tidal'), 'the player filter must stay on the PC');
 });
 

@@ -362,12 +362,13 @@ function mockNowPlaying(o) {
   const icon = (name, size, cx) => h('span', { class: 'fa', style: abs({ left: px(cx - 32), width: px(64), top: px(162), height: px(48), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: px(size) }) }, glyph(name));
   const controls = [icon('prev', 28, 96), icon('play', 28, 160), icon('next', 28, 224)];
   if (o.controls === 'full') controls.unshift(icon('shuffle', 24, 32)), controls.push(icon('loop', 24, 288));
-  return h('div', { class: 'mock', dataset: { tint: o.tint, album: o.album, controls: o.controls }, style: { background: o.tint ? '#2a2140' : '#1b2535' } },
+  return h('div', { class: 'mock', dataset: { tint: o.tint, album: o.album, controls: o.controls, appicon: o.appIcon }, style: { background: o.tint ? '#2a2140' : '#1b2535' } },
     h('div', { style: abs({ left: px(9), top: px(9), width: px(140), height: px(140), background: o.tint ? '#3d3158' : '#2c3a52', display: 'flex', alignItems: 'center', justifyContent: 'center' }) }, fa('audio', 40, { opacity: .4 })),
     o.album ? h('div', { class: 'm-album', style: abs({ left: px(161), top: px(8), fontSize: px(14), opacity: .6 }) }, 'Album') : null,
     h('div', { style: abs({ left: px(161), top: px(28 + shift), right: px(9), fontSize: px(28), lineHeight: 1.15 }) }, 'Song title'),
     h('div', { style: abs({ left: px(161), top: px(100 + shift), fontSize: px(16), opacity: .9 }) }, 'Artist'),
     h('div', { style: abs({ left: px(161), top: px(134 + shift), fontSize: px(14), opacity: .6 }) }, '1:23 / 3:45'),
+    o.appIcon ? h('span', { class: 'm-appicon fa', style: abs({ left: px(291), top: px(132 + shift), fontSize: px(18), color: '#1DB954' }) }, String.fromCodePoint(0xf1bc)) : null,
     h('div', { style: abs({ left: 0, right: 0, top: px(158), height: px(4), background: 'rgba(255,255,255,.3)' }) }, h('div', { style: { width: '38%', height: '100%', background: '#fff' } })),
     h('div', { style: abs({ left: 0, right: 0, top: px(162), height: px(48), background: o.tint ? '#0d0a14' : '#0b0f17' }) }),
     controls);
@@ -882,6 +883,8 @@ function nowPlayingConfig(d) {
   const look = h('div', { class: 'card' }, h('h4', {}, 'Look'),
     checkRow('Tint the background with the cover colors', o.tint, (v) => setOpt({ tint: v })),
     checkRow('Show the album line', o.album, (v) => setOpt({ album: v })),
+    checkRow('Show the icon of the app that is playing', o.appIcon, (v) => setOpt({ appIcon: v })),
+    h('div', { class: 'hint', style: { marginLeft: '24px' } }, 'A small icon next to the time: the app\u2019s own icon from Windows when it has one, otherwise its logo or a letter. Off by default.'),
     h('div', { class: 'lab', style: { marginTop: '8px' } }, 'Controls'),
     radioRow('npctl', 'Full', 'full', o.controls, (v) => setOpt({ controls: v }), 'shuffle, previous, play/pause, next, repeat'),
     radioRow('npctl', 'Basic', 'basic', o.controls, (v) => setOpt({ controls: v }), 'previous, play/pause, next'));
