@@ -122,6 +122,11 @@ class NowPlayingSync:
             return self._remember(msg, now)
         return None
 
+    def resend(self) -> None:
+        """Forget what was sent, so the next update sends the full state (screen became visible again).
+        The cover the board holds is kept: it is only re-sent when the track's cover differs."""
+        self._sent = None
+
     def cover_action(self, snap: Snapshot) -> str:
         """'none' | 'clear' | 'send' for the cover of this snapshot."""
         want = snap.cover_key or ""

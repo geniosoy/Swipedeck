@@ -31,6 +31,7 @@ class Deck:
         self.settings: dict = {}
         self.warnings: list[str] = []
         self.has_nowplaying = False  # a desktop with "kind": "nowplaying" (live media screen)
+        self.has_stats = False       # a desktop with "kind": "stats" (PC statistics)
         self._actions: dict[tuple[int, int, int], dict] = {}
         self.layout = self._build(data)
 
@@ -81,13 +82,13 @@ class Deck:
             where = f"desktops[{di}]"
             name = d.get("name", f"Desktop {di + 1}")
             kind = d.get("kind", "keys")
-            if kind not in ("keys", "nowplaying"):
-                raise DeckError(f"{where}: kind must be 'keys' or 'nowplaying'")
-            if kind == "nowplaying":
-                if self.has_nowplaying:
-                    raise DeckError(f"{where}: only one 'nowplaying' desktop is supported")
-                self.has_nowplaying = True
-                out_desktops.append({"name": name, "kind": "nowplaying"})
+            if kind not in ("keys", "nowplaying", "stats"):
+                raise DeckError(f"{where}: kind must be 'keys', 'nowplaying' or 'stats'")
+            if kind in ("nowplaying", "stats"):
+                if getattr(self, f"has_{kind}"):
+                    raise DeckError(f"{where}: only one '{kind}' desktop is supported")
+                setattr(self, f"has_{kind}", True)
+                out_desktops.append({"name": name, "kind": kind})
                 continue
             pages = d.get("pages")
             if not isinstance(pages, list) or not pages:

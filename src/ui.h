@@ -14,5 +14,6 @@ void uiInit(UiEventFn sink);
 // in which case the previous layout stays on screen.
 bool uiLoadLayout(const char* json, String& err);
 
+int uiActiveDesktop();          // index of the desktop currently shown
 void uiShowDesktop(int index);  // programmatic swipe (debug / PC "focus" feature later)
 void uiGoBack();                // same as the on-screen back button

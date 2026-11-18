@@ -16,8 +16,9 @@ class DeckTest(unittest.TestCase):
     def test_default_deck_is_valid_and_has_no_warnings(self):
         deck = Deck.load(ROOT / "deck.json")
         self.assertEqual(deck.warnings, [])
-        self.assertEqual(len(deck.layout["desktops"]), 4)
-        self.assertTrue(deck.has_nowplaying)
+        self.assertEqual(len(deck.layout["desktops"]), 5)
+        self.assertTrue(deck.has_nowplaying and deck.has_stats)
+        self.assertEqual(deck.layout["desktops"][2], {"name": "PC", "kind": "stats"})
         self.assertEqual(deck.layout["desktops"][1], {"name": "Playing", "kind": "nowplaying"})
         self.assertEqual(deck.action_at(0, 0, 0), {"type": "hotkey", "keys": "volume_mute"})
         self.assertIsNone(deck.action_at(0, 0, 4))  # folder key has no action
@@ -55,6 +56,10 @@ class DeckTest(unittest.TestCase):
             Deck({"desktops": [np, dict(np)]})  # only one
         with self.assertRaises(DeckError):
             Deck({"desktops": [{"name": "P", "kind": "weird"}]})
+        st = {"name": "S", "kind": "stats"}
+        Deck({"desktops": [np, st]})
+        with self.assertRaises(DeckError):
+            Deck({"desktops": [st, dict(st)]})
 
     def test_warnings(self):
         d = Deck(simple([{"label": "X", "icon": "nonexistent", "action": {"type": "lock"}},

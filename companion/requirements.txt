@@ -1,5 +1,7 @@
 pyserial>=3.5
 pillow>=10
+psutil>=5.9
+nvidia-ml-py>=12
 winrt-runtime>=2
 winrt-Windows.Media.Control>=2
 winrt-Windows.Storage.Streams>=2

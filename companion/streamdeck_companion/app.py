@@ -24,7 +24,7 @@ ACK_TIMEOUT = 5.0
 class Companion:
     def __init__(self, deck_path: str | Path, port: str | None = None, executor: Executor | None = None,
                  open_board_fn: Callable = open_board, clock: Callable[[], float] = time.monotonic,
-                 reader=None, media: bool = True):
+                 reader=None, media: bool = True, stats=None, stats_enabled: bool = True):
         self.deck_path = Path(deck_path)
         self.port = port
         self.executor = executor or Executor()
@@ -36,6 +36,11 @@ class Companion:
         self._reader = reader          # MediaReader-like: snapshot(), cover(), command(), seek()
         self._media = media            # False (--no-media) never touches the Windows media API
         self._cover_px = COVER_PX_DEFAULT
+        self._stats = stats            # StatsReader-like: set_active(), latest()
+        self._stats_enabled = stats_enabled
+        self._stats_sent = 0           # sequence number of the last sample sent to the board
+        self._active_desktop = 0       # which desktop the board is showing
+        self._shown_kind = "keys"      # kind of that desktop: keys | nowplaying | stats
         self.load_deck(first=True)
 
     # -- deck ----------------------------------------------------------------------------------
@@ -86,28 +91,34 @@ class Companion:
         log.info("board firmware %s, screen %sx%s, layout crc %r", hello.get("firmware"),
                  hello.get("screen", {}).get("w"), hello.get("screen", {}).get("h"), hello.get("layoutCrc"))
         self._cover_px = int(hello.get("coverPx") or COVER_PX_DEFAULT)
+        self._active_desktop = int(hello.get("desktop") or 0)
+        self._shown_kind = "keys"
         self._push_settings(board)
         board_crc = self._sync_layout(board, hello.get("layoutCrc", ""))
         nps = NowPlayingSync()  # a new connection starts from scratch: the board may have lost its state
 
         last_rx = last_ping = self._clock()
         ping_id = 0
-        while not self._stop:
-            msg = board.read()
-            now = self._clock()
-            if msg is not None:
-                last_rx = now
-                self.handle(msg)
-            if now - last_rx > SILENCE_LIMIT:
-                raise ConnectionError("board stopped answering")
-            if now - last_ping >= PING_EVERY:
-                ping_id += 1
-                board.send({"type": "ping", "id": ping_id})
-                last_ping = now
-            self._pump_nowplaying(board, nps, now)
-            if self._deck_changed() and self.load_deck():
-                self._push_settings(board)
-                board_crc = self._sync_layout(board, board_crc)
+        try:
+            while not self._stop:
+                msg = board.read()
+                now = self._clock()
+                if msg is not None:
+                    last_rx = now
+                    self.handle(msg)
+                if now - last_rx > SILENCE_LIMIT:
+                    raise ConnectionError("board stopped answering")
+                if now - last_ping >= PING_EVERY:
+                    ping_id += 1
+                    board.send({"type": "ping", "id": ping_id})
+                    last_ping = now
+                self._update_live(board, nps, now)
+                if self._deck_changed() and self.load_deck():
+                    self._push_settings(board)
+                    board_crc = self._sync_layout(board, board_crc)
+        finally:
+            self._switch_live(self._shown_kind, "keys", nps)  # the link is gone: stop all background work
+            self._shown_kind = "keys"
 
     # -- protocol steps ------------------------------------------------------------------------
 
@@ -148,6 +159,7 @@ class Companion:
                 if reply.get("crc") != crc:
                     log.warning("layout crc differs: board %s, pc %s", reply.get("crc"), crc)
                 log.info("layout accepted (crc %s)", reply.get("crc"))
+                self._active_desktop = 0  # a freshly loaded layout starts on the first desktop
                 return crc
         raise ConnectionError("layout transfer ended without an acknowledgement")
 
@@ -161,6 +173,62 @@ class Companion:
                 return msg
             self.handle(msg)  # key presses etc. that arrive meanwhile are not lost
         raise ConnectionError(f"timeout waiting for {sorted(types)}")
+
+    # -- live screens (now playing, stats): work only while their desktop is visible ----------------
+
+    def _kind_of(self, index: int) -> str:
+        desktops = self.deck.layout["desktops"] if self.deck else []
+        return desktops[index].get("kind", "keys") if 0 <= index < len(desktops) else "keys"
+
+    def _update_live(self, board, nps: NowPlayingSync, now: float) -> None:
+        kind = self._kind_of(self._active_desktop)
+        if kind != self._shown_kind:
+            self._switch_live(self._shown_kind, kind, nps)
+            self._shown_kind = kind
+        if kind == "nowplaying":
+            self._pump_nowplaying(board, nps, now)
+        elif kind == "stats":
+            self._pump_stats(board)
+
+    def _switch_live(self, old: str, new: str, nps: NowPlayingSync) -> None:
+        """Stops the background work of the screen that was left, starts that of the one entered."""
+        if old != new:
+            log.debug("screen %s -> %s", old, new)
+        if old == "nowplaying" and old != new and self._reader is not None:
+            self._reader.set_active(False)
+        if old == "stats" and old != new and self._stats is not None:
+            self._stats.set_active(False)
+        if new == "nowplaying" and old != new:
+            reader = self._media_reader()
+            if reader is not None:
+                reader.set_active(True)
+                nps.resend()  # the board shows what we sent last: send the current state again
+        if new == "stats" and old != new:
+            stats = self._stats_reader()
+            if stats is not None:
+                stats.set_active(True)
+                self._stats_sent = 0
+
+    def _stats_reader(self):
+        if not self._stats_enabled or not (self.deck and self.deck.has_stats):
+            return None
+        if self._stats is None:
+            from .stats import StatsReader
+
+            reader = StatsReader()
+            if not reader.start():
+                log.warning("Stats disabled: %s", reader.error)
+                self._stats_enabled = False
+                return None
+            self._stats = reader
+        return self._stats
+
+    def _pump_stats(self, board) -> None:
+        stats = self._stats_reader()
+        latest = stats.latest() if stats is not None else None
+        if latest is not None and latest[0] != self._stats_sent:
+            self._stats_sent = latest[0]
+            board.send({"type": "stats", **latest[1]})
 
     # -- now playing -----------------------------------------------------------------------------
 
@@ -182,7 +250,7 @@ class Companion:
 
     def _pump_nowplaying(self, board, nps: NowPlayingSync, now: float) -> None:
         reader = self._media_reader()
-        if reader is None:
+        if reader is None or not reader.ready():  # not before the first reading since the screen appeared
             return
         cover = reader.cover()
         snap = dataclasses.replace(reader.snapshot(), cover_key=cover[0] if cover else None)
@@ -232,7 +300,10 @@ class Companion:
         elif kind == "seek":
             if self._reader is not None and "posMs" in msg:
                 self._reader.seek(int(msg["posMs"]))
-        elif kind in ("nav", "desktop"):
+        elif kind == "desktop":
+            self._active_desktop = int(msg.get("index", 0))
+            log.debug("board: %s", msg)
+        elif kind == "nav":
             log.debug("board: %s", msg)
         elif kind == "error":
             log.warning("board error: %s", msg.get("error"))

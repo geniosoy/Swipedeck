@@ -42,6 +42,7 @@
       ]
     },
     { "name": "Playing", "kind": "nowplaying" },
+    { "name": "PC", "kind": "stats" },
     {
       "name": "Work",
       "pages": [

@@ -12,8 +12,8 @@ DECK = Path(__file__).resolve().parent.parent / "deck.json"
 class FakeBoard:
     """Speaks the firmware's protocol (see src/link.h). `script` lists messages to emit after the link is up."""
 
-    def __init__(self, crc="", accept=True, script=(), silent=False):
-        self.crc, self.accept, self.silent = crc, accept, silent
+    def __init__(self, crc="", accept=True, script=(), silent=False, desktop=0):
+        self.crc, self.accept, self.silent, self.desktop = crc, accept, silent, desktop
         self.script = list(script)
         self.out = []          # what the companion sent
         self.inbox = []        # what the board will "send" next
@@ -29,7 +29,7 @@ class FakeBoard:
         t = msg["type"]
         if t == "hello":
             self.inbox.append({"type": "hello", "protocol": 1, "firmware": "t", "screen": {"w": 320, "h": 240},
-                               "layoutCrc": self.crc})
+                               "layoutCrc": self.crc, "desktop": self.desktop})
         elif t == "ping":
             self.inbox.append({"type": "pong", "id": msg["id"]})
         elif t == "settings":
@@ -47,6 +47,8 @@ class FakeBoard:
                 self.inbox.append({"type": "layout-part", "seq": msg["seq"]})
             elif self.accept:
                 self.crc = crc_hex("".join(self.layout_parts))
+                self.desktop = 0  # like the real board: a freshly loaded layout starts on the first desktop
+                self.inbox.append({"type": "desktop", "index": 0})
                 self.inbox.append({"type": "layout-ack", "ok": True, "crc": self.crc})
             else:
                 self.inbox.append({"type": "layout-ack", "ok": False, "error": "nope"})
@@ -88,6 +90,15 @@ class FakeReader:
         self.cv = cover
         self.handled = handled
         self.commands, self.seeks = [], []
+        self.active = False
+        self.activations = []   # every set_active call, in order
+
+    def set_active(self, on):
+        self.active = on
+        self.activations.append(on)
+
+    def ready(self):
+        return self.active
 
     def snapshot(self):
         return self.snap
@@ -104,10 +115,27 @@ class FakeReader:
         return True
 
 
-def make(board, clock=None, reader=None):
+class FakeStats:
+    def __init__(self):
+        self.active = False
+        self.activations = []
+        self.seq = 0
+
+    def set_active(self, on):
+        self.active = on
+        self.activations.append(on)
+
+    def latest(self):
+        if not self.active:
+            return None
+        self.seq += 1
+        return (self.seq, {"cpu": 12, "gpu": 3})
+
+
+def make(board, clock=None, reader=None, stats=None):
     rec = Recorder()
     app = Companion(DECK, executor=rec, open_board_fn=lambda port: board, clock=clock or Clock(),
-                    reader=reader, media=reader is not None)
+                    reader=reader, media=reader is not None, stats=stats, stats_enabled=stats is not None)
     board.on_idle = app.stop
     return app, rec
 
@@ -162,7 +190,7 @@ class AppTest(unittest.TestCase):
     def test_now_playing_sends_cover_then_state(self):
         reader = FakeReader(Snapshot(state="playing", title="Canción", artist="Ñandú", pos_ms=5000, dur_ms=200000,
                                      can_seek=True, can_play=True), cover=("abcd1234", bytes(112 * 112 * 2), "#202840"))
-        board = FakeBoard(script=[None] * 3)
+        board = FakeBoard(script=[{"type": "desktop", "index": 1}, None, None])  # swipe to Playing (index 1)
         app, _ = make(board, reader=reader)
         app.session(board)
         types = [m["type"] for m in board.out]
@@ -176,10 +204,55 @@ class AppTest(unittest.TestCase):
 
     def test_no_cover_means_nothing_sent(self):
         reader = FakeReader(Snapshot(state="playing", title="x"), cover=None)
-        board = FakeBoard(script=[None] * 2)
+        board = FakeBoard(script=[{"type": "desktop", "index": 1}, None, None])
         app, _ = make(board, reader=reader)
         app.session(board)
         self.assertFalse(any(m["type"] in ("cover", "cover-clear") for m in board.out))
+
+    def test_nothing_runs_while_a_keys_desktop_is_shown(self):
+        reader, stats = FakeReader(Snapshot(state="playing", title="x")), FakeStats()
+        board = FakeBoard(crc="x", script=[None] * 5, desktop=0)
+        app, _ = make(board, reader=reader, stats=stats)
+        app.session(board)
+        self.assertEqual(reader.activations, [])
+        self.assertEqual(stats.activations, [])
+        self.assertFalse(any(m["type"] in ("np", "stats", "cover") for m in board.out))
+
+    def test_screens_start_when_swiped_to_and_stop_when_left(self):
+        reader = FakeReader(Snapshot(state="playing", title="x"), cover=("k", bytes(100), "#101010"))
+        stats = FakeStats()
+        board = FakeBoard(crc="x", script=[
+            {"type": "desktop", "index": 1}, None, None,   # to Playing
+            {"type": "desktop", "index": 2}, None, None,   # to PC stats
+            {"type": "desktop", "index": 0}, None, None,   # back to buttons
+            {"type": "desktop", "index": 1}, None, None])  # Playing again
+        app, _ = make(board, reader=reader, stats=stats)
+        app.session(board)
+        self.assertEqual(reader.activations, [True, False, True, False])  # also stopped when the link ends
+        self.assertEqual(stats.activations, [True, False])
+        types = [m["type"] for m in board.out]
+        self.assertGreaterEqual(types.count("np"), 2)  # the full state is sent again on returning
+        self.assertTrue(any(m["type"] == "stats" and m["cpu"] == 12 for m in board.out))
+        # the stats were sent only between entering and leaving the PC desktop
+        first_stats = next(i for i, m in enumerate(board.out) if m["type"] == "stats")
+        self.assertGreater(first_stats, next(i for i, m in enumerate(board.out) if m["type"] == "np"))
+
+    def test_hello_tells_which_desktop_is_showing(self):
+        reader = FakeReader(Snapshot(state="paused", title="x"))
+        board = FakeBoard(script=[None] * 2, desktop=1)
+        app, _ = make(board, reader=reader)
+        board.crc = crc_hex(app.deck.layout_text())  # layout already on the board: it stays on desktop 1
+        app.session(board)
+        self.assertEqual(reader.activations[0], True)  # started right away: the board was already on Playing
+
+    def test_link_loss_stops_the_readers(self):
+        reader, stats = FakeReader(Snapshot(state="playing", title="x")), FakeStats()
+        board = FakeBoard(script=[{"type": "desktop", "index": 2}])  # swipe to the PC stats desktop
+        app, _ = make(board, reader=reader, stats=stats)
+        board.on_idle = lambda: setattr(board, "silent", True)
+        with self.assertRaises(ConnectionError):
+            app.session(board)
+        self.assertEqual(stats.activations, [True, False])
 
     def test_media_and_seek_messages_go_to_the_player(self):
         reader = FakeReader()

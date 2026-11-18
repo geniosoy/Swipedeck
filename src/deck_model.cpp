@@ -21,19 +21,20 @@ bool deckParse(const char* json, Deck& out, String& err) {
   }
 
   Deck deck;
-  bool hasNowPlaying = false;
+  bool hasNowPlaying = false, hasStats = false;
   for (JsonObject d : ds) {
     if (static_cast<int>(deck.desktops.size()) >= kMaxDesktops) break;
     DeckDesktop dk;
     dk.name = d["name"] | "Desktop";
     const String kind = d["kind"] | "keys";
-    if (kind == "nowplaying") {
-      if (hasNowPlaying) {
-        err = "only one nowplaying desktop is supported";
+    if (kind == "nowplaying" || kind == "stats") {
+      bool& seen = kind == "nowplaying" ? hasNowPlaying : hasStats;
+      if (seen) {
+        err = "only one " + kind + " desktop is supported";
         return false;
       }
-      hasNowPlaying = true;
-      dk.kind = DeskKind::NowPlaying;
+      seen = true;
+      dk.kind = kind == "nowplaying" ? DeskKind::NowPlaying : DeskKind::Stats;
       deck.desktops.push_back(std::move(dk));
       continue;
     }

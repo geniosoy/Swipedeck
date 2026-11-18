@@ -8,6 +8,7 @@
 #include "audio.h"
 #include "deck_model.h"
 #include "nowplaying.h"
+#include "stats.h"
 
 namespace {
 
@@ -84,11 +85,11 @@ void refreshHeader() {
   if (activeDesktop >= static_cast<int>(uis.size())) return;
   const DesktopUi& u = uis[activeDesktop];
   const DeckDesktop& dd = deck.desktops[activeDesktop];
-  const bool media = dd.kind == DeskKind::NowPlaying;
-  const bool root = media || u.stack.size() <= 1;
+  const bool live = dd.kind != DeskKind::Keys;  // now playing / stats: just a title, no pages
+  const bool root = live || u.stack.size() <= 1;
   if (root) lv_obj_add_flag(hdrBack, LV_OBJ_FLAG_HIDDEN);
   else lv_obj_clear_flag(hdrBack, LV_OBJ_FLAG_HIDDEN);
-  lv_label_set_text(hdrTitle, media ? dd.name.c_str() : dd.pages[u.stack.back()].title.c_str());
+  lv_label_set_text(hdrTitle, live ? dd.name.c_str() : dd.pages[u.stack.back()].title.c_str());
   lv_obj_align(hdrTitle, LV_ALIGN_LEFT_MID, root ? 10 : 78, 0);
   for (size_t i = 0; i < hdrDots.size(); i++) {
     const bool on = static_cast<int>(i) == activeDesktop;
@@ -227,6 +228,7 @@ void buildPage(int d, int p) {
 void buildDesktops() {
   const int n = static_cast<int>(deck.desktops.size());
   npForget();  // the old widgets are gone (lv_obj_clean of the tileview)
+  statsForget();
   uis.clear();
   uis.resize(n);
   activeDesktop = 0;
@@ -238,6 +240,10 @@ void buildDesktops() {
 
     if (deck.desktops[d].kind == DeskKind::NowPlaying) {
       npBuild(u.tile);
+      continue;
+    }
+    if (deck.desktops[d].kind == DeskKind::Stats) {
+      statsBuild(u.tile);
       continue;
     }
     showPage(d, 0);
@@ -260,6 +266,10 @@ void buildDesktops() {
   activeDesktop = 0;
   refreshHeader();
   lv_obj_set_tile(tv, uis[0].tile, LV_ANIM_OFF);
+  JsonDocument shown;  // tell the PC which desktop is showing (the layout reload resets it to the first)
+  shown["type"] = "desktop";
+  shown["index"] = 0;
+  emit(shown);
 }
 
 }  // namespace
@@ -314,6 +324,8 @@ bool uiLoadLayout(const char* json, String& err) {
   buildDesktops();
   return true;
 }
+
+int uiActiveDesktop() { return activeDesktop; }
 
 void uiShowDesktop(int index) {
   if (index < 0 || index >= static_cast<int>(uis.size())) return;

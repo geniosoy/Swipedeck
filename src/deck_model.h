@@ -10,7 +10,8 @@
 //    {"id":"media","title":"Media","cols":3,"rows":2,"keys":[ ... ]}
 // ]}]}
 //
-// A desktop can also be {"name":"Playing","kind":"nowplaying"}: the media screen, no pages.
+// A desktop can also be {"name":"Playing","kind":"nowplaying"} (media screen) or {"name":"PC","kind":"stats"}
+// (PC statistics): live screens fed by the companion, no pages.
 //
 // The first page of a desktop is its root. A key with "folder" opens that page (by page id);
 // every other key is an action: pressing it reports its "id" to the PC.
@@ -42,6 +43,7 @@ struct DeckPage {
 enum class DeskKind : uint8_t {
   Keys,        // pages of keys (default)
   NowPlaying,  // the live media screen (nowplaying.cpp); has no pages. At most one per deck.
+  Stats,       // PC statistics dashboard (stats.cpp); has no pages. At most one per deck.
 };
 
 struct DeckDesktop {

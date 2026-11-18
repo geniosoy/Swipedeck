@@ -10,11 +10,12 @@
 #include "deck_model.h"
 #include "display_hal.h"
 #include "nowplaying.h"
+#include "stats.h"
 #include "ui.h"
 
 namespace {
 
-constexpr const char* kFirmware = "0.5.0";
+constexpr const char* kFirmware = "0.6.0";
 constexpr const char* kLayoutFile = "/layout.json";
 constexpr const char* kLayoutTmp = "/layout.tmp";
 
@@ -120,6 +121,7 @@ void onHello() {
   d["firmware"] = kFirmware;
   d["uptimeMs"] = millis();
   d["coverPx"] = kCoverPx;
+  d["desktop"] = uiActiveDesktop();
   d["screen"]["w"] = lv_disp_get_hor_res(nullptr);
   d["screen"]["h"] = lv_disp_get_ver_res(nullptr);
   d["layoutCrc"] = layoutJson.isEmpty() ? "" : crcHex(layoutCrc);
@@ -176,6 +178,26 @@ void onNowPlaying(JsonDocument& m) {
   n.canShuffle = m["canShuffle"] | false;
   n.canRepeat = m["canRepeat"] | false;
   npSetInfo(n);
+}
+
+void onStats(JsonDocument& m) {
+  StatsInfo s;
+  s.cpu = m["cpu"] | -1;
+  s.cpuTemp = m["cpuTemp"] | -1;
+  s.gpu = m["gpu"] | -1;
+  s.gpuTemp = m["gpuTemp"] | -1;
+  s.gpuPower = m["gpuPower"] | -1;
+  s.ramPct = m["ramPct"] | -1;
+  s.ramUsedMB = m["ramUsedMB"] | -1;
+  s.ramTotalMB = m["ramTotalMB"] | -1;
+  s.vramUsedMB = m["vramUsedMB"] | -1;
+  s.vramTotalMB = m["vramTotalMB"] | -1;
+  s.diskPct = m["diskPct"] | -1;
+  s.diskUsedGB = m["diskUsedGB"] | -1;
+  s.diskTotalGB = m["diskTotalGB"] | -1;
+  s.netDownKBs = m["netDownKBs"] | -1;
+  s.netUpKBs = m["netUpKBs"] | -1;
+  statsSet(s);
 }
 
 void sendCoverAck(bool ok, const char* id, const char* err) {
@@ -242,6 +264,7 @@ void onJson(const String& line) {
   } else if (type == "layout") onLayoutChunk(m);
   else if (type == "settings") onSettings(m);
   else if (type == "np") onNowPlaying(m);
+  else if (type == "stats") onStats(m);
   else if (type == "cover") onCover(m);
   else if (type == "cover-clear") npCoverClear();
   else if (type == "focus") uiShowDesktop(m["desktop"] | 0);

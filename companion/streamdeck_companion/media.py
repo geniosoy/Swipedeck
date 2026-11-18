@@ -29,6 +29,8 @@ class MediaReader:
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._ready = threading.Event()
+        self._active = threading.Event()   # polling only happens while the Now playing screen is visible
+        self._fresh = threading.Event()    # a reading taken since the screen became active
         self.error: str | None = None
 
     # -- public (thread-safe) ------------------------------------------------------------------
@@ -41,6 +43,18 @@ class MediaReader:
 
     def stop(self) -> None:
         self._stop.set()
+
+    def set_active(self, on: bool) -> None:
+        """Poll the media session only while the Now playing screen is visible (saves work on the PC)."""
+        if on:
+            self._fresh.clear()
+            self._active.set()
+        else:
+            self._active.clear()
+
+    def ready(self) -> bool:
+        """True once a reading taken after the last activation is available (older data would be stale)."""
+        return self._active.is_set() and self._fresh.is_set()
 
     def snapshot(self) -> Snapshot:
         with self._lock:
@@ -85,8 +99,13 @@ class MediaReader:
         self._cover_tries = 0
         self._ready.set()
         while not self._stop.is_set():
+            if not self._active.is_set():
+                await asyncio.sleep(0.1)
+                continue
             try:
                 await self._refresh()
+                if self._active.is_set():
+                    self._fresh.set()
             except Exception as e:
                 log.debug("refresh failed: %s", e)
             await asyncio.sleep(POLL_S)
