@@ -1,0 +1,102 @@
+{
+  "settings": { "volume": 70, "sounds": true, "brightness": 255 },
+  "desktops": [
+    {
+      "name": "Main",
+      "pages": [
+        {
+          "id": "root", "title": "Main", "cols": 4, "rows": 3,
+          "keys": [
+            { "label": "Mute", "icon": "mute", "color": "#B3261E", "action": { "type": "hotkey", "keys": "volume_mute" } },
+            { "label": "Vol -", "icon": "volume_down", "action": { "type": "hotkey", "keys": "volume_down" } },
+            { "label": "Vol +", "icon": "volume_up", "action": { "type": "hotkey", "keys": "volume_up" } },
+            { "label": "Lock", "icon": "power", "color": "#5B3A8C", "action": { "type": "lock" } },
+            { "label": "Media", "icon": "audio", "color": "#1F6F5C", "folder": "media" },
+            { "label": "Apps", "icon": "list", "color": "#1F6F5C", "folder": "apps" },
+            { "label": "Files", "icon": "directory", "action": { "type": "hotkey", "keys": "win+e" } },
+            { "label": "Shot", "icon": "image", "action": { "type": "hotkey", "keys": "win+shift+s" } }
+          ]
+        },
+        {
+          "id": "media", "title": "Media", "cols": 3, "rows": 2,
+          "keys": [
+            { "label": "Prev", "icon": "prev", "action": { "type": "hotkey", "keys": "prev_track" } },
+            { "label": "Play", "icon": "play", "color": "#2E7D32", "action": { "type": "hotkey", "keys": "play_pause" } },
+            { "label": "Next", "icon": "next", "action": { "type": "hotkey", "keys": "next_track" } },
+            { "label": "Stop", "icon": "stop", "action": { "type": "hotkey", "keys": "stop" } },
+            { "label": "Mute", "icon": "mute", "action": { "type": "hotkey", "keys": "volume_mute" } },
+            {}
+          ]
+        },
+        {
+          "id": "apps", "title": "Apps", "cols": 3, "rows": 2,
+          "keys": [
+            { "label": "Browser", "icon": "home", "action": { "type": "open", "target": "https://www.google.com" } },
+            { "label": "Terminal", "icon": "keyboard", "action": { "type": "run", "command": ["wt"] } },
+            { "label": "Code", "icon": "edit", "action": { "type": "run", "command": "code", "shell": true } },
+            { "label": "Calc", "icon": "plus", "action": { "type": "run", "command": ["calc"], "shell": true } },
+            { "label": "Settings", "icon": "settings", "action": { "type": "open", "target": "ms-settings:" } },
+            {}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Work",
+      "pages": [
+        {
+          "id": "root", "title": "Work", "cols": 4, "rows": 3,
+          "keys": [
+            { "label": "Copy", "icon": "copy", "action": { "type": "hotkey", "keys": "ctrl+c" } },
+            { "label": "Paste", "icon": "paste", "action": { "type": "hotkey", "keys": "ctrl+v" } },
+            { "label": "Cut", "icon": "cut", "action": { "type": "hotkey", "keys": "ctrl+x" } },
+            { "label": "Save", "icon": "save", "color": "#2E7D32", "action": { "type": "hotkey", "keys": "ctrl+s" } },
+            { "label": "Undo", "icon": "left", "action": { "type": "hotkey", "keys": "ctrl+z" } },
+            { "label": "Redo", "icon": "right", "action": { "type": "hotkey", "keys": "ctrl+y" } },
+            { "label": "Find", "icon": "eye", "action": { "type": "hotkey", "keys": "ctrl+f" } },
+            { "label": "Git", "icon": "upload", "color": "#1F6F5C", "folder": "git" }
+          ]
+        },
+        {
+          "id": "git", "title": "Git", "cols": 3, "rows": 2,
+          "keys": [
+            { "label": "Pull", "icon": "download", "action": { "type": "text", "text": "git pull\n" } },
+            { "label": "Push", "icon": "upload", "action": { "type": "text", "text": "git push\n" } },
+            { "label": "Commit", "icon": "ok", "color": "#2E7D32", "action": { "type": "multi", "steps": [
+              { "type": "text", "text": "git commit -am \"\"" }, { "type": "hotkey", "keys": "left" } ] } },
+            { "label": "Status", "icon": "list", "action": { "type": "text", "text": "git status\n" } },
+            { "label": "Diff", "icon": "edit", "action": { "type": "text", "text": "git diff\n" } },
+            { "label": "Log", "icon": "file", "action": { "type": "text", "text": "git log --oneline -10\n" } }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Stream",
+      "pages": [
+        {
+          "id": "root", "title": "Stream", "cols": 3, "rows": 2,
+          "keys": [
+            { "label": "Record", "icon": "video", "color": "#B3261E", "action": { "type": "hotkey", "keys": "f13" } },
+            { "label": "Live", "icon": "wifi", "color": "#B3261E", "action": { "type": "hotkey", "keys": "f14" } },
+            { "label": "Mic", "icon": "mute", "action": { "type": "hotkey", "keys": "f15" } },
+            { "label": "Scenes", "icon": "image", "color": "#1F6F5C", "folder": "scenes" },
+            { "label": "Clip", "icon": "cut", "action": { "type": "hotkey", "keys": "f16" } },
+            {}
+          ]
+        },
+        {
+          "id": "scenes", "title": "Scenes", "cols": 3, "rows": 2,
+          "keys": [
+            { "label": "Game", "icon": "play", "action": { "type": "hotkey", "keys": "f17" } },
+            { "label": "Chat", "icon": "bell", "action": { "type": "hotkey", "keys": "f18" } },
+            { "label": "BRB", "icon": "pause", "action": { "type": "hotkey", "keys": "f19" } },
+            { "label": "Start", "icon": "home", "action": { "type": "hotkey", "keys": "f20" } },
+            { "label": "End", "icon": "power", "action": { "type": "hotkey", "keys": "f21" } },
+            {}
+          ]
+        }
+      ]
+    }
+  ]
+}
