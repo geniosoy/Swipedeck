@@ -7,7 +7,7 @@ Board facts and traps: `../ES3C28P_BOARD_NOTES.md`. Firmware: Arduino + Platform
 * **Desktops** you swipe between; each desktop has several **pages** reached with a folder/button (and a back button).
 * **Now playing** screen fed by the Windows media session API (the volume-popup one): title/artist/art,
   play / pause / next / previous, and a progress bar you can drag to seek.
-* **Sound feedback** on touch (ES8311 codec + speaker): tap, navigate, back, swipe.
+* **Sound feedback** on touch (ES8311 codec + speaker): tap, open folder, back.
 * PC companion over the USB-C serial port runs the actions (hotkeys, apps, media, volume ...) and pushes state.
 
 ## Milestones
@@ -24,8 +24,8 @@ Board facts and traps: `../ES3C28P_BOARD_NOTES.md`. Firmware: Arduino + Platform
 If the board does not accept the upload: hold BOOT, tap RESET, release BOOT, upload, tap RESET once.
 
 ## Serial console (115200)
-`ping`, `beep`, `vol N` (0-100), `amp 0|1` (debug the speaker amplifier pin), `desktop N`, `back`,
-`reset` (reload the demo layout), `layout {json}` (replace the layout, one line; schema in `src/deck_model.h`).
+`ping`, `beep`, `info`, `reboot`, `vol N` (0-100), `amp 0|1` (debug the speaker amplifier pin), `desktop N`, `back`.
+The layout is normally sent by the companion (see below); its schema is in `src/deck_model.h`.
 
 Events sent by the board, one JSON object per line:
 `{"type":"press","desktop":0,"page":0,"key":3,"id":"audio.mute"}`, `{"type":"nav",...}` (folder/back),
@@ -48,8 +48,7 @@ python -m venv .venv && .venv\Scripts\pip install -r requirements.txt     (once)
 * `companion/deck.json` is the single source of truth: the layout (desktops -> pages -> keys) **and** what each key
   does (`"action"`). The companion strips the actions, sends the layout to the board and reloads automatically when
   the file is saved. The board stores the last layout and the settings, so it works (and looks right) without the PC.
-* Actions: `hotkey` (also media/volume keys), `text` (typed, `
-` = Enter), `open` (file/URL/app), `run`, `lock`,
+* Actions: `hotkey` (also media/volume keys), `text` (typed; a newline in the text presses Enter), `open` (file/URL/app), `run`, `lock`,
   `multi` (sequence with `{"wait": seconds}`). Schema and validation: `streamdeck_companion/actions.py`, `deck.py`.
 * Close the companion before flashing (it holds the COM port). It reconnects by itself after a replug or reflash.
 
