@@ -11,8 +11,9 @@ Board facts and traps: `../ES3C28P_BOARD_NOTES.md`. Firmware: Arduino + Platform
 * PC companion over the USB-C serial port runs the actions (hotkeys, apps, media, volume ...) and pushes state.
 
 ## Milestones
-1. **Bring-up** - display, touch, sound, serial console  *(this commit)*
-2. Firmware UI: desktops (swipe) -> pages (folder/back buttons) -> keys, layout loaded from SD/serial
+1. **Bring-up** - display, touch, sound, serial console - done
+2. **Firmware UI** - swipeable desktops, folder pages + back button, key sounds, JSON layout over serial - done
+   (layout is not stored on the board yet: it falls back to the built-in demo after a reboot)
 3. Serial protocol + PC companion (actions, layout sync)
 4. Now playing screen (SMTC) incl. seek slider
 5. Polish: icons, brightness/sleep, settings
@@ -24,7 +25,16 @@ Board facts and traps: `../ES3C28P_BOARD_NOTES.md`. Firmware: Arduino + Platform
 If the board does not accept the upload: hold BOOT, tap RESET, release BOOT, upload, tap RESET once.
 
 ## Serial console (115200)
-`ping`, `beep`, `vol N` (0-100), `amp 0|1` (debug the speaker amplifier pin).
+`ping`, `beep`, `vol N` (0-100), `amp 0|1` (debug the speaker amplifier pin), `desktop N`, `back`,
+`reset` (reload the demo layout), `layout {json}` (replace the layout, one line; schema in `src/deck_model.h`).
+
+Events sent by the board, one JSON object per line:
+`{"type":"press","desktop":0,"page":0,"key":3,"id":"audio.mute"}`, `{"type":"nav",...}` (folder/back),
+`{"type":"desktop","index":1}` (swipe).
+
+## Sounds
+Tap (action key), Nav (open folder), Back, Swipe (change desktop), Error. Played on key release so a swipe that
+starts on a key does not tick; see `kKeySoundEvent` in `src/ui.cpp` to switch to touch-down.
 
 ## Third-party code
 `lib/TFT_eSPI` (patched, vendor package), `lib/FT6336`, `lib/ES8311` (Espressif, Apache-2.0, patched to use `Wire`).
