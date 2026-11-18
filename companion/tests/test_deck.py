@@ -6,6 +6,7 @@ from streamdeck_companion.deck import Deck, DeckError
 from streamdeck_companion.protocol import crc_hex, fnv1a32, layout_messages
 
 ROOT = Path(__file__).resolve().parent.parent
+FIXTURE = ROOT / "tests" / "fixtures" / "deck.json"  # a frozen demo deck, not your live one
 
 
 def simple(keys, **page):
@@ -14,7 +15,7 @@ def simple(keys, **page):
 
 class DeckTest(unittest.TestCase):
     def test_default_deck_is_valid_and_has_no_warnings(self):
-        deck = Deck.load(ROOT / "deck.json")
+        deck = Deck.load(FIXTURE)
         self.assertEqual(deck.warnings, [])
         self.assertEqual(len(deck.layout["desktops"]), 5)
         self.assertTrue(deck.has_nowplaying and deck.has_stats)
@@ -24,7 +25,7 @@ class DeckTest(unittest.TestCase):
         self.assertIsNone(deck.action_at(0, 0, 4))  # folder key has no action
 
     def test_layout_for_board_has_no_actions(self):
-        text = Deck.load(ROOT / "deck.json").layout_text()
+        text = Deck.load(FIXTURE).layout_text()
         self.assertNotIn('"action"', text)
         json.loads(text)
         self.assertLess(len(text), 15000)
@@ -76,7 +77,7 @@ class ProtocolTest(unittest.TestCase):
         self.assertEqual(fnv1a32(b"foobar"), 0xBF9CF968)
 
     def test_chunks_reassemble(self):
-        text = Deck.load(ROOT / "deck.json").layout_text()
+        text = Deck.load(FIXTURE).layout_text()
         msgs = layout_messages(text, chunk=500)
         self.assertGreater(len(msgs), 1)
         self.assertEqual([m["seq"] for m in msgs], list(range(len(msgs))))

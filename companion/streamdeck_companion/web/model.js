@@ -101,6 +101,29 @@ export function moveInList(list, from, to) {
   return true;
 }
 
+// Drag and drop reordering: where does the dragged item `from` end up when it is dropped on the upper
+// (`after` = false) or lower half of item `over`? The result is the index to pass to moveInList.
+export function dropTarget(from, over, after) {
+  let to = over + (after ? 1 : 0); // insertion point in the list that still contains `from`
+  if (from < to) to -= 1;          // taking `from` out shifts everything behind it up by one
+  return to;
+}
+
+export function uniqueName(names, name) {
+  if (!names.includes(name)) return name;
+  for (let n = 2; ; n++) if (!names.includes(`${name} ${n}`)) return `${name} ${n}`;
+}
+
+// Adds a copy of a ready-made desktop (from templates.json). Returns its index, or null at the desktop limit.
+export function addTemplateDesktop(deck, desktop) {
+  if (deck.desktops.length >= LIMITS.desktops) return null;
+  const d = clone(desktop);
+  d.name = uniqueName(deck.desktops.map((x) => x.name), d.name);
+  for (const p of d.pages || []) { p.cols = p.cols || 4; p.rows = p.rows || 3; padKeys(p); }
+  deck.desktops.push(d);
+  return deck.desktops.length - 1;
+}
+
 export function addPage(desktop, title, cols = 3, rows = 2) {
   if (desktop.pages.length >= LIMITS.pages) return null;
   const id = uniqueId(desktop.pages.map((p) => p.id), 'p');

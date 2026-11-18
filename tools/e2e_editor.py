@@ -3,7 +3,7 @@
     pip install websocket-client          (anywhere; it is not a dependency of the companion)
     python tools/e2e_editor.py [--shots DIR]
 
-It serves the editor on a temporary COPY of companion/deck.json (your real deck is never touched), drives the page
+It serves the editor on a temporary COPY of the demo deck in companion/tests/fixtures (your real deck is never touched), drives the page
 like a user (select, edit, presets, drag and drop, undo, save, reload) and checks the saved file. With --shots it also
 stores screenshots. Exit code 1 if any check fails.
 """
@@ -92,6 +92,18 @@ window.keyAt = (i) => document.querySelector('.key[data-i="' + i + '"]');
 window.keyLabel = (i) => { const k = keyAt(i); const l = k && k.querySelector('.lbl'); return l ? l.textContent : ''; };
 window.card = (name) => $$('.pcard').find((c) => c.querySelector('.nm').textContent === name);
 window.btn = (text, scope) => [...(scope || document).querySelectorAll('button')].find((b) => b.textContent.trim() === text);
+window.names = () => $$('.deskrow .name').map((n) => n.textContent);
+window.menuItem = (name) => $$('.addmenu .item').find((i) => i.querySelector('.nm').textContent === name);
+window.dragDesktop = (from, to, after) => {
+  const boxes = $$('.desk');
+  const dst = boxes[to], r = dst.getBoundingClientRect();
+  const y = after ? r.bottom - 2 : r.top + 2;
+  const dt = new DataTransfer();
+  boxes[from].querySelector('.deskrow').dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
+  dst.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true, clientY: y }));
+  window.indicator = dst.className;
+  dst.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true, clientY: y }));
+};
 window.press = (key, opts = {}) => document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...opts }));
 window.setInput = (el, value) => { el.value = value; el.dispatchEvent(new Event('input', { bubbles: true })); };
 window.drag = (from, to) => {
@@ -119,7 +131,7 @@ def main() -> int:
 
     work = Path(tempfile.mkdtemp(prefix="editor_e2e_"))
     deck_path = work / "deck.json"
-    shutil.copyfile(ROOT / "companion" / "deck.json", deck_path)
+    shutil.copyfile(ROOT / "companion" / "tests" / "fixtures" / "deck.json", deck_path)
     server = EditorServer(deck_path, port=0, status_fn=lambda: {"connected": False})
     server.start()
     port = free_port()
@@ -234,13 +246,66 @@ def main() -> int:
         check("PC stats desktop shows its preview", cdp.js("document.querySelector('.mock').textContent.includes('CPU')"))
         if shots:
             cdp.shot(shots / "4_stats.png")
-        check("only one of each live screen can be added", cdp.js("btn('+ Now playing').disabled && btn('+ PC stats').disabled"))
 
-        print("desktops")
-        cdp.js("btn('+ Keys desktop').click()")
-        check("adding a keys desktop", cdp.js("$$('.desk').length") == 6)
+        print("reordering desktops by dragging")
+        base = ["Main", "Playing", "PC", "Work", "Stream"]
+        check("starting order", cdp.js("names()") == base)
+        cdp.js("dragDesktop(3, 0, false)")
+        check("dropping on the upper half puts it before", cdp.js("names()") == ["Work", "Main", "Playing", "PC", "Stream"])
+        check("a drop indicator was shown while hovering", "drop-before" in cdp.js("window.indicator"))
+        check("the moved desktop is the selected one", cdp.js("$$('.desk').findIndex((d) => d.classList.contains('active'))") == 0)
+        cdp.js("dragDesktop(0, 4, true)")
+        check("dropping on the lower half of the last one moves it to the end", cdp.js("names()") == ["Main", "Playing", "PC", "Stream", "Work"])
+        check("the lower-half indicator was shown", "drop-after" in cdp.js("window.indicator"))
+        cdp.js("dragDesktop(1, 1, false)")
+        check("dropping on itself changes nothing", cdp.js("names()") == ["Main", "Playing", "PC", "Stream", "Work"])
+        cdp.js("press('z', { ctrlKey: true })")
+        cdp.js("press('z', { ctrlKey: true })")
+        check("undo puts the order back", cdp.js("names()") == base)
+        cdp.js("drag(keyAt(0), keyAt(1))")  # a key drag must not be mistaken for a desktop drag
+        check("key drags and desktop drags do not interfere", cdp.js("names()") == base)
+        cdp.js("press('z', { ctrlKey: true })")
+
+        print("add-desktop menu")
+        templates = json.loads((ROOT / "companion" / "streamdeck_companion" / "web" / "templates.json").read_text(encoding="utf-8"))["templates"]
+        check("the old standalone add buttons are gone", cdp.js("!btn('+ Now playing') && !btn('+ PC stats') && !btn('+ Keys desktop')"))
+        cdp.js("btn('+ Add desktop').click()")
+        check("the menu lists live screens, ready-made desktops and a blank one", cdp.js("$$('.addmenu .item').length") == 2 + len(templates) + 1)
+        check("live screens already in the deck are disabled", cdp.js("menuItem('Now playing').disabled && menuItem('PC stats').disabled"))
+        check("every ready-made desktop is offered", all(cdp.js(f"!!menuItem({json.dumps(t['name'])})") for t in templates))
+        cdp.js("press('Escape')")
+        check("Escape closes the menu", cdp.js("!document.querySelector('.addmenu')"))
+        cdp.js("btn('+ Add desktop').click()")
+        cdp.js("menuItem('Discord').click()")
+        check("adding a ready-made desktop appends it", cdp.js("names()")[-1] == "Discord" and cdp.js("$$('.desk').length") == 6)
+        check("the menu closed and the new desktop is shown with its keys", cdp.js("!document.querySelector('.addmenu') && $$('.key').length") == 12 and cdp.js("keyLabel(0)") == "Mute")
+        cdp.js("btn('+ Add desktop').click()")
+        cdp.js("menuItem('Discord').click()")
+        check("adding the same template again gives it a unique name", cdp.js("names()")[-1] == "Discord 2")
+        cdp.js("btn('+ Add desktop').click()")
+        cdp.js("menuItem('Coding').click()")
+        cdp.js("$$('.desk.active .pagerow').find((r) => r.querySelector('.id').textContent === 'git').click()")
+        check("a template with several pages brings its folders", cdp.js("$$('.key').length") == 6 and cdp.js("keyLabel(0)") == "Status")
+        if shots:
+            cdp.shot(shots / "6_template_coding.png")
+        for _ in range(3):
+            cdp.js("$$('.desk')[5].querySelector('button.danger').click()")
+        check("the added desktops can be deleted again", cdp.js("names()") == base)
+        cdp.js("btn('+ Add desktop').click()")
+        cdp.js("menuItem('Keys desktop').click()")
+        check("a blank keys desktop", cdp.js("$$('.desk').length") == 6 and cdp.js("$$('.key.empty').length") == 12)
         cdp.js("$$('.desk')[5].querySelector('button.danger').click()")
-        check("deleting it again", cdp.js("$$('.desk').length") == 5)
+        for kind in ("Playing", "PC"):  # live screens can be re-added once removed
+            cdp.js(f"$$('.desk').find((d) => d.querySelector('.name').textContent === '{kind}').querySelector('button.danger').click()")
+        check("live screens removed", cdp.js("names()") == ["Main", "Work", "Stream"])
+        cdp.js("btn('+ Add desktop').click()")
+        check("...and now enabled in the menu", cdp.js("!menuItem('Now playing').disabled && !menuItem('PC stats').disabled"))
+        if shots:
+            cdp.shot(shots / "7_add_menu.png")
+        cdp.js("menuItem('Now playing').click()")
+        cdp.js("btn('+ Add desktop').click()")
+        cdp.js("menuItem('PC stats').click()")
+        check("live screens added back from the menu", cdp.js("names()") == ["Main", "Work", "Stream", "Playing", "PC"])
         cdp.js("$$('.deskrow')[0].click()")
 
         print("saving")

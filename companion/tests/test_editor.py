@@ -8,7 +8,7 @@ from pathlib import Path
 from streamdeck_companion.deck import ICONS, Deck, DeckError
 from streamdeck_companion.editor import EditorServer, WEB, format_deck, validate_preset_key
 
-DECK = Path(__file__).resolve().parent.parent / "deck.json"
+DECK = Path(__file__).resolve().parent / "fixtures" / "deck.json"  # a frozen demo deck, not your live one
 
 
 class EditorServerTest(unittest.TestCase):
@@ -61,7 +61,7 @@ class EditorServerTest(unittest.TestCase):
         self.assertGreater(len(presets["builtin"]), 5)
         self.assertEqual(presets["user"], [])
         self.assertEqual(self.json("GET", "/api/status"), (200, {"connected": True}))
-        for path in ("/app.js", "/model.js", "/style.css", "/icons.json", "/presets.json", "/fonts/fa.woff"):
+        for path in ("/app.js", "/model.js", "/style.css", "/icons.json", "/presets.json", "/templates.json", "/fonts/fa.woff"):
             self.assertEqual(self.call("GET", path)[0], 200, path)
 
     def test_static_files_cannot_escape_the_web_folder(self):
@@ -194,6 +194,62 @@ class PresetsFileTest(unittest.TestCase):
         icons = json.loads((WEB / "icons.json").read_text(encoding="utf-8"))
         self.assertEqual(set(icons), ICONS)
         self.assertTrue(all(len(v) == 4 for v in icons.values()))
+
+    def test_icon_codes_are_those_of_the_symbols_the_board_draws(self):
+        """The board draws the UTF-8 bytes of each LV_SYMBOL_*; the editor must show the same glyph. (LVGL's own
+        comments next to the symbols have typos, e.g. LV_SYMBOL_FILE, so the bytes are what counts.)"""
+        import re
+
+        root = Path(__file__).resolve().parents[2]
+        header = root / ".pio" / "libdeps" / "es3c28p" / "lvgl" / "src" / "font" / "lv_symbol_def.h"
+        if not header.exists():
+            self.skipTest("LVGL sources not downloaded (build the firmware once)")
+        ui = (root / "src" / "ui.cpp").read_text(encoding="utf-8")
+        used = dict(re.findall(r'\{"([a-z_]+)",\s*(LV_SYMBOL_[A-Z_0-9]+)\}', ui[ui.index("kIcons[]"):]))
+        defs = header.read_text(encoding="utf-8")
+        icons = json.loads((WEB / "icons.json").read_text(encoding="utf-8"))
+        for name, symbol in used.items():
+            m = re.search(rf'#define {symbol}\s+"((?:\\x[0-9A-Fa-f]{{2}})+)"', defs)
+            self.assertIsNotNone(m, symbol)
+            point = ord(bytes.fromhex(m.group(1).replace("\\x", "")).decode("utf-8"))
+            self.assertEqual(icons[name], f"{point:04x}", f"icon {name} ({symbol})")
+
+
+class TemplatesFileTest(unittest.TestCase):
+    def setUp(self):
+        self.templates = json.loads((WEB / "templates.json").read_text(encoding="utf-8"))["templates"]
+
+    def test_there_are_several_and_they_are_described(self):
+        self.assertGreaterEqual(len(self.templates), 8)
+        ids, names = set(), set()
+        for t in self.templates:
+            self.assertTrue(t["id"] and t["name"] and t["description"], t)
+            self.assertIn(t["icon"], ICONS, t["id"])
+            self.assertNotIn(t["id"], ids)
+            self.assertNotIn(t["name"], names)
+            ids.add(t["id"])
+            names.add(t["name"])
+
+    def test_every_template_is_a_valid_desktop_without_warnings(self):
+        for t in self.templates:
+            deck = Deck({"desktops": [t["desktop"]]})  # validates every action, icon, color and folder reference
+            self.assertEqual(deck.warnings, [], t["id"])  # no unknown icons, actions missing, or keys that do not fit
+            pages = t["desktop"]["pages"]
+            page_ids = [p["id"] for p in pages]
+            self.assertEqual(len(page_ids), len(set(page_ids)), f"{t['id']}: duplicate page ids")
+            self.assertEqual(page_ids[0], "root", t["id"])
+            folders = {k["folder"] for p in pages for k in p["keys"] if k.get("folder")}
+            self.assertEqual(set(page_ids[1:]), folders, f"{t['id']}: every sub-page needs a folder key, and vice versa")
+            for p in pages:
+                self.assertEqual(len(p["keys"]), p["cols"] * p["rows"], f"{t['id']}/{p['id']}: fill the whole grid ({{}} = empty)")
+                for k in p["keys"]:
+                    self.assertLessEqual(len(k.get("label", "")), 10, f"{t['id']}: label too long: {k.get('label')}")
+            self.assertLess(len(deck.layout_text()), 3500, f"{t['id']}: keep templates small")
+
+    def test_a_template_added_to_the_demo_deck_still_saves(self):
+        data = json.loads(DECK.read_text(encoding="utf-8"))
+        data["desktops"].extend(t["desktop"] for t in self.templates[:3])
+        Deck(data)
 
 
 if __name__ == "__main__":

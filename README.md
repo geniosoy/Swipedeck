@@ -46,9 +46,13 @@ The companion serves a layout editor at **http://127.0.0.1:8765/** (`Streamdeck-
   or nothing. Actions have forms: a hotkey builder (modifier tick boxes plus a key box, with a "press a key" capture;
   the Windows key cannot be captured by a browser, so it is a tick box), typed text, open, run, lock, and multi-step
   sequences with waits.
-* **Structure:** add, rename, reorder and delete desktops and pages, change a page's grid size (keys keep their row and
-  column; you are asked before keys are removed), add the Now playing and PC stats screens, and set the board's volume,
-  key sounds and brightness.
+* **Structure:** add, rename and delete desktops and pages, reorder desktops by **dragging** them in the list (or with
+  the arrows), change a page's grid size (keys keep their row and column; you are asked before keys are removed), and set
+  the board's volume, key sounds and brightness.
+* **Add desktop menu** (`+ Add desktop`): the **live screens** (Now playing, PC stats; one each) and **ready-made
+  desktops** you can add and then tweak: Discord, Coding (VS Code, with Git and Debug pages), OBS & streaming (F13-F24
+  hotkeys to bind in OBS, with a Scenes page), Music, Windows, Browser, Editing and Gaming. They live in
+  `companion/streamdeck_companion/web/templates.json`; add your own entries there (the tests validate every one).
 * **Button presets** (about 90, in 12 categories: audio, media, system, windows, editing, browser, apps, git, streaming,
   text ...): click one to place it in the selected or first empty slot, drag it onto a slot, search them, or fill the
   empty slots with a whole category. "Save as preset" in the key panel keeps your own keys in *My presets*

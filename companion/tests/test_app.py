@@ -6,7 +6,7 @@ from streamdeck_companion.app import Companion
 from streamdeck_companion.nowplaying import Snapshot
 from streamdeck_companion.protocol import crc_hex
 
-DECK = Path(__file__).resolve().parent.parent / "deck.json"
+DECK = Path(__file__).resolve().parent / "fixtures" / "deck.json"  # a frozen demo deck, not your live one
 
 
 class FakeBoard:

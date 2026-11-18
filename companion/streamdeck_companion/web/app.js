@@ -35,6 +35,7 @@ function h(tag, props, ...children) {
 const state = {
   deck: null, savedText: '', sel: { d: 0, p: 0, k: null }, icons: {}, presets: { builtin: [], user: [] },
   cat: 'all', query: '', status: null, clip: null, saving: false, capturing: false, sizeNote: '',
+  templates: [], addMenu: false,
 };
 const history = new M.History();
 let lastCoalesce = { key: null, t: 0 };
@@ -202,13 +203,65 @@ function renderTopbar() {
 
 // ---- tree --------------------------------------------------------------------------------------------
 
+function addMenu() {
+  const hasNp = M.hasKind(state.deck, 'nowplaying'), hasStats = M.hasKind(state.deck, 'stats');
+  const item = (icon, name, desc, onclick, why = '') => h('button', { class: 'item', disabled: !!why, title: why || desc, onclick },
+    h('span', { class: 'fa ic' }, glyph(icon)),
+    h('span', { class: 'tx' }, h('span', { class: 'nm' }, name), h('span', { class: 'ds' }, why || desc)));
+  return h('div', { class: 'addmenu' },
+    h('div', { class: 'sec' }, 'Live screens'),
+    item('audio', 'Now playing', 'Cover, title and player controls from the Windows media session', () => addDesktopOfKind('nowplaying'), hasNp ? 'Already added' : ''),
+    item('charge', 'PC stats', 'CPU, GPU, RAM, disk and network', () => addDesktopOfKind('stats'), hasStats ? 'Already added' : ''),
+    h('div', { class: 'sec' }, 'Ready-made desktops'),
+    state.templates.map((t) => item(t.icon, t.name, t.description, () => addTemplate(t))),
+    h('div', { class: 'sec' }, 'Blank'),
+    item('keyboard', 'Keys desktop', 'An empty page of keys', () => addDesktopOfKind('keys')));
+}
+
+// Desktops can be dragged by their row to reorder; the whole card is the drop target (upper half = before it).
+function dragDesktopHandlers(box, row, i) {
+  const MIME = 'application/x-sd-desktop';
+  const clear = (el) => el.classList.remove('drop-before', 'drop-after');
+  row.draggable = true;
+  row.addEventListener('dragstart', (e) => {
+    e.dataTransfer.setData(MIME, String(i));
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setDragImage(box, 24, 16);
+    box.classList.add('dragging');
+  });
+  row.addEventListener('dragend', () => { box.classList.remove('dragging'); document.querySelectorAll('.desk').forEach(clear); });
+  box.addEventListener('dragover', (e) => {
+    if (![...e.dataTransfer.types].includes(MIME)) return;
+    e.preventDefault();
+    const r = box.getBoundingClientRect();
+    const after = e.clientY > r.top + r.height / 2;
+    box.classList.toggle('drop-after', after);
+    box.classList.toggle('drop-before', !after);
+  });
+  box.addEventListener('dragleave', (e) => { if (!box.contains(e.relatedTarget)) clear(box); });
+  box.addEventListener('drop', (e) => {
+    const from = e.dataTransfer.getData(MIME);
+    if (from === '') return;
+    e.preventDefault();
+    const after = box.classList.contains('drop-after');
+    clear(box);
+    const to = M.dropTarget(+from, i, after);
+    if (to !== +from) commit((d) => { M.moveInList(d.desktops, +from, to); state.sel = { d: to, p: 0, k: null }; });
+  });
+}
+
 function renderTree() {
   const list = h('div');
-  list.append(h('h3', {}, 'Desktops'));
+  const full = state.deck.desktops.length >= M.LIMITS.desktops;
+  list.append(h('div', { class: 'treehead' }, h('h3', {}, 'Desktops'),
+    h('button', { class: 'small' + (state.addMenu ? ' primary' : ''), disabled: full && !state.addMenu, title: full ? 'The board holds at most 8 desktops' : '',
+      onclick: () => { state.addMenu = !state.addMenu; renderTree(); } }, state.addMenu ? 'Close' : '+ Add desktop')));
+  if (state.addMenu) list.append(addMenu());
   state.deck.desktops.forEach((d, i) => {
     const kind = M.desktopKind(d);
     const active = i === state.sel.d;
-    const row = h('div', { class: 'deskrow', onclick: () => { state.sel = { d: i, p: 0, k: null }; renderAll(); } },
+    const row = h('div', { class: 'deskrow', title: 'Drag to reorder', onclick: () => { state.sel = { d: i, p: 0, k: null }; renderAll(); } },
+      h('span', { class: 'grip' }, '\u22EE\u22EE'),
       h('span', { class: 'fa' }, glyph(KIND_ICON[kind])),
       h('span', { class: 'name' }, d.name || '(unnamed)'),
       h('button', { class: 'small', title: 'Move up', disabled: i === 0, onclick: (e) => { e.stopPropagation(); moveDesktop(i, i - 1); } }, '\u2191'),
@@ -226,14 +279,9 @@ function renderTree() {
       pages.append(h('button', { class: 'small', disabled: d.pages.length >= M.LIMITS.pages, onclick: () => addPageTo(i) }, '+ Page'));
       box.append(pages);
     }
+    dragDesktopHandlers(box, row, i);
     list.append(box);
   });
-  const hasNp = M.hasKind(state.deck, 'nowplaying'), hasStats = M.hasKind(state.deck, 'stats');
-  const full = state.deck.desktops.length >= M.LIMITS.desktops;
-  list.append(h('div', { class: 'addrow' },
-    h('button', { disabled: full, onclick: () => addDesktopOfKind('keys') }, '+ Keys desktop'),
-    h('button', { disabled: full || hasNp, title: hasNp ? 'Only one Now playing desktop' : '', onclick: () => addDesktopOfKind('nowplaying') }, '+ Now playing'),
-    h('button', { disabled: full || hasStats, title: hasStats ? 'Only one PC stats desktop' : '', onclick: () => addDesktopOfKind('stats') }, '+ PC stats')));
   $('#treeList').replaceChildren(list);
 }
 
@@ -261,7 +309,10 @@ function deleteDesktop(i) {
   commit((d) => { M.removeDesktop(d, i); });
 }
 function addDesktopOfKind(kind) {
-  commit((d) => { const i = M.addDesktop(d, kind); if (i !== null) state.sel = { d: i, p: 0, k: null }; });
+  commit((d) => { state.addMenu = false; const i = M.addDesktop(d, kind); if (i !== null) state.sel = { d: i, p: 0, k: null }; });
+}
+function addTemplate(t) {
+  commit((d) => { state.addMenu = false; const i = M.addTemplateDesktop(d, t.desktop); if (i !== null) state.sel = { d: i, p: 0, k: null }; });
 }
 function addPageTo(di) {
   commit((d) => { const pi = M.addPage(d.desktops[di]); if (pi !== null) state.sel = { d: di, p: pi, k: null }; });
@@ -729,6 +780,7 @@ function renderLive() { // after typing: leave the inspector, the settings and t
 
 function onKeyDown(e) {
   if (state.capturing) return;
+  if (e.key === 'Escape' && state.addMenu) { state.addMenu = false; renderTree(); return; }
   const tag = (e.target.tagName || '').toLowerCase();
   const typing = tag === 'input' && !['checkbox', 'range', 'color'].includes(e.target.type) || tag === 'textarea' || tag === 'select';
   const mod = e.ctrlKey || e.metaKey;
@@ -757,8 +809,10 @@ async function start() {
   const names = [...M.NAMED_KEYS, ...Array.from({ length: 24 }, (_, i) => `f${i + 1}`)];
   document.body.append(h('datalist', { id: 'keynames' }, names.map((n) => h('option', { value: n }))));
   try {
-    const [icons, presets] = await Promise.all([fetch('/icons.json').then((r) => r.json()), api('GET', '/api/presets'), loadDeck()]);
+    const [icons, presets, , templates] = await Promise.all([fetch('/icons.json').then((r) => r.json()), api('GET', '/api/presets'), loadDeck(),
+      fetch('/templates.json').then((r) => r.json())]);
     state.icons = icons;
+    state.templates = templates.templates;
     state.presets = { builtin: presets.builtin, user: presets.user };
     renderAll();
   } catch (e) {

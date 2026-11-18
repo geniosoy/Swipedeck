@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import * as M from '../../streamdeck_companion/web/model.js';
 
-const deckFile = new URL('../../deck.json', import.meta.url);
+const deckFile = new URL('../fixtures/deck.json', import.meta.url)  // a frozen demo deck, not your live one;
 const sample = () => JSON.parse(readFileSync(deckFile, 'utf8'));
 
 test('geometry matches the firmware for the layouts in deck.json', () => {
@@ -143,4 +143,35 @@ test('history: undo, redo, and a new change clears redo', () => {
   h.push('1'); h.push('2'); h.push('3');
   assert.equal(h.past.length, 3); // limit
   assert.equal(new M.History().undo('z'), null);
+});
+
+test('dropTarget: where a dragged item lands', () => {
+  assert.equal(M.dropTarget(3, 0, false), 0);  // onto the top half of the first item
+  assert.equal(M.dropTarget(3, 0, true), 1);   // onto its lower half
+  assert.equal(M.dropTarget(0, 3, true), 3);   // down to after the 4th item (it moves up by one first)
+  assert.equal(M.dropTarget(0, 3, false), 2);
+  assert.equal(M.dropTarget(1, 2, false), 1);  // dropped right where it already is
+  assert.equal(M.dropTarget(2, 1, true), 2);
+  const list = ['a', 'b', 'c', 'd'];
+  M.moveInList(list, 0, M.dropTarget(0, 3, true));
+  assert.deepEqual(list, ['b', 'c', 'd', 'a']);
+  M.moveInList(list, 3, M.dropTarget(3, 0, false));
+  assert.deepEqual(list, ['a', 'b', 'c', 'd']);
+  assert.equal(M.moveInList(list, 1, M.dropTarget(1, 2, false)), false); // no-op
+});
+
+test('template desktops: copied, padded, uniquely named, limited', () => {
+  const tpl = JSON.parse(readFileSync(new URL('../../streamdeck_companion/web/templates.json', import.meta.url), 'utf8')).templates;
+  const deck = { desktops: [M.newKeysDesktop({ desktops: [] }, 'Main')] };
+  const i = M.addTemplateDesktop(deck, tpl.find((t) => t.id === 'obs').desktop);
+  assert.equal(i, 1);
+  assert.equal(deck.desktops[1].name, 'OBS');
+  assert.equal(deck.desktops[1].pages[0].keys.length, 12);   // padded to the grid
+  deck.desktops[1].pages[0].keys[0].label = 'changed';
+  assert.notEqual(tpl.find((t) => t.id === 'obs').desktop.pages[0].keys[0].label, 'changed'); // a copy, not a reference
+  M.addTemplateDesktop(deck, tpl.find((t) => t.id === 'obs').desktop);
+  assert.equal(deck.desktops[2].name, 'OBS 2');
+  assert.equal(M.uniqueName(['A', 'A 2'], 'A'), 'A 3');
+  while (deck.desktops.length < M.LIMITS.desktops) M.addTemplateDesktop(deck, tpl[0].desktop);
+  assert.equal(M.addTemplateDesktop(deck, tpl[0].desktop), null);
 });
