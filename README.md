@@ -6,7 +6,38 @@ A touch macro deck with a "Now playing" screen and a PC stats screen, for the Ho
 (ES3C28P). The board shows the screens and sends touches; a small Python program on the PC (the **companion**) runs
 the actions and feeds the live screens over the USB-C cable.
 
-Board facts and traps: `../ES3C28P_BOARD_NOTES.md`. Firmware: Arduino + PlatformIO + LVGL 8.3.6 (v0.6.0).
+<table align="center">
+  <tr>
+    <td align="center"><img src="docs/images/screen-keys.png" width="230" alt="A page of keys"><br><sub>Keys</sub></td>
+    <td align="center"><img src="docs/images/screen-folder.png" width="230" alt="A folder page with a Back button"><br><sub>Folders, with Back</sub></td>
+    <td align="center"><img src="docs/images/screen-nowplaying.png" width="230" alt="The Now playing screen"><br><sub>Now playing</sub></td>
+    <td align="center"><img src="docs/images/screen-stats.png" width="230" alt="The PC stats screen"><br><sub>PC stats</sub></td>
+  </tr>
+</table>
+<p align="center"><sub>The screens of the board (320 x 240), as the editor previews them: swipe left and right to move between desktops,
+tap a folder key to open a page. These are the editor's previews, not photos of the board.</sub></p>
+
+Board facts and traps: `../ES3C28P_BOARD_NOTES.md`. Firmware: Arduino + PlatformIO + LVGL 8.3.6 (v0.11.0).
+
+## How it fits together
+<p align="center"><img src="docs/architecture.svg" alt="The board talks to the companion on the PC over USB-C; the companion runs actions on Windows, reads the media session and PC stats, and serves the editor in your browser" width="900"></p>
+
+The board holds the screens, the touch handling, the sounds and a copy of the layout. Everything that needs the PC (key
+actions, the media session, PC stats) happens in the companion, which also serves the editor. Nothing leaves your PC:
+the editor only listens on `127.0.0.1`.
+
+## The layout editor
+Layouts are edited in a web page, not by hand: drag keys, pick icons and colours, add ready-made desktops and button
+presets, and see the board's screen as you type.
+
+<p align="center"><img src="docs/images/editor.png" alt="The layout editor: desktops on the left, a preview of the board's screen in the middle, button presets below it and the selected key on the right" width="900"></p>
+
+<table align="center">
+  <tr>
+    <td align="center"><img src="docs/images/editor-nowplaying.png" width="440" alt="Setting up the Now playing screen: which players are shown and how it looks"><br><sub>Now playing: choose which players are shown and how it looks</sub></td>
+    <td align="center"><img src="docs/images/settings.png" width="440" alt="General settings: sounds, screen dimming, swipe and key look"><br><sub>General settings: sounds, dimming, swipe, key look</sub></td>
+  </tr>
+</table>
 
 ## What it does
 * **Desktops** you swipe between. A *keys* desktop holds **pages** of keys; a folder key opens a page, a back button
@@ -17,7 +48,10 @@ Board facts and traps: `../ES3C28P_BOARD_NOTES.md`. Firmware: Arduino + Platform
   cover-tinted background, album / title / artist, elapsed / total time, a thin progress bar you can drag to seek, and
   shuffle / previous / play-pause / next / repeat.
 * **PC stats** desktop: CPU, GPU and RAM gauges, GPU temperature and power, VRAM and disk bars, network speed.
-* **Sound feedback** on touch (ES8311 codec + speaker): tick on a key, chirp when opening a folder, falling chirp on Back.
+* **Sound feedback** on touch (ES8311 codec + speaker): tick on a key, chirp when opening a folder, falling chirp on Back,
+  in one of four sound themes.
+* **Settings** you can try live: sounds, brightness, auto-dim and screen-off, flipping the screen, endless scrolling
+  between desktops, swipe length, and how the keys look (see [Settings](#settings)).
 * The board stores the last layout and the settings, so it still works without the PC (key presses just do nothing).
 
 ## Running it
@@ -178,6 +212,8 @@ platformio.ini, include/, src/                                  firmware (ui.cpp
 lib/                                                            patched TFT_eSPI, FT6336, ES8311 (see below)
 tools/gen_icons.py, tools/icons/                                icon generator and its SVG sources
 tools/gen_icon_map.py, gen_favicon.py, e2e_editor.py            editor icon table and favicon generators, browser test
+tools/screenshots.py                                             takes the pictures in docs/images from the editor (headless Edge/Chrome)
+docs/architecture.svg, assets/logo.svg                           the diagram and the logo used in this README
 Streamdeck-Editor.bat                                           opens the editor
 companion/                                                      the Python companion: deck.json, streamdeck_companion/ (incl.
                                                                 editor.py and web/ = the editor), tests/

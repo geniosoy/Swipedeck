@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 330" width="960" height="330" role="img" aria-label="How swipedeck fits together: the board, the companion on the PC, the editor in the browser and Windows">
+  <title>How Swipedeck fits together</title>
+  <defs>
+    <marker id="head" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#8A9BB3"/>
+    </marker>
+    <style>
+      .box { fill: #111A26; stroke: #26384D; stroke-width: 2; }
+      .hot { stroke: #3B82F6; }
+      .t { font: 700 19px 'Segoe UI', Arial, sans-serif; fill: #E6EDF7; }
+      .s { font: 15px 'Segoe UI', Arial, sans-serif; fill: #8A9BB3; }
+      .l { font: 13px 'Segoe UI', Arial, sans-serif; fill: #8A9BB3; text-anchor: middle; }
+      .arrow { stroke: #8A9BB3; stroke-width: 2.5; fill: none; marker-start: url(#head); marker-end: url(#head); }
+    </style>
+  </defs>
+  <rect width="960" height="330" rx="18" fill="#0B1220"/>
+
+  <!-- the board -->
+  <rect class="box hot" x="24" y="70" width="236" height="190" rx="16"/>
+  <text class="t" x="44" y="106">The board</text>
+  <text class="s" x="44" y="130">ESP32-S3 touch screen</text>
+  <text class="s" x="44" y="168">Keys, folders, swiping</text>
+  <text class="s" x="44" y="192">Now playing, PC stats</text>
+  <text class="s" x="44" y="216">Click sounds</text>
+  <text class="s" x="44" y="240">Keeps layout + settings</text>
+
+  <!-- the cable -->
+  <line class="arrow" x1="262" y1="165" x2="368" y2="165"/>
+  <text class="l" x="315" y="146">USB-C cable</text>
+  <text class="l" x="315" y="190">JSON lines</text>
+
+  <!-- the companion -->
+  <rect class="box hot" x="370" y="70" width="250" height="190" rx="16"/>
+  <text class="t" x="390" y="106">The companion</text>
+  <text class="s" x="390" y="130">Python program on the PC</text>
+  <text class="s" x="390" y="168">Runs the key actions</text>
+  <text class="s" x="390" y="192">Feeds the live screens</text>
+  <text class="s" x="390" y="216">Sends layout + settings</text>
+  <text class="s" x="390" y="240">Reloads deck.json on save</text>
+
+  <!-- the editor -->
+  <rect class="box" x="720" y="24" width="216" height="104" rx="16"/>
+  <text class="t" x="740" y="60">The editor</text>
+  <text class="s" x="740" y="84">Web page in your browser</text>
+  <text class="s" x="740" y="106">on this PC only</text>
+  <line class="arrow" x1="622" y1="130" x2="718" y2="86"/>
+  <text class="l" x="690" y="140">edits deck.json</text>
+
+  <!-- Windows -->
+  <rect class="box" x="720" y="202" width="216" height="104" rx="16"/>
+  <text class="t" x="740" y="238">Windows</text>
+  <text class="s" x="740" y="262">Hotkeys, apps, lock</text>
+  <text class="s" x="740" y="284">Media session, PC stats</text>
+  <line class="arrow" x1="622" y1="200" x2="718" y2="244"/>
+  <text class="l" x="668" y="266">acts + reads</text>
+</svg>
