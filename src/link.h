@@ -7,7 +7,7 @@
 //   {"type":"layout","seq":0,"of":3,"data":"..."} {"type":"layout-part","seq":0}  per chunk, then
 //        (chunks of the layout JSON text)         {"type":"layout-ack","ok":true,"crc":"1a2b3c4d"} (or ok:false,"error")
 //   {"type":"settings","volume":70,"sounds":true,"brightness":255,"soundTheme":"classic","navSounds":true,
-//     "dimAfter":0,"sleepAfter":0,"flip":false,"startDesktop":0,"keyRadius":12,"keyGap":6,"preview":false}
+//     "dimAfter":0,"sleepAfter":0,"flip":false,"startDesktop":0,"keyRadius":12,"keyGap":6,"wrap":false,"preview":false}
 //                                                 {"type":"settings-ack", ...current settings...,"preview":false}
 //        (every key is optional; out-of-range values are clamped; "preview":true applies without storing)
 //   {"type":"sound","name":"tap|nav|back|error"}  (plays a UI sound, e.g. the editor's Test buttons; wakes the screen)

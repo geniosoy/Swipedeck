@@ -37,6 +37,7 @@ SETTINGS_SPEC = {
     "startDesktop": ("int", 0, (0, MAX_DESKTOPS - 1)),
     "keyRadius": ("int", 12, (0, 24)),
     "keyGap": ("int", 6, (2, 12)),
+    "wrap": ("bool", False, None),             # endless scrolling: swiping past the last desktop wraps to the first
 }
 
 

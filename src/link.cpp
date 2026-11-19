@@ -15,7 +15,7 @@
 
 namespace {
 
-constexpr const char* kFirmware = "0.9.0";
+constexpr const char* kFirmware = "0.10.0";
 constexpr const char* kLayoutFile = "/layout.json";
 constexpr const char* kLayoutTmp = "/layout.tmp";
 
@@ -31,6 +31,7 @@ struct Settings {
   int startDesktop = 0;      // desktop shown after a layout loads / the board boots
   int keyRadius = 12;        // key corner radius, px
   int keyGap = 6;            // gap between keys, px
+  bool wrap = false;         // endless scrolling between desktops
 };
 
 const char* const kThemes[] = {"classic", "soft", "click", "chirp"};
@@ -80,6 +81,7 @@ void putSettings(JsonObject o) {
   o["startDesktop"] = settings.startDesktop;
   o["keyRadius"] = settings.keyRadius;
   o["keyGap"] = settings.keyGap;
+  o["wrap"] = settings.wrap;
 }
 
 void applySettings() {
@@ -96,6 +98,7 @@ void applySettings() {
     displaySetRotation(rotation);
   }
   uiSetKeyLook(settings.keyRadius, settings.keyGap);
+  uiSetWrap(settings.wrap);
 }
 
 // The desktop the board opens on; a start desktop that no longer exists means the first one.
@@ -118,6 +121,7 @@ void saveSettings() {
   prefs.putInt("std", settings.startDesktop);
   prefs.putInt("krd", settings.keyRadius);
   prefs.putInt("kgp", settings.keyGap);
+  prefs.putBool("wrp", settings.wrap);
   prefs.end();
 }
 
@@ -134,6 +138,7 @@ void loadSettings() {
   settings.startDesktop = prefs.getInt("std", settings.startDesktop);
   settings.keyRadius = prefs.getInt("krd", settings.keyRadius);
   settings.keyGap = prefs.getInt("kgp", settings.keyGap);
+  settings.wrap = prefs.getBool("wrp", settings.wrap);
   prefs.end();
 }
 
@@ -322,6 +327,7 @@ void onSettings(JsonDocument& m) {
   if (m["startDesktop"].is<int>()) settings.startDesktop = constrain(m["startDesktop"].as<int>(), 0, 31);
   if (m["keyRadius"].is<int>()) settings.keyRadius = constrain(m["keyRadius"].as<int>(), 0, 24);
   if (m["keyGap"].is<int>()) settings.keyGap = constrain(m["keyGap"].as<int>(), 2, 12);
+  if (m["wrap"].is<bool>()) settings.wrap = m["wrap"].as<bool>();
   applySettings();
   if (!(m["preview"] | false)) saveSettings();
   JsonDocument d;

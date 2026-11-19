@@ -16,6 +16,7 @@ constexpr int kHeaderH = 30;
 constexpr int kPad = 6;  // outer padding of the key grid
 int keyGap = 6;     // gap between keys (user setting)
 int keyRadius = 12; // corner radius of the keys (user setting)
+bool wrapDesktops = false;  // swiping past the first / last desktop continues on the other end (user setting)
 
 // Key sound is played on CLICKED (release without scrolling) so that starting a swipe on top of a
 // key does not tick. Switch to LV_EVENT_PRESSED for an instant tick at touch-down.
@@ -167,6 +168,20 @@ void onDesktopChanged(lv_event_t*) {
   }
 }
 
+// Endless scrolling. The tileview cannot scroll past its first / last tile, so a swipe that does not move anything
+// ends up as a gesture on the screen (LVGL sends it there while the finger is still down): jump to the other end.
+void onGesture(lv_event_t*) {
+  const int n = static_cast<int>(uis.size());
+  if (!wrapDesktops || n < 2) return;
+  const lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_get_act());
+  int target = -1;
+  if (dir == LV_DIR_RIGHT && activeDesktop == 0) target = n - 1;       // finger moves right = towards the previous one
+  else if (dir == LV_DIR_LEFT && activeDesktop == n - 1) target = 0;
+  if (target < 0) return;
+  lv_indev_wait_release(lv_indev_get_act());  // the rest of this drag must not scroll the desktop we land on
+  lv_obj_set_tile(tv, uis[target].tile, LV_ANIM_OFF);
+}
+
 void buildPage(int d, int p) {
   DesktopUi& u = uis[d];
   const DeckPage& page = deck.desktops[d].pages[p];
@@ -314,7 +329,10 @@ void uiInit(UiEventFn eventSink) {
   lv_obj_set_scrollbar_mode(tv, LV_SCROLLBAR_MODE_OFF);
   lv_obj_set_style_bg_opa(tv, LV_OPA_TRANSP, 0);
   lv_obj_add_event_cb(tv, onDesktopChanged, LV_EVENT_VALUE_CHANGED, nullptr);
+  lv_obj_add_event_cb(scr, onGesture, LV_EVENT_GESTURE, nullptr);
 }
+
+void uiSetWrap(bool on) { wrapDesktops = on; }
 
 bool uiLoadLayout(const char* json, String& err) {
   Deck fresh;

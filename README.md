@@ -50,7 +50,7 @@ The companion serves a layout editor at **http://127.0.0.1:8765/** (`Streamdeck-
   the arrows), and change a page's grid size (keys keep their row and column; you are asked before keys are removed).
 * **General settings** (the second tab at the top), see [Settings](#settings) below: sound theme and which sounds play,
   volume with **Test** buttons that play a sound on the board, brightness, auto-dim and screen-off after no touch,
-  flipping the screen, which desktop the board opens on, and how the keys look (corner roundness, spacing). Changes show
+  flipping the screen, endless scrolling between desktops, which desktop the board opens on, and how the keys look (corner roundness, spacing). Changes show
   on the board **right away** (a live preview that is not stored) and are kept when you save.
 * **Add desktop menu** (`+ Add desktop`): the **live screens** (Now playing, PC stats; one each) and **ready-made
   desktops** you can add and then tweak: Discord, Coding (VS Code, with Git and Debug pages), OBS & streaming (F13-F24
@@ -202,6 +202,7 @@ companion connects and when the deck is saved, and the board stores them. Wrong 
 | `startDesktop` | 0..7 | 0 | desktop shown at boot and after a layout loads (the first one if the number does not exist) |
 | `keyRadius` | 0..24 | 12 | corner roundness of the keys, px |
 | `keyGap` | 2..12 | 6 | space between keys, px |
+| `wrap` | true / false | false | endless scrolling: swiping right on the first desktop goes to the last one, swiping left on the last goes to the first (needs firmware 0.10.0) |
 
 * **Waking the screen:** the touch that wakes a dimmed or sleeping screen is swallowed: it does not press anything, and
   neither does a swipe started with it. Sounds played by the Test buttons also wake the screen.
