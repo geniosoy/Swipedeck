@@ -10,9 +10,10 @@ constexpr uint32_t kBg = 0x101722, kTrack = 0x2A3A4D, kBlue = 0x3B82F6, kGreen =
 constexpr int kCols = 5;                  // the master fader and up to four programs
 constexpr int kColW = 56, kColGap = 8;
 constexpr int kTileW = 320, kTileH = 210;  // the area below the fixed top bar
-// The knob is a circle as wide as the fader (30 px): at 100 % it sticks out 15 px above the track and at 0 % 15 px below it,
-// so the number above and the mute button below keep that much room.
-constexpr int kSliderW = 30, kSliderTop = 44, kSliderH = 96;
+// The fader is a flat-cornered bar with a cap across its whole width (kCapH tall, centered on the value): the cap, the fill
+// and the track share the same width and corner radius, so they join flush. At 100 % the cap sticks out kCapH / 2 above the
+// track and at 0 % below it; the number above and the mute button below leave room for that.
+constexpr int kSliderW = 30, kSliderTop = 38, kSliderH = 104, kCapH = 12, kRadius = 4;
 constexpr uint32_t kGuardMs = 700;        // after a touch the PC's value is ignored for a moment (it is still catching up)
 constexpr uint32_t kSendEveryMs = 80;
 
@@ -76,7 +77,7 @@ void showPercent(Col& c, int vol) {
 void paint(Col& c, int index) {
   const uint32_t accent = c.muted ? kGrey : (index == 0 ? kBlue : kGreen);
   lv_obj_set_style_bg_color(c.slider, lv_color_hex(accent), LV_PART_INDICATOR);
-  lv_obj_set_style_bg_color(c.slider, lv_color_hex(accent), LV_PART_KNOB);
+  lv_obj_set_style_bg_color(c.slider, lv_color_hex(c.muted ? kMutedText : 0xE6EDF7), LV_PART_KNOB);
   lv_obj_set_style_text_color(c.pct, lv_color_hex(c.muted ? kMutedText : 0xFFFFFF), 0);
   lv_label_set_text(c.muteLbl, c.muted ? LV_SYMBOL_MUTE : LV_SYMBOL_VOLUME_MAX);
   lv_obj_set_style_text_color(c.muteLbl, lv_color_hex(c.muted ? 0xF04438 : 0xFFFFFF), 0);
@@ -146,17 +147,19 @@ void buildCol(lv_obj_t* root, int index) {
   lv_obj_set_ext_click_area(c.slider, 12);  // a generous target for a finger
   lv_obj_set_style_bg_color(c.slider, lv_color_hex(kTrack), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(c.slider, LV_OPA_COVER, LV_PART_MAIN);
-  lv_obj_set_style_radius(c.slider, 10, LV_PART_MAIN);
-  lv_obj_set_style_radius(c.slider, 10, LV_PART_INDICATOR);
+  lv_obj_set_style_radius(c.slider, kRadius, LV_PART_MAIN);
+  lv_obj_set_style_radius(c.slider, kRadius, LV_PART_INDICATOR);
+  lv_obj_set_style_radius(c.slider, kRadius, LV_PART_KNOB);
   lv_obj_set_style_bg_opa(c.slider, LV_OPA_COVER, LV_PART_INDICATOR);
   lv_obj_set_style_bg_opa(c.slider, LV_OPA_COVER, LV_PART_KNOB);
-  lv_obj_set_style_pad_all(c.slider, 0, LV_PART_KNOB);  // knob = the fader's width, no bigger
+  lv_obj_set_style_pad_hor(c.slider, 0, LV_PART_KNOB);                       // the cap is as wide as the fader
+  lv_obj_set_style_pad_ver(c.slider, -(kSliderW - kCapH) / 2, LV_PART_KNOB);  // ...and only kCapH tall (the knob starts square)
   lv_obj_add_event_cb(c.slider, onSlider, LV_EVENT_ALL, reinterpret_cast<void*>(static_cast<intptr_t>(index)));
 
   c.mute = lv_btn_create(c.box);
   lv_obj_remove_style_all(c.mute);
   lv_obj_set_size(c.mute, 44, 30);
-  lv_obj_set_pos(c.mute, (kColW - 44) / 2, kSliderTop + kSliderH + 18);
+  lv_obj_set_pos(c.mute, (kColW - 44) / 2, kSliderTop + kSliderH + 14);
   lv_obj_set_style_bg_opa(c.mute, LV_OPA_COVER, 0);
   lv_obj_set_style_bg_color(c.mute, lv_color_hex(kTrack), 0);
   lv_obj_set_style_bg_color(c.mute, lv_color_hex(kGrey), LV_STATE_PRESSED);

@@ -545,10 +545,10 @@ function mockMixer(o) {
     const accent = muted ? '#55657A' : color;
     return boxAt(x0 + i * 64, 0, 56, 210, {},
       labelAt(0, 4, 56, 20, muted ? '#7F8FA6' : '#fff', String(vol), { textAlign: 'center' }),
-      boxAt(13, 44, 30, 96, { background: '#2A3A4D', borderRadius: 10 * S + 'px' },
-        boxAt(0, 96 * (1 - vol / 100), 30, 96 * vol / 100, { background: accent, borderRadius: 10 * S + 'px' }),
-        boxAt(0, 96 * (1 - vol / 100) - 15, 30, 30, { background: accent, borderRadius: '50%', border: '2px solid #101722', boxSizing: 'border-box' })),  // the knob is a circle as wide as the fader
-      boxAt(6, 158, 44, 30, { background: '#2A3A4D', borderRadius: 8 * S + 'px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: muted ? '#F04438' : '#fff', fontSize: 16 * S + 'px' },
+      boxAt(13, 38, 30, 104, { background: '#2A3A4D', borderRadius: 4 * S + 'px' },
+        boxAt(0, 104 * (1 - vol / 100), 30, 104 * vol / 100, { background: accent, borderRadius: 4 * S + 'px' }),
+        boxAt(0, 104 * (1 - vol / 100) - 6, 30, 12, { background: muted ? '#7F8FA6' : '#E6EDF7', borderRadius: 4 * S + 'px' })),  // the cap: as wide as the fader, same corners
+      boxAt(6, 156, 44, 30, { background: '#2A3A4D', borderRadius: 8 * S + 'px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: muted ? '#F04438' : '#fff', fontSize: 16 * S + 'px' },
         h('span', { class: 'fa' }, glyph(muted ? 'mute' : 'volume_up'))),
       labelAt(0, 188, 56, 14, '#C5D1E3', name, { textAlign: 'center', textOverflow: 'ellipsis' }));
   }));
