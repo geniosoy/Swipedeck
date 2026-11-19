@@ -177,6 +177,10 @@ textarea { min-height: 70px; resize: vertical; font-family: Consolas, monospace;
 button:disabled { opacity: .45; cursor: default; }
 .subsec { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 4px; }
 .subsec h5 { margin: 8px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.place { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); margin-top: 6px; }
+.place .nm { flex: 1; }
+.placeResults { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.placeResults button { text-align: left; }
 .inforow { display: flex; justify-content: space-between; gap: 16px; padding: 4px 0; border-bottom: 1px solid var(--line); }
 .inforow:last-of-type { border-bottom: 0; }
 

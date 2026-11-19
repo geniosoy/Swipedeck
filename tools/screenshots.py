@@ -46,7 +46,8 @@ def main() -> int:
                {"id": "Spotify.exe", "title": "", "artist": "", "playing": False, "current": False}]
     server = EditorServer(deck_path, port=0, status_fn=lambda: {"connected": True, "port": "COM3", "firmware": "0.12.0",
                                                                 "desktop": 0, "kind": "keys"},
-                          media_sources_fn=lambda: players, command_fn=lambda c: True)
+                          media_sources_fn=lambda: players, command_fn=lambda c: True,
+                          places_fn=lambda q: [{"name": "London", "region": "England", "country": "United Kingdom", "lat": 51.5074, "lon": -0.1278}])
     server.start()
     port = free_port()
     proc = subprocess.Popen([browser, "--headless=new", "--disable-gpu", "--no-first-run", f"--remote-debugging-port={port}",
@@ -121,6 +122,21 @@ def main() -> int:
         time.sleep(0.5)
         cdp.js("window.scrollTo(0, 0)")
         page_shot("settings.png")
+
+        # the two newer screens are added last, so the dots in the pictures above are not changed by them
+        print("mixer and clock")
+        cdp.js("btn('Desktops').click()")
+        for name in ("Volume mixer", "Clock"):
+            cdp.js("btn('+ Add desktop').click()")
+            cdp.js(f"[...document.querySelectorAll('.addmenu .item')].find((b) => b.textContent.includes('{name}')).click()")
+            time.sleep(0.3)
+            if name == "Clock":
+                cdp.js("document.querySelector('#placeQuery').value = 'London'; document.querySelector('#placeSearch').click()")
+                cdp.wait("document.querySelectorAll('#placeResults button').length > 0")
+                cdp.js("document.querySelector('#placeResults button').click()")
+                cdp.js("[...document.querySelectorAll('#liveConfig .check')].find((l) => l.textContent.includes('seconds')).querySelector('input').click()")
+                time.sleep(0.3)
+            screen_shot("screen-mixer.png" if name == "Volume mixer" else "screen-clock.png")
     finally:
         proc.terminate()
         server.stop()

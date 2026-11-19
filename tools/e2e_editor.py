@@ -161,7 +161,10 @@ def main() -> int:
     board_commands: list = []  # what the editor asked the (pretend) companion to send to the board
     server = EditorServer(deck_path, port=0, status_fn=lambda: {"connected": False}, media_sources_fn=lambda: players,
                           command_fn=lambda c: board_commands.append(c) or True,
-                          running_apps_fn=lambda: ["chrome", "obs64"])
+                          running_apps_fn=lambda: ["chrome", "obs64"],
+                          places_fn=lambda q: [{"name": "Oslo", "region": "Oslo", "country": "Norway", "lat": 59.9139, "lon": 10.7522},
+                                               {"name": "Oslo", "region": "Minnesota", "country": "United States", "lat": 48.1933, "lon": -97.1326}]
+                          if len(q) >= 2 else (_ for _ in ()).throw(ValueError("type at least two letters of the place")))
     server.start()
     port = free_port()
     proc = subprocess.Popen([browser, "--headless=new", "--disable-gpu", "--no-first-run", f"--remote-debugging-port={port}",
@@ -299,7 +302,7 @@ def main() -> int:
         templates = json.loads((ROOT / "companion" / "streamdeck_companion" / "web" / "templates.json").read_text(encoding="utf-8"))["templates"]
         check("the old standalone add buttons are gone", cdp.js("!btn('+ Now playing') && !btn('+ PC stats') && !btn('+ Keys desktop')"))
         cdp.js("btn('+ Add desktop').click()")
-        check("the menu lists live screens, ready-made desktops and a blank one", cdp.js("$$('.addmenu .item').length") == 2 + len(templates) + 1)
+        check("the menu lists live screens, ready-made desktops and a blank one", cdp.js("$$('.addmenu .item').length") == 4 + len(templates) + 1)
         check("live screens already in the deck are disabled", cdp.js("menuItem('Now playing').disabled && menuItem('PC stats').disabled"))
         check("every ready-made desktop is offered", all(cdp.js(f"!!menuItem({json.dumps(t['name'])})") for t in templates))
         cdp.js("press('Escape')")
@@ -596,6 +599,46 @@ def main() -> int:
         check("the Desktops tab brings the editor back", cdp.js("!document.querySelector('#deckView').hidden && document.querySelector('#settingsPage').hidden"))
         cdp.js("keyAt(11).click()")
         cdp.js("card('Mute').click()")
+
+        print("volume mixer and clock desktops")
+        before = cdp.js("$$('.deskrow').length")
+        cdp.js("btn('+ Add desktop').click()")
+        menu = cdp.js("$$('.addmenu .item .nm').map((e) => e.textContent)")
+        check("the add menu offers the volume mixer and the clock", "Volume mixer" in menu and "Clock & timer" in menu, str(menu))
+        cdp.js("[...document.querySelectorAll('.addmenu .item')].find((b) => b.textContent.includes('Volume mixer')).click()")
+        check("adding the mixer makes a desktop and selects it", cdp.js("$$('.deskrow').length") == before + 1 and cdp.js("document.querySelector('.stagehead').textContent.includes('Volume mixer')"))
+        check("its preview is a master fader and three programs", cdp.js("!!document.querySelector('.mock[data-kind=mixer]')") and cdp.js("document.querySelector('.mock[data-kind=mixer]').children.length") == 5)
+        cdp.js("btn('+ Add desktop').click()")
+        check("the mixer cannot be added twice", cdp.js("[...document.querySelectorAll('.addmenu .item')].find((b) => b.textContent.includes('Volume mixer')).disabled"))
+        cdp.js("press('Escape')")
+        cdp.js("setInput(document.querySelector('#mixerApps'), 'Discord.exe, steam')")
+        check("pinned programs lead the preview", cdp.js("document.querySelector('.mock[data-kind=mixer] > div:nth-child(2)').textContent.includes('Discord')"))
+        if shots:
+            cdp.shot(shots / "15_mixer.png")
+
+        cdp.js("btn('+ Add desktop').click()")
+        cdp.js("[...document.querySelectorAll('.addmenu .item')].find((b) => b.textContent.includes('Clock')).click()")
+        check("adding the clock makes its desktop", cdp.js("document.querySelector('.stagehead').textContent.includes('Clock')") and cdp.js("!!document.querySelector('.mock[data-kind=clock]')"))
+        check("it has a timer and no weather until a place is chosen", cdp.js("document.querySelector('.mock[data-kind=clock]').textContent.includes('05:00')")
+              and cdp.js("!document.querySelector('.mock[data-kind=clock]').textContent.includes('Overcast')") and "No place chosen" in cdp.js("document.querySelector('#chosenPlace').textContent"))
+        cdp.js("document.querySelector('#placeQuery').value = 'o'; document.querySelector('#placeSearch').click()")
+        check("a search for one letter says what is wrong", cdp.wait("document.querySelector('#placeMessage').textContent.includes('at least two letters')"))
+        cdp.js("document.querySelector('#placeQuery').value = 'Oslo'; document.querySelector('#placeSearch').click()")
+        check("searching lists the places found", cdp.wait("document.querySelectorAll('#placeResults button').length === 2"))
+        check("...with region and country", cdp.js("document.querySelector('#placeResults button').textContent") == "Oslo, Oslo, Norway")
+        cdp.js("document.querySelector('#placeResults button').click()")
+        check("choosing one shows it and the weather appears in the preview", cdp.js("document.querySelector('#chosenPlace').textContent.includes('Oslo (59.9139, 10.7522)')")
+              and cdp.js("document.querySelector('.mock[data-kind=clock]').textContent.includes('Overcast')"))
+        cdp.js("setSelect(document.querySelector('#weatherUnits'), 'f')")
+        check("Fahrenheit changes the preview", cdp.js("document.querySelector('.mock[data-kind=clock]').textContent.includes('48')"))
+        cdp.js("[...document.querySelectorAll('#liveConfig .check')].find((l) => l.textContent.includes('12-hour')).querySelector('input').click()")
+        check("12-hour shows AM / PM", cdp.js("document.querySelector('.mock[data-kind=clock]').textContent.includes('PM')"))
+        cdp.js("[...document.querySelectorAll('#liveConfig .check')].find((l) => l.textContent.includes('Countdown timer')).querySelector('input').click()")
+        check("turning the timer off removes it from the preview", cdp.js("!document.querySelector('.mock[data-kind=clock]').textContent.includes('05:00')"))
+        cdp.js("[...document.querySelectorAll('#liveConfig .check')].find((l) => l.textContent.includes('Countdown timer')).querySelector('input').click()")
+        if shots:
+            cdp.shot(shots / "16_clock.png")
+        cdp.js("$$('.deskrow')[0].click()")  # back to a keys desktop for the steps that follow
         cdp.js("btn('Save').click()")
         check("Save succeeds", cdp.wait("document.querySelector('#toast') && !document.querySelector('#toast').hidden && document.querySelector('#toast').textContent.startsWith('Saved')"))
         check("...and the button reads Saved again", cdp.js("btn('Saved') && btn('Saved').disabled"))
@@ -632,6 +675,14 @@ def main() -> int:
         check("the saved deck loads in the companion", loaded is not None)
         check("the player filter reaches the companion but not the board", loaded.np_filter == {"allow": ["tidal"], "block": ["chrome"]} and "Chrome" not in loaded.layout_text())
         check("a backup of the previous deck was written", (work / "deck.json.bak").exists())
+        mixer_desk = next(d for d in saved["desktops"] if d.get("kind") == "mixer")
+        clock_desk = next(d for d in saved["desktops"] if d.get("kind") == "clock")
+        check("the saved file has the mixer with its pinned programs", mixer_desk.get("options") == {"apps": ["discord", "steam"]}, str(mixer_desk))
+        check("...and the clock with the place, the units and 12-hour", clock_desk.get("options") == {"hour12": True, "timer": True, "units": "f", "place": {"name": "Oslo", "lat": 59.9139, "lon": 10.7522}}, str(clock_desk))
+        companion_deck = Deck(saved)
+        check("the companion takes them", companion_deck.has_mixer and companion_deck.mixer_pins == ["discord", "steam"] and companion_deck.has_clock
+              and companion_deck.clock_weather and companion_deck.clock_units == "f", str(companion_deck.warnings))
+        check("the board gets the options but not the place or the pins", "Oslo" not in companion_deck.layout_text() and "discord" not in companion_deck.layout_text())
         check("saved text is readable (one key per line)", max(len(l) for l in deck_path.read_text(encoding="utf-8").splitlines()) < 400)
 
         print("user presets")

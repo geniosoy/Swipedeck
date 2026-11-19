@@ -6,8 +6,8 @@ const S = 2; // preview scale: the board screen is 320 x 240, shown at 640 x 480
 const TOKEN = document.querySelector('meta[name="sd-token"]').content;
 const $ = (sel) => document.querySelector(sel);
 const SWATCHES = ['#2A3A4D', '#B3261E', '#C77700', '#2E7D32', '#1F6F5C', '#00838F', '#2F6FDB', '#5B3A8C', '#8E24AA', '#455A64'];
-const KIND_ICON = { keys: 'keyboard', nowplaying: 'audio', stats: 'charge' };
-const KIND_LABEL = { keys: 'Keys', nowplaying: 'Now playing', stats: 'PC stats' };
+const KIND_ICON = { keys: 'keyboard', nowplaying: 'audio', stats: 'charge', mixer: 'volume_up', clock: 'bell' };
+const KIND_LABEL = { keys: 'Keys', nowplaying: 'Now playing', stats: 'PC stats', mixer: 'Volume mixer', clock: 'Clock' };
 const ATTR_ONLY = new Set(['list', 'form']);
 
 // ---- tiny DOM helper ---------------------------------------------------------------------------------
@@ -261,6 +261,7 @@ function renderTopbar() {
 
 function addMenu() {
   const hasNp = M.hasKind(state.deck, 'nowplaying'), hasStats = M.hasKind(state.deck, 'stats');
+  const hasMixer = M.hasKind(state.deck, 'mixer'), hasClock = M.hasKind(state.deck, 'clock');
   const item = (icon, name, desc, onclick, why = '') => h('button', { class: 'item', disabled: !!why, title: why || desc, onclick },
     h('span', { class: 'fa ic' }, glyph(icon)),
     h('span', { class: 'tx' }, h('span', { class: 'nm' }, name), h('span', { class: 'ds' }, why || desc)));
@@ -268,6 +269,8 @@ function addMenu() {
     h('div', { class: 'sec' }, 'Live screens'),
     item('audio', 'Now playing', 'Cover, title and player controls from the Windows media session', () => addDesktopOfKind('nowplaying'), hasNp ? 'Already added' : ''),
     item('charge', 'PC stats', 'CPU, GPU, RAM, disk and network', () => addDesktopOfKind('stats'), hasStats ? 'Already added' : ''),
+    item('volume_up', 'Volume mixer', 'Master and per-program volume faders', () => addDesktopOfKind('mixer'), hasMixer ? 'Already added' : ''),
+    item('bell', 'Clock & timer', 'Time, weather and a countdown timer', () => addDesktopOfKind('clock'), hasClock ? 'Already added' : ''),
     h('div', { class: 'sec' }, 'Ready-made desktops'),
     state.templates.map((t) => item(t.icon, t.name, t.description, () => addTemplate(t))),
     h('div', { class: 'sec' }, 'Blank'),
@@ -528,6 +531,56 @@ function mockStats(o) {
   return h('div', { class: 'mock', dataset: { style: o.style }, style: { background: '#101722' } }, body);
 }
 
+// A box placed at x, y with a size, in board pixels (the preview is drawn at S times that).
+const boxAt = (x, y, w, ht, style = {}, ...kids) => h('div', { style: { position: 'absolute', left: x * S + 'px', top: y * S + 'px',
+  width: w * S + 'px', height: ht * S + 'px', ...style } }, ...kids);
+const labelAt = (x, y, w, size, color, text, extra = {}) => boxAt(x, y, w, size * 1.3, { fontSize: size * S + 'px', lineHeight: size * 1.3 * S + 'px', color, whiteSpace: 'nowrap', overflow: 'hidden', ...extra }, text);
+
+// The volume mixer: a master fader and up to four programs (sample values: the real ones come from the PC).
+function mockMixer(o) {
+  const names = [...o.apps, 'spotify', 'chrome', 'discord', 'steam'].filter((n, i, a) => a.indexOf(n) === i).slice(0, 4);
+  const cols = [['Master', 60, false, '#3B82F6'], ...names.map((n, i) => [n.charAt(0).toUpperCase() + n.slice(1), [80, 45, 30, 90][i], i === 1, '#1ED760'])];
+  const x0 = (320 - (cols.length * 56 + (cols.length - 1) * 8)) / 2;
+  return h('div', { class: 'mock', dataset: { kind: 'mixer' }, style: { background: '#101722' } }, cols.map(([name, vol, muted, color], i) => {
+    const accent = muted ? '#55657A' : color;
+    return boxAt(x0 + i * 64, 0, 56, 210, {},
+      labelAt(0, 4, 56, 20, muted ? '#7F8FA6' : '#fff', String(vol), { textAlign: 'center' }),
+      boxAt(13, 30, 30, 112, { background: '#2A3A4D', borderRadius: 10 * S + 'px' },
+        boxAt(0, 112 * (1 - vol / 100), 30, 112 * vol / 100, { background: accent, borderRadius: 10 * S + 'px' }),
+        boxAt(3, Math.min(112 - 24, Math.max(0, 112 * (1 - vol / 100) - 4)), 24, 24, { background: accent, borderRadius: '50%', border: '2px solid #101722', boxSizing: 'border-box' })),
+      boxAt(6, 150, 44, 30, { background: '#2A3A4D', borderRadius: 8 * S + 'px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: muted ? '#F04438' : '#fff', fontSize: 16 * S + 'px' },
+        h('span', { class: 'fa' }, glyph(muted ? 'mute' : 'volume_up'))),
+      labelAt(0, 184, 56, 14, '#C5D1E3', name, { textAlign: 'center', textOverflow: 'ellipsis' }));
+  }));
+}
+
+// The clock screen: time, weather and timer, as laid out in clockscreen.cpp (sample numbers).
+function mockClock(o) {
+  const yOff = o.timer ? 0 : 36;
+  const weather = o.weather && o.place;
+  const x0 = weather ? 16 : 62;
+  const kids = [
+    labelAt(x0, 4 + yOff, 142, 48, '#fff', o.hour12 ? '2:05' : '14:05', { fontWeight: 600 }),
+    o.hour12 ? labelAt(x0 + 144, 8 + yOff, 40, 18, '#7F8FA6', 'PM') : null,
+    o.seconds ? labelAt(x0 + 144, 28 + yOff, 40, 24, '#7F8FA6', '30') : null,
+    labelAt(x0, 62 + yOff, 190, 18, '#C5D1E3', 'Thu 19 Nov'),
+  ];
+  if (weather) {
+    const unit = o.units === 'f' ? 'F' : 'C';
+    kids.push(labelAt(206, 2 + yOff, 108, 32, '#fff', o.units === 'f' ? '48\u00B0F' : '9\u00B0C'), labelAt(206, 40 + yOff, 108, 16, '#C5D1E3', 'Overcast'),
+      labelAt(206, 61 + yOff, 108, 14, '#7F8FA6', o.units === 'f' ? 'H 50\u00B0  L 43\u00B0' : 'H 10\u00B0  L 6\u00B0'), labelAt(206, 79 + yOff, 108, 14, '#7F8FA6', o.place.name));
+    void unit;
+  }
+  if (o.timer) {
+    kids.push(boxAt(16, 102, 288, 2, { background: '#2A3A4D' }), labelAt(16, 120, 140, 40, '#fff', '05:00'));
+    ['1m', '5m', '10m', '25m'].forEach((t, i) => kids.push(boxAt(158 + i * 40, 112, 34, 32, { background: i === 1 ? '#3B82F6' : '#2A3A4D', borderRadius: 10 * S + 'px', color: '#fff',
+      fontSize: 14 * S + 'px', display: 'flex', alignItems: 'center', justifyContent: 'center' }, t)));
+    kids.push(boxAt(158, 152, 92, 46, { background: '#2E7D32', borderRadius: 10 * S + 'px', color: '#fff', fontSize: 18 * S + 'px', display: 'flex', alignItems: 'center', justifyContent: 'center' }, 'Start'),
+      boxAt(256, 152, 56, 46, { background: '#2A3A4D', borderRadius: 10 * S + 'px', color: '#fff', fontSize: 20 * S + 'px', display: 'flex', alignItems: 'center', justifyContent: 'center' }, h('span', { class: 'fa' }, glyph('refresh'))));
+  }
+  return h('div', { class: 'mock', dataset: { kind: 'clock' }, style: { background: '#101722' } }, kids);
+}
+
 function renderScreen() {
   const d = desk();
   const kind = M.desktopKind(d);
@@ -548,7 +601,8 @@ function renderScreen() {
     geo.radius = look.keyRadius;
     for (let i = 0; i < pg.cols * pg.rows; i++) content.append(keyEl(pg.keys[i] || {}, i, geo));
   } else {
-    content.append(kind === 'nowplaying' ? mockNowPlaying(M.liveOptions(d)) : mockStats(M.liveOptions(d)));
+    const mocks = { nowplaying: mockNowPlaying, stats: mockStats, mixer: mockMixer, clock: mockClock };
+    content.append(mocks[kind](M.liveOptions(d)));
   }
   screen.append(content);
   const head = h('div', { class: 'stagehead' }, h('b', {}, d.name),
@@ -822,7 +876,9 @@ function renderInspector() {
     'Program names as in Task Manager, without .exe, separated by commas. The desktop comes to the front when one of them becomes the active window; it is checked only when the active program changes, so you can still swipe away.'),
     h('div', { class: 'hint' }, kind === 'keys' ? 'A desktop holds pages of keys; swipe between desktops on the board.' :
       kind === 'nowplaying' ? 'The Now playing screen shows the Windows media session: cover, title, progress bar and controls. Choose the players and the look below the preview.' :
-        'The PC stats screen shows CPU, GPU, RAM, VRAM, disk and network. Choose the style, the items and their order below the preview.')));
+        kind === 'mixer' ? 'The volume mixer: the master volume and up to four programs as faders you drag on the board. Choose which programs come first below the preview.' :
+          kind === 'clock' ? 'The clock screen: the time, the weather and a countdown timer that keeps running (and rings) wherever the board is showing. Choose its parts below the preview.' :
+            'The PC stats screen shows CPU, GPU, RAM, VRAM, disk and network. Choose the style, the items and their order below the preview.')));
   if (kind !== 'keys') { box.replaceChildren(...cards); return; }
   const k = keyObj();
   if (state.sel.k === null) {
@@ -1122,11 +1178,60 @@ function statsConfig(d) {
   return [style, items];
 }
 
+function mixerConfig(d) {
+  const o = M.liveOptions(d);
+  const apps = textInput(M.joinApps(o.apps), (v) => liveEdit(() => {
+    const list = M.parseApps(v).slice(0, 4);
+    if (list.length) M.setOptions(d, { apps: list }); else if (d.options) delete d.options.apps;
+  }, 'mixapps'), { placeholder: 'spotify, discord', list: 'runningApps', id: 'mixerApps', onfocus: loadRunningApps });
+  return [h('div', { class: 'card' }, h('h4', {}, 'Programs'),
+    field('Always show these first', apps, 'Program names as in Task Manager, without .exe, separated by commas (up to four). The other faders are the programs that are making sound, then the rest in alphabetical order.'),
+    h('div', { class: 'hint' }, 'A fader is shown for a program only while Windows has an audio session for it (it has played sound). The mixer reads and changes volumes only while this screen is showing.'))];
+}
+
+function clockConfig(d) {
+  const o = M.liveOptions(d);
+  const setOpt = (patch) => commit(() => { M.setOptions(d, patch); });
+  const parts = h('div', { class: 'card' }, h('h4', {}, 'Parts'),
+    checkRow('12-hour clock (AM / PM)', o.hour12, (v) => setOpt({ hour12: v })),
+    checkRow('Show seconds', o.seconds, (v) => setOpt({ seconds: v })),
+    checkRow('Countdown timer (1, 5, 10 and 25 minute presets)', o.timer, (v) => setOpt({ timer: v })),
+    checkRow('Weather', o.weather, (v) => setOpt({ weather: v })),
+    h('div', { class: 'hint' }, 'The timer runs on the board: it keeps counting when you swipe to another desktop, and when it ends the board rings (even with key sounds off), wakes the screen and shows this desktop.'));
+  const results = h('div', { class: 'placeResults', id: 'placeResults' });
+  const message = h('div', { class: 'hint', id: 'placeMessage' });
+  const query = h('input', { type: 'text', id: 'placeQuery', placeholder: 'A city, like Oslo', maxLength: 80, style: { flex: '1' } });
+  const search = async () => {
+    message.className = 'hint';
+    message.textContent = 'Searching\u2026';
+    results.replaceChildren();
+    try {
+      const found = (await api('GET', '/api/places?q=' + encodeURIComponent(query.value.trim()))).places;
+      message.textContent = found.length ? 'Click the one you mean:' : 'No place found.';
+      results.replaceChildren(...found.map((p) => h('button', { class: 'small', dataset: { place: p.name }, onclick: () => setOpt({ place: { name: p.name, lat: p.lat, lon: p.lon } }) }, M.foundPlaceText(p))));
+    } catch (e) {
+      message.className = 'hint bad';
+      message.textContent = e.message;
+    }
+  };
+  query.addEventListener('keydown', (e) => { if (e.key === 'Enter') search(); });
+  const weather = h('div', { class: 'card' }, h('h4', {}, 'Weather'),
+    o.place ? h('div', { class: 'place', id: 'chosenPlace' }, h('span', { class: 'nm' }, M.placeText(o.place)), h('button', { class: 'small', onclick: () => commit(() => { delete d.options.place; }) }, 'Clear'))
+      : h('div', { class: 'hint', id: 'chosenPlace' }, 'No place chosen: the weather is not shown.'),
+    field('Find a place', h('div', { class: 'row' }, query, h('button', { class: 'small', id: 'placeSearch', onclick: search }, 'Find'))),
+    message, results,
+    field('Units', h('select', { id: 'weatherUnits', onchange: (e) => setOpt({ units: e.target.value }) },
+      [['c', 'Celsius (\u00B0C)'], ['f', 'Fahrenheit (\u00B0F)']].map(([v, t]) => h('option', { value: v, selected: o.units === v }, t)))),
+    h('div', { class: 'hint' }, 'Weather comes from Open-Meteo (open-meteo.com), free and without an account. While this screen is showing, the chosen place\u2019s coordinates are sent there every 15 minutes, and what you type in "Find a place" when you search. Nothing else is sent. Start the companion with --no-weather to never send anything.'));
+  return [parts, weather];
+}
+
 function renderLiveConfig() {
   const box = $('#liveConfig');
   if (isKeys()) { box.replaceChildren(); return; }
   const d = desk();
-  box.replaceChildren(...(M.desktopKind(d) === 'nowplaying' ? nowPlayingConfig(d) : statsConfig(d)));
+  const configs = { nowplaying: nowPlayingConfig, stats: statsConfig, mixer: mixerConfig, clock: clockConfig };
+  box.replaceChildren(...configs[M.desktopKind(d)](d));
 }
 
 // ---- presets -----------------------------------------------------------------------------------------

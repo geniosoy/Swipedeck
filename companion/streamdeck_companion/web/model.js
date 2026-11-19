@@ -97,7 +97,7 @@ export function newKeysDesktop(deck, name) {
   return { name: title, pages: [padKeys({ id: 'root', title, cols: 4, rows: 3, keys: [] })] };
 }
 
-export const specialDesktop = (kind) => ({ name: kind === 'stats' ? 'PC' : 'Playing', kind });
+export const specialDesktop = (kind) => ({ name: { stats: 'PC', nowplaying: 'Playing', mixer: 'Mixer', clock: 'Clock' }[kind] || 'Screen', kind });
 export const hasKind = (deck, kind) => deck.desktops.some((d) => d.kind === kind);
 export const desktopKind = (d) => d.kind || 'keys';
 
@@ -384,7 +384,10 @@ export function boardLayout(deck) {
       if (d.kind && d.kind !== 'keys') {
         const o = liveOptions(d);
         // the player filter stays on the PC: the board only gets how the screen looks
-        const board = d.kind === 'nowplaying' ? { tint: o.tint, album: o.album, controls: o.controls, appIcon: o.appIcon } : { style: o.style, items: o.items };
+        const board = d.kind === 'nowplaying' ? { tint: o.tint, album: o.album, controls: o.controls, appIcon: o.appIcon }
+          : d.kind === 'mixer' ? {}
+            : d.kind === 'clock' ? { hour12: o.hour12, seconds: o.seconds, timer: o.timer, weather: o.weather && !!o.place }  // the place stays on the PC
+              : { style: o.style, items: o.items };
         return { name: d.name, kind: d.kind, options: board };
       }
       return {
@@ -467,8 +470,17 @@ export function liveOptions(d) {
   if (d.kind === 'nowplaying') {
     return { filter: normalizeFilter(o.filter), tint: o.tint ?? true, album: o.album ?? true, controls: o.controls || 'full', appIcon: o.appIcon ?? false };
   }
+  if (d.kind === 'mixer') return { apps: (o.apps || []).slice(0, 4) };
+  if (d.kind === 'clock') {
+    return { hour12: o.hour12 ?? false, seconds: o.seconds ?? false, timer: o.timer ?? true, weather: o.weather ?? true,
+      units: o.units || 'c', place: o.place || null };
+  }
   return { style: o.style || 'gauges', items: o.items && o.items.length ? [...o.items] : STAT_ITEMS.map((x) => x.id) };
 }
+
+// "Oslo, Norway" for a place found by the search, and the short text for the one that is chosen.
+export const placeText = (p) => (p ? `${p.name} (${p.lat}, ${p.lon})` : 'no place chosen');
+export const foundPlaceText = (p) => [p.name, p.region, p.country].filter(Boolean).join(', ');
 
 export function setOptions(d, patch) {
   d.options = { ...(d.options || {}), ...patch };

@@ -13,12 +13,13 @@ Documented in the README and covered by tests.
 * **More action types** ("HTTP, OBS and Discord actions"): an HTTP request (webhooks, Home Assistant), OBS control over
   its WebSocket, and Discord mute / deafen through global keybinds (a real Discord integration needs a registered app, so
   it was left out). The OBS side is tested against a stand-in server, not yet against a real OBS.
+* **Volume mixer screen** and **clock, timer and weather screen** ("Volume mixer and clock screens"). The companion side
+  was tried for real on the PC; the firmware (0.13.0) builds but still has to be tried on the board: dragging the
+  faders, the timer and its alarm. (The clock as a screensaver for the dimmed screen was left out on purpose.)
 
 ## Medium
 
-* **Volume mixer screen.** A touch screen with sliders for the master volume and for each app, as a new live desktop
-  like Now playing and PC stats.
-* **Clock, timer and weather screen.** It could also be the screensaver shown while the board is dimmed.
+Nothing left here for now.
 
 ## Bigger
 

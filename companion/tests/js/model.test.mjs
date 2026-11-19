@@ -368,3 +368,31 @@ test('http and obs keys are sent to the board without their actions', () => {
   const text = JSON.stringify(M.boardLayout(deck));
   assert.ok(!text.includes('secret') && !text.includes('ToggleRecord') && !text.includes('http://'));
 });
+
+test('mixer and clock desktops: adding, options, and what the board receives', () => {
+  const deck = { desktops: [{ name: 'K', pages: [{ id: 'r', title: 'K', cols: 4, rows: 3, keys: [] }] }] };
+  assert.equal(M.addDesktop(deck, 'mixer'), 1);
+  assert.equal(M.addDesktop(deck, 'mixer'), null);       // one of each
+  assert.equal(M.addDesktop(deck, 'clock'), 2);
+  assert.equal(M.addDesktop(deck, 'clock'), null);
+  assert.deepEqual(deck.desktops.slice(1).map((d) => [d.name, d.kind]), [['Mixer', 'mixer'], ['Clock', 'clock']]);
+
+  assert.deepEqual(M.liveOptions({ kind: 'mixer' }), { apps: [] });
+  assert.deepEqual(M.liveOptions({ kind: 'mixer', options: { apps: ['a', 'b', 'c', 'd', 'e'] } }).apps, ['a', 'b', 'c', 'd']);
+  assert.deepEqual(M.liveOptions({ kind: 'clock' }), { hour12: false, seconds: false, timer: true, weather: true, units: 'c', place: null });
+  const place = { name: 'Oslo', lat: 59.9139, lon: 10.7522 };
+  const clock = { kind: 'clock', options: { hour12: true, units: 'f', place } };
+  assert.deepEqual(M.liveOptions(clock), { hour12: true, seconds: false, timer: true, weather: true, units: 'f', place });
+
+  const sent = M.boardLayout({ desktops: [{ name: 'Mix', kind: 'mixer', options: { apps: ['spotify'] } }, { name: 'Clock', ...clock },
+    { name: 'NoPlace', kind: 'clock' }, { name: 'Off', kind: 'clock', options: { weather: false, place } }] }).desktops;
+  assert.deepEqual(sent[0], { name: 'Mix', kind: 'mixer', options: {} });                          // the pins stay on the PC
+  assert.deepEqual(sent[1].options, { hour12: true, seconds: false, timer: true, weather: true });
+  assert.equal(sent[2].options.weather, false);                                                    // on, but no place chosen
+  assert.equal(sent[3].options.weather, false);
+  assert.ok(!JSON.stringify(sent).includes('59.9') && !JSON.stringify(sent).includes('Oslo'));       // where you are stays on the PC
+  assert.equal(M.placeText(place), 'Oslo (59.9139, 10.7522)');
+  assert.equal(M.placeText(null), 'no place chosen');
+  assert.equal(M.foundPlaceText({ name: 'Paris', region: 'Texas', country: 'United States' }), 'Paris, Texas, United States');
+  assert.equal(M.foundPlaceText({ name: 'Oslo', region: '', country: 'Norway' }), 'Oslo, Norway');
+});

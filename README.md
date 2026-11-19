@@ -15,13 +15,22 @@ A (vibecoded) touch macro deck with a "Now playing" screen and a PC stats screen
 <p align="center"><sub>Swipe left and right to move between desktops,
 tap a folder key to open a page.</sub></p>
 
+<table align="center">
+  <tr>
+    <td align="center"><img src="docs/images/screen-mixer.png" width="230" alt="The volume mixer screen"><br><sub>Volume mixer</sub></td>
+    <td align="center"><img src="docs/images/screen-clock.png" width="230" alt="The clock screen with weather and a timer"><br><sub>Clock, weather and timer</sub></td>
+  </tr>
+</table>
+
 ## How it fits together
 
 <p align="center"><img src="docs/architecture.svg" alt="The board talks to the companion on the PC over USB-C; the companion runs actions on Windows, reads the media session and PC stats, and serves the editor in your browser" width="900"></p>
 
 The board holds the screens, the touch handling, the sounds and a copy of the layout. Everything that needs the PC (key
-actions, the media session, PC stats) happens in the companion, which also serves the editor. Nothing leaves your PC:
-the editor only listens on `127.0.0.1`. Firmware: Arduino + PlatformIO + LVGL 8.3.6 (v0.11.0).
+actions, the media session, PC stats, volumes) happens in the companion, which also serves the editor. Nothing leaves
+your PC by itself: the editor only listens on `127.0.0.1`. What does go out is what you set up: HTTP actions, and the
+weather on the clock screen (only the place's coordinates, see [below](#volume-mixer-and-clock-screens)).
+Firmware: Arduino + PlatformIO + LVGL 8.3.6 (v0.13.0).
 
 ## The layout editor
 
@@ -56,6 +65,9 @@ presets, and see the board's screen as you type.
   [Hold, state and active-app features](#hold-state-and-active-app-features).
 * **A desktop per app:** the desktop of the program in front (OBS, VS Code ...) comes to the front by itself.
 * **Sleeps with the PC:** the screen can go off while the PC is locked, asleep or off.
+* **Volume mixer** desktop: drag the master volume and the volume of up to four programs, and mute each one.
+* **Clock** desktop: the time, the weather and a countdown timer that rings on the board (see
+  [Volume mixer and clock screens](#volume-mixer-and-clock-screens)).
 * **Web and OBS actions:** a key can send an HTTP request (a webhook, Home Assistant ...) or control OBS (scenes,
   recording, streaming, mute), see [HTTP, OBS and Discord actions](#http-obs-and-discord-actions).
 * The board stores the last layout and the settings, so it still works without the PC (key presses just do nothing).
@@ -65,7 +77,8 @@ presets, and see the board's screen as you type.
 **PC side:** double-click **`Streamdeck.bat`**. On the first run it creates the Python environment
 (`companion\.venv`) and installs the requirements, then starts the companion; afterwards it just starts. Arguments are
 passed through: `--dry-run` (log actions, do not run them), `--no-media`, `--no-stats`, `--no-watch` (do not look at the
-active app, mute state or screen lock), `--port COM3`, `--deck FILE`,
+active app, mute state or screen lock), `--no-mixer`, `--no-weather` (never fetch the weather or search for places),
+`--port COM3`, `--deck FILE`,
 `--check` (validate the deck file and exit), `-v` (debug log).
 
 * **`Streamdeck-background.vbs`** starts it without a window (log: `companion\companion.log`). A shortcut to it in the
@@ -162,9 +175,10 @@ for explanation: the real file is plain JSON.
 * Layouts have only been tried at a few KB; the editor warns above 30 KB.
 * **Firmware 0.8.0 or newer** is needed for `appIcon` (older firmware ignores the option and the icon messages),
   **0.9.0 or newer** for the general settings below beyond volume, sounds and brightness, and **0.12.0 or newer** for
-  hold / repeat / state keys and sleeping with the PC. (0.12.0 builds and passes the companion and editor tests, but had
-  not been flashed or tried on the board when this was written: check the hold, state and sleep features on the real
-  screen first.) Desktops by active app need no firmware change: the companion just sends `focus`.
+  hold / repeat / state keys and sleeping with the PC, and **0.13.0 or newer** for the volume mixer and clock desktops.
+  (0.12.0 and 0.13.0 build and pass the companion and editor tests, but had not been flashed or tried on the board when
+  this was written: check the hold, state, sleep, mixer and clock features on the real screen first.) Desktops by active
+  app need no firmware change: the companion just sends `focus`.
 * The live-screen options are checked by the companion when it loads the deck (a wrong value is an error with a clear
   message); the board never receives the Now playing player filter.
 
@@ -224,9 +238,10 @@ read shows as n/a. AMD / Intel GPUs are not read.
 
 JSON lines over the USB serial port; the full table is in `src/link.h`. PC to board: `hello`, `ping`, chunked `layout`,
 `settings`, `focus`, `keystate` (which keys show their "on" look), `pc` (the PC is `locked` / `active`), `sound`,
+`mixer` (volumes), `clock` (time of day), `weather`,
 `reset-layout`, `np` (media state), `cover` / `cover-clear`, `appicon` / `appicon-clear`, `stats`.
 Board to PC: `hello` (firmware, screen size, layout CRC, cover and icon sizes, visible desktop), `pong`,
-`layout-part` / `layout-ack`, `settings-ack`, `cover-part` / `cover-ack`, `appicon-ack`, and the events `press` (with `hold` or `repeat` for held keys), `nav`, `desktop`, `media` (`toggle|next|prev|shuffle|repeat`),
+`layout-part` / `layout-ack`, `settings-ack`, `cover-part` / `cover-ack`, `appicon-ack`, and the events `press` (with `hold` or `repeat` for held keys), `mixer-set` / `mixer-mute`, `nav`, `desktop`, `media` (`toggle|next|prev|shuffle|repeat`),
 `seek`. An unchanged layout is not re-sent (FNV-1a CRC). Plain-text debug commands work on the same port:
 `ping`, `beep`, `info`, `reboot`, `vol N`, `amp 0|1`, `desktop N`, `back`.
 
@@ -240,6 +255,7 @@ tools/gen_icons.py, tools/icons/                                icon generator a
 tools/gen_icon_map.py, gen_favicon.py, e2e_editor.py            editor icon table and favicon generators, browser test
 tools/screenshots.py                                             takes the pictures in docs/images from the editor (headless Edge/Chrome)
 tools/hw_check_0_12.py                                           serial check of firmware 0.12.0 on the real board (hold/state keys, screen away); stop the companion first
+tools/hw_check_0_13.py                                           serial check of firmware 0.13.0 (volume mixer, clock, timer alarm); stop the companion first
 docs/architecture.svg, assets/logo.svg                           the diagram and the logo used in this README
 Streamdeck-Editor.bat                                           opens the editor
 companion/                                                      the Python companion: deck.json, streamdeck_companion/ (incl.
@@ -250,6 +266,41 @@ Tests: `companion\.venv\Scripts\python -m unittest discover -s tests` (from `com
 server incl. its security checks) and `node --test companion/tests/js/model.test.mjs` (the editor's logic). A full browser
 test of the editor, which drives it in headless Edge/Chrome against a copy of the deck, is `tools/e2e_editor.py`
 (needs `pip install websocket-client`; `--shots DIR` saves screenshots).
+
+## Volume mixer and clock screens
+
+Both are added from **+ Add desktop > Live screens** and configured below their preview in the editor (one of each per
+deck). Like Now playing and PC stats they only work while their desktop is showing.
+
+```jsonc
+{ "name": "Mixer", "kind": "mixer", "options": { "apps": ["spotify", "discord"] } }
+{ "name": "Clock", "kind": "clock", "options": { "hour12": false, "seconds": false, "timer": true, "weather": true,
+  "units": "c", "place": { "name": "Oslo", "lat": 59.9139, "lon": 10.7522 } } }
+```
+
+* **Volume mixer:** the master volume and up to four programs, each a vertical fader you drag with a mute button under
+  it. The companion reads and changes Windows' volumes (Core Audio, no extra package) about four times a second while the
+  screen shows. A program gets a fader when Windows has an audio session for it (it has played sound): the ones making
+  sound come first, then the rest alphabetically; `apps` pins programs to the front (names as in Task Manager, without
+  `.exe`; at most four). For a moment after you touch a fader the PC's value is ignored, so it does not fight your finger.
+  `--no-mixer` turns it off.
+* **Clock:** the board has no clock of its own, so the companion tells it the time of day when the screen appears and
+  every 30 s and the board counts the seconds in between. `hour12` shows 2:05 PM, `seconds` shows the seconds.
+* **Timer:** presets of 1, 5, 10 and 25 minutes, Start / Pause / Resume and a reset button. It runs **on the board**, so it
+  keeps counting when you swipe to another desktop and does not need the PC. When it ends the board rings three beeps
+  every 1.5 s for about 18 s (the key-sound switch does not mute it), lights the screen if it was dimmed or off, and
+  brings the clock desktop to the front; any timer button stops it. Turn the timer off with `"timer": false`.
+* **Weather:** from [Open-Meteo](https://open-meteo.com) (free, no account or key). In the editor, type a city under
+  *Weather > Find a place* and click the right one; the companion then asks for the weather of its coordinates every 15
+  minutes while the clock desktop shows, and the board shows the temperature, a few words, today's high and low and the
+  place name. **What leaves your PC:** the chosen place's latitude and longitude (to `api.open-meteo.com`), and the text
+  you type when you search for a place (to `geocoding-api.open-meteo.com`). Nothing else, and nothing at all unless a clock
+  desktop with weather is showing or you search. The place is kept in `deck.json` on the PC and is never sent to the
+  board. `--no-weather` turns the weather and the place search off completely. Without a place the weather is not shown.
+* **How this was tried:** the companion side on this PC (the real audio sessions were read and their volume and mute
+  changed and restored; the weather and place search against the real Open-Meteo service), and the editor in a real
+  browser. The firmware (0.13.0) builds but had not been flashed: the fader touch feel, the timer and its alarm are
+  still to be tried on the board.
 
 ## HTTP, OBS and Discord actions
 
