@@ -70,15 +70,18 @@ def hello() -> dict:
 
 
 def info() -> dict:
-    board._ser.reset_input_buffer()
-    board._ser.write(b"info\n")
-    text, end = "", time.time() + 2.0
-    while time.time() < end and "PSRAM" not in text:
-        text += board._ser.read(board._ser.in_waiting or 1).decode("utf-8", "replace")
-    m = re.search(r"heap (\d+) KB, PSRAM (\d+) KB", text)
-    if not m:
-        raise SystemExit(f"could not read the info line: {text!r}")
-    return {"heap": int(m.group(1)), "psram": int(m.group(2))}
+    """Free memory from the console's info line. The board never stalls on a slow serial reader, so a console line can
+    occasionally be dropped: the question is simply asked again."""
+    pattern = re.compile(r"heap (\d+) KB, PSRAM (\d+) KB")
+    for _ in range(5):
+        board._ser.write(b"info\n")
+        text, end = "", time.time() + 1.5
+        while time.time() < end:
+            text += board._ser.read(board._ser.in_waiting or 1).decode("utf-8", "replace")
+            m = pattern.search(text)
+            if m:
+                return {"heap": int(m.group(1)), "psram": int(m.group(2))}
+    raise SystemExit("the board did not answer the info command (5 tries)")
 
 
 def push(deck: Deck) -> None:
@@ -151,25 +154,54 @@ pump(1.5)
 check("the alarm plays through the console", hello()["uptimeMs"] > uptime)
 
 # ---- needs a finger
-print("\n>>> NOW WITH YOUR FINGER, for 60 s. Please try, in this order:", flush=True)
-print("    1. on the CLOCK screen: tap '1m', then Start, then wait for it to end (about a minute): it should ring and keep the screen on.", flush=True)
-print("       (swipe to the keys desktop while it counts: it must keep counting, and bring the clock back when it rings)", flush=True)
-print("    2. tap any timer button while it rings: the ringing must stop", flush=True)
-print("    3. on the MIXER screen: drag a fader (it should follow your finger), tap a speaker button (it should grey out)", flush=True)
-events = pump(75)
+def collect(types, first_timeout=180.0, quiet=10.0) -> list[dict]:
+    """Waits for your first touch (up to `first_timeout` s), then gathers events until `quiet` s pass without any."""
+    events, started, last, begin = [], False, time.time(), time.time()
+    while True:
+        now = time.time()
+        if not started and now - begin > first_timeout:
+            break
+        if started and now - last > quiet:
+            break
+        m = board.read()
+        if m and m.get("type") in types:
+            events.append(m)
+            started, last = True, now
+    return events
+
+
+print("\n>>> PART 1, THE MIXER (take your time: it starts at your first touch and ends after 10 s without touches).", flush=True)
+print("    The board now shows the five test faders. Drag a few of them up and down, then tap two speaker buttons.", flush=True)
+board.send({"type": "focus", "desktop": 1})
+pump(0.3)
+board.send(mix)
+events = collect({"mixer-set", "mixer-mute"})
 sets = [m for m in events if m.get("type") == "mixer-set"]
 mutes = [m for m in events if m.get("type") == "mixer-mute"]
-desktops = [m.get("index") for m in events if m.get("type") == "desktop"]
-print(f"    seen: {len(sets)} fader messages, {len(mutes)} mute taps, desktop changes {desktops}", flush=True)
+print(f"    seen: {len(sets)} fader messages, {len(mutes)} mute taps", flush=True)
 if sets:
-    check("manual: dragging a fader sends its value (at most about 12 per second)", all(0 <= m["vol"] <= 100 for m in sets) and len(sets) <= 12 * 75, str(sets[:3]))
-    check("manual: the last value of a drag is always sent", len({m["id"] for m in sets}) >= 1)
+    check("manual: dragging a fader sends values in range", all(0 <= m["vol"] <= 100 and m["id"] for m in sets), str(sets[:3]))
+    stamps = len(sets)
+    check("manual: not flooding (a drag sends at most about 12 messages a second)", stamps <= 12 * 60, str(stamps))
 if mutes:
     check("manual: a mute tap names the fader and the new state", all("id" in m and isinstance(m["mute"], bool) for m in mutes), str(mutes[:2]))
-if 2 in desktops:
-    check("manual: the clock desktop was shown (by you or by the alarm)", True)
 if not (sets or mutes):
     print("    (no touch on the mixer seen: that part was skipped)", flush=True)
+
+print("\n>>> PART 2, THE TIMER. On the CLOCK screen: tap '1m', then Start. While it counts, SWIPE to the keys desktop.", flush=True)
+print("    After about a minute it should ring (three beeps, repeating), light the screen and bring the clock back by itself.", flush=True)
+print("    Tap any timer button to stop the ringing. I am listening for 110 s.", flush=True)
+board.send({"type": "focus", "desktop": 2})
+pump(0.3)
+board.send({"type": "settings", "sounds": False, "preview": True})   # the alarm must ring even with key sounds off
+wait({"settings-ack"})
+events = pump(110)
+desktops = [m.get("index") for m in events if m.get("type") == "desktop"]
+print(f"    desktop changes seen: {desktops}", flush=True)
+if desktops:
+    check("manual: the clock desktop was brought to the front (by the alarm, or by you)", 2 in desktops, str(desktops))
+else:
+    print("    (no desktop change seen: the timer part was skipped or you stayed on the clock; tell me what you saw and heard)", flush=True)
 
 # ---- put everything back
 board.send({"type": "settings", **real_deck.effective_settings()})

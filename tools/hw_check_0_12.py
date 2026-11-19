@@ -77,16 +77,18 @@ def hello() -> dict:
 
 
 def info() -> dict:
-    """The console's info line: screen state, pc locked, link lost, heap and PSRAM."""
-    board._ser.reset_input_buffer()
-    board._ser.write(b"info\n")
-    text, end = "", time.time() + 2.0
-    while time.time() < end and "PSRAM" not in text:
-        text += board._ser.read(board._ser.in_waiting or 1).decode("utf-8", "replace")
-    m = re.search(r"screen (\w+) \(pc locked (\d), link lost (\d)\), heap (\d+) KB, PSRAM (\d+) KB", text)
-    if not m:
-        raise SystemExit(f"could not read the info line: {text!r}")
-    return {"screen": m.group(1), "locked": int(m.group(2)), "lost": int(m.group(3)), "heap": int(m.group(4)), "psram": int(m.group(5))}
+    """The console's info line: screen state, pc locked, link lost, heap and PSRAM. The board never stalls on a slow serial
+    reader, so a console line can occasionally be dropped: the question is simply asked again."""
+    pattern = re.compile(r"screen (\w+) \(pc locked (\d), link lost (\d)\), heap (\d+) KB, PSRAM (\d+) KB")
+    for _ in range(5):
+        board._ser.write(b"info\n")
+        text, end = "", time.time() + 1.5
+        while time.time() < end:
+            text += board._ser.read(board._ser.in_waiting or 1).decode("utf-8", "replace")
+            m = pattern.search(text)
+            if m:
+                return {"screen": m.group(1), "locked": int(m.group(2)), "lost": int(m.group(3)), "heap": int(m.group(4)), "psram": int(m.group(5))}
+    raise SystemExit("the board did not answer the info command (5 tries)")
 
 
 def push(deck: Deck) -> None:
@@ -170,13 +172,30 @@ check("with sleepWithPc off silence changes nothing", info()["screen"] == "awake
 hello()
 
 # ---- needs a finger
-print("\n>>> NOW WITH YOUR FINGER, for 25 s:", flush=True)
+print("\n>>> NOW WITH YOUR FINGER:", flush=True)
 print("    1. tap 'Mute' once            -> expect a plain press (no hold, no repeat)", flush=True)
 print("    2. hold 'Mute' for ~1 s       -> expect ONE press with hold:true and no plain press after it", flush=True)
 print("    3. tap 'Vol +' once           -> expect ONE plain press", flush=True)
 print("    4. hold 'Vol +' for ~2 s      -> expect several presses with repeat:true (about 10 per second after 0.4 s)", flush=True)
 print("    5. tap 'Plain'                -> expect a plain press as before", flush=True)
-events = [m for m in pump(25) if m.get("type") == "press"]
+def collect(types, first_timeout=180.0, quiet=12.0) -> list[dict]:
+    """Waits for your first touch (up to `first_timeout` s), then gathers events until `quiet` s pass without any."""
+    events, started, last, begin = [], False, time.time(), time.time()
+    while True:
+        now = time.time()
+        if not started and now - begin > first_timeout:
+            break
+        if started and now - last > quiet:
+            break
+        m = board.read()
+        if m and m.get("type") in types:
+            events.append(m)
+            started, last = True, now
+    return events
+
+
+print("    (take your time: the check starts when you first touch a key and ends after 12 s of no touches)", flush=True)
+events = collect({"press"})
 for m in events:
     flags = [f for f in ("hold", "repeat") if m.get(f)]
     print(f"    press key {m['key']} {'+'.join(flags) or 'tap'}", flush=True)
