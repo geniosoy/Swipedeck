@@ -185,6 +185,7 @@ void wrapDone(lv_anim_t*) {
   if (!wrapSlide.running) return;
   wrapSlide.running = false;
   lv_obj_set_x(uis[wrapSlide.target].tile, wrapSlide.realX);
+  lv_obj_update_layout(tv);  // set_x only takes effect at the next layout pass; set_tile reads the tile's position
   lv_obj_set_tile(tv, uis[wrapSlide.target].tile, LV_ANIM_OFF);  // the tile is the active one, scroll limits as its own
   onDesktopChanged(nullptr);                                      // dots, title, event to the PC
 }
@@ -211,6 +212,7 @@ bool startWrap(lv_dir_t dir, bool fromTouch) {
   wrapSlide.target = target;
   wrapSlide.realX = lv_obj_get_x(uis[target].tile);
   lv_obj_set_x(uis[target].tile, nextX);
+  lv_obj_update_layout(tv);
   lv_obj_set_scroll_dir(tv, LV_DIR_HOR);
 
   lv_anim_t a;
@@ -378,6 +380,14 @@ void uiInit(UiEventFn eventSink) {
 }
 
 void uiSetWrap(bool on) { wrapDesktops = on; }
+
+void uiScrollInfo(int& scrollX, int& tileX, int& tileCount, bool& sliding) {
+  scrollX = lv_obj_get_scroll_x(tv);
+  lv_obj_t* act = lv_tileview_get_tile_act(tv);
+  tileX = act ? lv_obj_get_x(act) : -9999;
+  tileCount = static_cast<int>(uis.size());
+  sliding = wrapSlide.running;
+}
 
 bool uiSwipe(bool fingerRight) { return startWrap(fingerRight ? LV_DIR_RIGHT : LV_DIR_LEFT, false); }
 

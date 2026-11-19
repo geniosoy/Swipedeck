@@ -21,6 +21,8 @@ int uiDesktopCount();
 void uiSetWrap(bool on);
 // Debug: does what a swipe past the first / last desktop does (finger moving right or left). False if nothing wraps.
 bool uiSwipe(bool fingerRight);
+// Debug: where the tileview is scrolled to and where its active tile is (they must be equal when nothing slides).
+void uiScrollInfo(int& scrollX, int& tileX, int& tileCount, bool& sliding);
 // Look of the key grid: corner radius 0..24 and gap 2..12 px. Rebuilds the screen when it changes
 // (keeping the desktop that is shown) and returns true in that case.
 bool uiSetKeyLook(int radius, int gap);

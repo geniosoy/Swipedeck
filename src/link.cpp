@@ -15,7 +15,7 @@
 
 namespace {
 
-constexpr const char* kFirmware = "0.10.1";
+constexpr const char* kFirmware = "0.10.2";
 constexpr const char* kLayoutFile = "/layout.json";
 constexpr const char* kLayoutTmp = "/layout.tmp";
 
@@ -390,7 +390,12 @@ void onConsole(const String& line) {
   if (line == "ping") Serial.println("{\"type\":\"pong\"}");
   else if (line == "beep") audioPlay(Sound::Tap);
   else if (line == "back") uiGoBack();
-  else if (line == "swipe right" || line == "swipe left") Serial.printf("swipe %s\n", uiSwipe(line.endsWith("right")) ? "wrapped" : "nothing to wrap");
+  else if (line == "scroll") {
+    int sx, tx, n;
+    bool sliding;
+    uiScrollInfo(sx, tx, n, sliding);
+    Serial.printf("scroll x=%d activeTile x=%d desktops=%d active=%d sliding=%d\n", sx, tx, n, uiActiveDesktop(), sliding);
+  } else if (line == "swipe right" || line == "swipe left") Serial.printf("swipe %s\n", uiSwipe(line.endsWith("right")) ? "wrapped" : "nothing to wrap");
   else if (line == "reboot") ESP.restart();
   else if (line == "info") {
     Serial.printf("layout %s crc %s, vol %d sounds %d bri %d, heap %u KB, PSRAM %u KB\n",
