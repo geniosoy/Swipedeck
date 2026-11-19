@@ -57,11 +57,20 @@ def shell_icon(app_id: str, px: int = RENDER_PX):
     none (the app is not registered with the Shell) or on any other problem. Windows only."""
     if sys.platform != "win32" or not app_id:
         return None
-    try:
-        return _shell_icon(app_id, px)
-    except Exception as e:  # never let an icon problem reach the media screen
-        log.debug("shell icon for %r failed: %s", app_id, e)
-        return None
+    # On a thread of its own: the Shell needs COM set up in a single-threaded apartment, and doing that on the caller's
+    # thread (the media reader's, which has to receive the Windows media callbacks) made the reader wait forever.
+    found: dict = {}
+
+    def work() -> None:
+        try:
+            found["image"] = _shell_icon(app_id, px)
+        except Exception as e:  # never let an icon problem reach the media screen
+            log.debug("shell icon for %r failed: %s", app_id, e)
+
+    worker = threading.Thread(target=work, name="shell-icon", daemon=True)
+    worker.start()
+    worker.join(10)
+    return found.get("image")
 
 
 def _shell_icon(app_id: str, px: int):

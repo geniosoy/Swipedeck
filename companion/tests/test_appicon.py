@@ -76,6 +76,29 @@ class AppIconTest(unittest.TestCase):
         self.assertIsNone(appicon.shell_icon("bad\x00id"))
 
     @unittest.skipUnless(sys.platform == "win32", "the Shell icon is Windows only")
+    def test_the_shell_is_asked_on_a_thread_of_its_own(self):
+        # Setting up COM for the Shell on the caller's thread (the media reader's) made the reader wait forever
+        # for the Windows media callbacks, so the Now playing screen stayed blank when the icon option was on.
+        import threading
+        from unittest import mock
+
+        seen = []
+
+        def fake(app_id, px):
+            seen.append(threading.current_thread())
+            return "image"
+
+        with mock.patch.object(appicon, "_shell_icon", fake), mock.patch.object(appicon.sys, "platform", "win32"):
+            self.assertEqual(appicon.shell_icon("anything"), "image")
+        self.assertEqual(len(seen), 1)
+        self.assertIsNot(seen[0], threading.current_thread())
+
+        def boom(app_id, px):
+            raise RuntimeError("no shell")
+
+        with mock.patch.object(appicon, "_shell_icon", boom), mock.patch.object(appicon.sys, "platform", "win32"):
+            self.assertIsNone(appicon.shell_icon("anything"))  # a failing icon never raises
+
     def test_shell_icon_of_an_app_that_has_one_is_a_real_image(self):
         # Explorer is always registered with the Shell; if this machine has no such entry, skip rather than fail.
         im = appicon.shell_icon("Microsoft.Windows.Explorer")
