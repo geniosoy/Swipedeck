@@ -1,6 +1,8 @@
 #include "ui.h"
 
 #include <ArduinoJson.h>
+
+#include <algorithm>
 #include <lvgl.h>
 
 #include <vector>
@@ -132,6 +134,18 @@ void onBack(lv_event_t*) {
   goBack(activeDesktop);
 }
 
+void emitPress(int d, int p, int k, const DeckKey& key, bool hold, bool repeat) {
+  JsonDocument doc;
+  doc["type"] = "press";
+  doc["desktop"] = d;
+  doc["page"] = p;
+  doc["key"] = k;
+  doc["id"] = key.id;
+  if (hold) doc["hold"] = true;
+  if (repeat) doc["repeat"] = true;
+  emit(doc);
+}
+
 void onKey(lv_event_t* e) {
   const uint32_t u = static_cast<uint32_t>(reinterpret_cast<intptr_t>(lv_event_get_user_data(e)));
   const int d = u >> 16, p = (u >> 8) & 0xFF, k = u & 0xFF;
@@ -144,13 +158,32 @@ void onKey(lv_event_t* e) {
     return;
   }
   audioPlay(Sound::Tap);
-  JsonDocument doc;
-  doc["type"] = "press";
-  doc["desktop"] = d;
-  doc["page"] = p;
-  doc["key"] = k;
-  doc["id"] = key.id;
-  emit(doc);
+  emitPress(d, p, k, key, false, false);
+}
+
+// Keys with "hold" or "repeat" send their tap on a *short* click only (a long press ends in a click as well, which
+// would otherwise press the key a second time), and use the long press for the second action / for repeating.
+void onKeyTap(lv_event_t* e) {
+  const uint32_t u = static_cast<uint32_t>(reinterpret_cast<intptr_t>(lv_event_get_user_data(e)));
+  const int d = u >> 16, p = (u >> 8) & 0xFF, k = u & 0xFF;
+  audioPlay(Sound::Tap);
+  emitPress(d, p, k, deck.desktops[d].pages[p].keys[k], false, false);
+}
+
+void onKeyHold(lv_event_t* e) {
+  const uint32_t u = static_cast<uint32_t>(reinterpret_cast<intptr_t>(lv_event_get_user_data(e)));
+  const int d = u >> 16, p = (u >> 8) & 0xFF, k = u & 0xFF;
+  const DeckKey& key = deck.desktops[d].pages[p].keys[k];
+  const bool first = lv_event_get_code(e) == LV_EVENT_LONG_PRESSED;
+  if (key.hold) {
+    if (first) {
+      audioPlay(Sound::Tap);
+      emitPress(d, p, k, key, true, false);
+    }
+    return;
+  }
+  if (first) audioPlay(Sound::Tap);  // one tick when the repeating starts, not one per repeat
+  emitPress(d, p, k, key, false, true);
 }
 
 void onDesktopChanged(lv_event_t*) {
@@ -257,26 +290,37 @@ void buildPage(int d, int p) {
     lv_obj_set_style_radius(b, keyRadius, 0);
     lv_obj_set_style_shadow_width(b, 0, 0);
     lv_obj_set_style_border_width(b, 0, 0);
-    lv_obj_set_style_bg_color(b, lv_color_hex(key.color), 0);
-    lv_obj_set_style_bg_color(b, lv_color_lighten(lv_color_hex(key.color), 70), LV_STATE_PRESSED);
+    const bool lit = key.hasOn && key.on;  // the PC says this key's state is on: show its "on" look
+    const uint32_t color = lit ? key.onColor : key.color;
+    const String& iconName = lit ? key.onIcon : key.icon;
+    const String& labelText = lit ? key.onLabel : key.label;
+    lv_obj_set_style_bg_color(b, lv_color_hex(color), 0);
+    lv_obj_set_style_bg_color(b, lv_color_lighten(lv_color_hex(color), 70), LV_STATE_PRESSED);
     lv_obj_set_style_pad_all(b, 2, 0);
     lv_obj_set_style_pad_row(b, 0, 0);
     lv_obj_set_flex_flow(b, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(b, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_add_event_cb(b, onKey, kKeySoundEvent, reinterpret_cast<void*>(static_cast<intptr_t>(pack(d, p, k))));
+    void* userData = reinterpret_cast<void*>(static_cast<intptr_t>(pack(d, p, k)));
+    if (key.folder < 0 && (key.hold || key.repeat)) {
+      lv_obj_add_event_cb(b, onKeyTap, LV_EVENT_SHORT_CLICKED, userData);
+      lv_obj_add_event_cb(b, onKeyHold, LV_EVENT_LONG_PRESSED, userData);
+      if (key.repeat) lv_obj_add_event_cb(b, onKeyHold, LV_EVENT_LONG_PRESSED_REPEAT, userData);
+    } else {
+      lv_obj_add_event_cb(b, onKey, kKeySoundEvent, userData);
+    }
 
-    if (const char* sym = iconSymbol(key.icon)) {
+    if (const char* sym = iconSymbol(iconName)) {
       lv_obj_t* il = lv_label_create(b);
       lv_obj_set_style_text_font(il, iconFont, 0);
       lv_label_set_text(il, sym);
     }
-    if (!key.label.isEmpty()) {
+    if (!labelText.isEmpty()) {
       lv_obj_t* tl = lv_label_create(b);
       lv_obj_set_style_text_font(tl, textFont, 0);
       lv_obj_set_width(tl, keyW - 8);
       lv_obj_set_style_text_align(tl, LV_TEXT_ALIGN_CENTER, 0);
       lv_label_set_long_mode(tl, LV_LABEL_LONG_DOT);
-      lv_label_set_text(tl, key.label.c_str());
+      lv_label_set_text(tl, labelText.c_str());
     }
     if (key.folder >= 0) {  // small arrow in the corner marks a folder
       lv_obj_t* arrow = lv_label_create(b);
@@ -411,6 +455,31 @@ void uiShowDesktop(int index, bool animate) {
 }
 
 int uiDesktopCount() { return static_cast<int>(uis.size()); }
+
+void uiSetKeyStates(const std::vector<uint32_t>& onKeys) {
+  for (size_t d = 0; d < deck.desktops.size() && d < uis.size(); d++) {
+    auto& pages = deck.desktops[d].pages;
+    for (size_t p = 0; p < pages.size(); p++) {
+      bool changed = false;
+      auto& keys = pages[p].keys;
+      for (size_t k = 0; k < keys.size(); k++) {
+        if (!keys[k].hasOn) continue;
+        const uint32_t id = uiKeyId(static_cast<int>(d), static_cast<int>(p), static_cast<int>(k));
+        const bool want = std::find(onKeys.begin(), onKeys.end(), id) != onKeys.end();
+        if (want != keys[k].on) {
+          keys[k].on = want;
+          changed = true;
+        }
+      }
+      if (!changed) continue;
+      DesktopUi& u = uis[d];
+      if (p >= u.pages.size() || !u.pages[p]) continue;  // never drawn yet: it will be drawn with the new look
+      lv_obj_del(u.pages[p]);
+      u.pages[p] = nullptr;
+      if (static_cast<int>(p) == u.stack.back()) showPage(static_cast<int>(d), static_cast<int>(p));  // the visible one: draw it again
+    }
+  }
+}
 
 bool uiSetKeyLook(int radius, int gap) {
   radius = constrain(radius, 0, 24);

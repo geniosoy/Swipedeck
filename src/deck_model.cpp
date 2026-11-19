@@ -99,6 +99,15 @@ bool deckParse(const char* json, Deck& out, String& err) {
         key.icon = k["icon"] | "";
         key.id = k["id"] | "";
         key.color = parseColor(k["color"] | "", key.color);
+        key.hold = k["hold"] | false;
+        key.repeat = k["repeat"] | false;
+        JsonObject on = k["on"];
+        if (!on.isNull()) {
+          key.hasOn = true;
+          key.onColor = parseColor(on["color"] | "", key.color);
+          key.onIcon = on["icon"].is<const char*>() ? String(on["icon"].as<const char*>()) : key.icon;
+          key.onLabel = on["label"].is<const char*>() ? String(on["label"].as<const char*>()) : key.label;
+        }
         const char* folder = k["folder"] | "";
         if (folder[0]) {
           for (size_t i = 0; i < ids.size(); i++) {

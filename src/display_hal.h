@@ -19,6 +19,9 @@ void displaySetSwipe(int level);
 void displaySetBrightness(int level);
 // Seconds of no touch before the backlight dims / switches off (0 = never). Also wakes the screen.
 void displaySetPower(int dimAfterSec, int sleepAfterSec);
+// The PC is locked, asleep or not talking to the board: the screen goes off (a touch wakes it for 30 s).
+void displaySetPcAway(bool away);
+const char* displayPowerState();  // "awake", "dimmed" or "asleep" (the console's info line shows it)
 void displayWake();                 // as if the screen had been touched (without touching anything)
 void displaySetRotation(int rotation);  // 1 = normal landscape, 3 = upside down (the case mounted the other way)
 

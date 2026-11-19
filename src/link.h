@@ -12,6 +12,12 @@
 //        (every key is optional; out-of-range values are clamped; "preview":true applies without storing)
 //   {"type":"sound","name":"tap|nav|back|error"}  (plays a UI sound, e.g. the editor's Test buttons; wakes the screen)
 //   {"type":"focus","desktop":1}                  (switch the visible desktop)
+//   {"type":"keystate","on":["0/0/3","1/0/0"]}    (the keys, as desktop/page/key, whose PC state is on right now: they show
+//                                                  their "on" look; all others show their normal one. Idempotent: send the
+//                                                  whole set whenever it changes, and again after a layout or a connection)
+//   {"type":"pc","state":"locked"|"active"}       (the PC's session is locked / unlocked; with the sleepWithPc setting the
+//                                                  screen goes off while it is locked. The same happens when the board hears
+//                                                  nothing from the PC for 15 s: PC asleep or off, companion stopped)
 //   {"type":"reset-layout"}                       (forget the stored layout, show the built-in demo)
 //   {"type":"np","state":"playing","title":..,"artist":..,"album":..,"posMs":..,"durMs":..,"rate":1,
 //     "canSeek":..,"canPrev":..,"canNext":..,"canPlay":..,"shuffle":..,"repeat":0..2,"canShuffle":..,"canRepeat":..}
@@ -27,7 +33,7 @@
 //   {"type":"stats","cpu":..,"gpu":..,"ramPct":..,...}  (-1 = not available; see stats.h)
 //
 // board -> PC events from the UI (see ui.h, nowplaying.h):
-//   press {desktop,page,key,id}   nav {desktop,page}   desktop {index}  (also sent after a layout load: index 0)
+//   press {desktop,page,key,id[,hold:true|repeat:true]}   nav {desktop,page}   desktop {index}  (also after a layout load)
 //   media {cmd: toggle|next|prev|shuffle|repeat}   seek {posMs}
 // hello also carries "uptimeMs", "coverPx" (cover size the PC must send) and "desktop" (the visible desktop):
 // the companion only feeds the Now playing / stats screens while their desktop is visible.
@@ -39,4 +45,5 @@
 
 void linkBegin();                  // storage, saved settings, saved (or demo) layout
 void linkHandleLine(String line);  // call for every received line
+void linkTick();                   // call from loop(): notices that the PC stopped talking (sleepWithPc)
 void linkSendEvent(const char* json);  // UI event sink (ui.h)

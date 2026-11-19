@@ -15,7 +15,7 @@
 
 namespace {
 
-constexpr const char* kFirmware = "0.11.0";
+constexpr const char* kFirmware = "0.12.0";
 constexpr const char* kLayoutFile = "/layout.json";
 constexpr const char* kLayoutTmp = "/layout.tmp";
 
@@ -33,7 +33,10 @@ struct Settings {
   int keyGap = 6;            // gap between keys, px
   bool wrap = false;         // endless scrolling between desktops
   int swipe = 1;             // swipe length needed to pass to another desktop, see kSwipes
+  bool sleepWithPc = false;  // screen off while the PC is locked, or silent for kLinkTimeoutMs
 };
+
+constexpr uint32_t kLinkTimeoutMs = 15000;  // the companion pings every 2 s
 
 const char* const kSwipes[] = {"short", "normal", "long"};
 const char* const kThemes[] = {"classic", "soft", "click", "chirp"};
@@ -42,6 +45,9 @@ static_assert(sizeof(kThemes) / sizeof(kThemes[0]) == kAudioThemes, "theme names
 Settings settings;
 Preferences prefs;
 bool fsOk = false;
+bool pcLocked = false;     // the PC said its session is locked
+bool linkLost = false;     // nothing heard from the PC for kLinkTimeoutMs
+uint32_t lastRxMs = 0;
 
 String layoutJson;      // text of the layout currently shown ("" = built-in demo)
 uint32_t layoutCrc = 0;
@@ -85,7 +91,11 @@ void putSettings(JsonObject o) {
   o["keyGap"] = settings.keyGap;
   o["wrap"] = settings.wrap;
   o["swipe"] = kSwipes[settings.swipe];
+  o["sleepWithPc"] = settings.sleepWithPc;
 }
+
+// The screen goes off while the PC is away (locked, asleep, off, companion not running), if the user wants that.
+void applyPresence() { displaySetPcAway(settings.sleepWithPc && (pcLocked || linkLost)); }
 
 void applySettings() {
   static int rotation = 1;
@@ -103,6 +113,7 @@ void applySettings() {
   uiSetKeyLook(settings.keyRadius, settings.keyGap);
   uiSetWrap(settings.wrap);
   displaySetSwipe(settings.swipe);
+  applyPresence();
 }
 
 // The desktop the board opens on; a start desktop that no longer exists means the first one.
@@ -127,6 +138,7 @@ void saveSettings() {
   prefs.putInt("kgp", settings.keyGap);
   prefs.putBool("wrp", settings.wrap);
   prefs.putInt("swp", settings.swipe);
+  prefs.putBool("spc", settings.sleepWithPc);
   prefs.end();
 }
 
@@ -145,6 +157,7 @@ void loadSettings() {
   settings.keyGap = prefs.getInt("kgp", settings.keyGap);
   settings.wrap = prefs.getBool("wrp", settings.wrap);
   settings.swipe = constrain(prefs.getInt("swp", settings.swipe), 0, 2);
+  settings.sleepWithPc = prefs.getBool("spc", settings.sleepWithPc);
   prefs.end();
 }
 
@@ -334,6 +347,7 @@ void onSettings(JsonDocument& m) {
   if (m["keyRadius"].is<int>()) settings.keyRadius = constrain(m["keyRadius"].as<int>(), 0, 24);
   if (m["keyGap"].is<int>()) settings.keyGap = constrain(m["keyGap"].as<int>(), 2, 12);
   if (m["wrap"].is<bool>()) settings.wrap = m["wrap"].as<bool>();
+  if (m["sleepWithPc"].is<bool>()) settings.sleepWithPc = m["sleepWithPc"].as<bool>();
   if (m["swipe"].is<const char*>()) {
     const String name = m["swipe"].as<const char*>();
     for (int i = 0; i < 3; i++)
@@ -346,6 +360,24 @@ void onSettings(JsonDocument& m) {
   d["preview"] = m["preview"] | false;
   putSettings(d.as<JsonObject>());
   send(d);
+}
+
+// {"type":"keystate","on":["0/0/3", ...]}: which keys show their "on" look (see link.h).
+void onKeyState(JsonDocument& m) {
+  std::vector<uint32_t> on;
+  for (JsonVariant v : m["on"].as<JsonArray>()) {
+    int d = -1, p = -1, k = -1;
+    if (v.is<const char*>() && sscanf(v.as<const char*>(), "%d/%d/%d", &d, &p, &k) == 3 && d >= 0 && p >= 0 && k >= 0) {
+      on.push_back(uiKeyId(d, p, k));
+    }
+  }
+  uiSetKeyStates(on);
+}
+
+// {"type":"pc","state":"locked"|"active"}
+void onPc(JsonDocument& m) {
+  pcLocked = String(m["state"] | "") == "locked";
+  applyPresence();
 }
 
 // {"type":"sound","name":"tap|nav|back|error"}: plays one of the UI sounds (the editor's Test buttons).
@@ -364,6 +396,11 @@ void onJson(const String& line) {
     Serial.println("{\"type\":\"error\",\"error\":\"bad json\"}");
     return;
   }
+  lastRxMs = millis();  // the PC is talking
+  if (linkLost) {
+    linkLost = false;
+    applyPresence();
+  }
   const String type = m["type"] | "";
   if (type == "hello") onHello();
   else if (type == "ping") {
@@ -374,6 +411,8 @@ void onJson(const String& line) {
   } else if (type == "layout") onLayoutChunk(m);
   else if (type == "settings") onSettings(m);
   else if (type == "sound") onSound(m);
+  else if (type == "keystate") onKeyState(m);
+  else if (type == "pc") onPc(m);
   else if (type == "np") onNowPlaying(m);
   else if (type == "stats") onStats(m);
   else if (type == "cover") onCover(m);
@@ -409,9 +448,10 @@ void onConsole(const String& line) {
   } else if (line == "swipe right" || line == "swipe left") Serial.printf("swipe %s\n", uiSwipe(line.endsWith("right")) ? "wrapped" : "nothing to wrap");
   else if (line == "reboot") ESP.restart();
   else if (line == "info") {
-    Serial.printf("layout %s crc %s, vol %d sounds %d bri %d, heap %u KB, PSRAM %u KB\n",
+    Serial.printf("layout %s crc %s, vol %d sounds %d bri %d, screen %s (pc locked %d, link lost %d), heap %u KB, PSRAM %u KB\n",
                   layoutJson.isEmpty() ? "demo" : "stored", crcHex(layoutCrc).c_str(), settings.volume, settings.sounds,
-                  settings.brightness, (unsigned)(ESP.getFreeHeap() / 1024), (unsigned)(ESP.getFreePsram() / 1024));
+                  settings.brightness, displayPowerState(), pcLocked, linkLost, (unsigned)(ESP.getFreeHeap() / 1024),
+                  (unsigned)(ESP.getFreePsram() / 1024));
   } else if (line.startsWith("desktop ")) uiShowDesktop(line.substring(8).toInt());
   else if (line.startsWith("vol ")) {
     settings.volume = constrain(line.substring(4).toInt(), 0, 100);
@@ -431,6 +471,7 @@ void linkSendEvent(const char* json) { Serial.println(json); }
 
 void linkBegin() {
   fsOk = LittleFS.begin(true);  // formats on first use
+  lastRxMs = millis();
   loadSettings();
   applySettings();
 
@@ -444,6 +485,14 @@ void linkBegin() {
     else Serial.printf("[link] stored layout rejected: %s\n", err.c_str());
   }
   if (!shown) uiLoadLayout(kDefaultLayoutJson, err);
+}
+
+void linkTick() {
+  if (!settings.sleepWithPc || linkLost) return;
+  if (millis() - lastRxMs > kLinkTimeoutMs) {
+    linkLost = true;
+    applyPresence();
+  }
 }
 
 void linkHandleLine(String line) {

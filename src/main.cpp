@@ -24,6 +24,7 @@ void setup() {
 
 void loop() {
   displayLoop();
+  linkTick();
   while (Serial.available()) {
     static String line;
     const char c = Serial.read();

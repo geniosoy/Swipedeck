@@ -35,6 +35,8 @@ uint32_t dimAfterMs = 0, sleepAfterMs = 0;
 uint32_t lastActivity = 0;
 enum class Power : uint8_t { Awake, Dimmed, Asleep } power = Power::Awake;
 bool swallowTouch = false;
+bool pcAway = false;
+constexpr uint32_t kAwaySleepMs = 30000;  // while the PC is away a touch only lights the screen for this long
 
 void applyLevel() {
   switch (power) {
@@ -44,6 +46,21 @@ void applyLevel() {
   }
 }
 }  // namespace
+
+const char* displayPowerState() {
+  return power == Power::Awake ? "awake" : power == Power::Dimmed ? "dimmed" : "asleep";
+}
+
+void displaySetPcAway(bool away) {
+  if (away == pcAway) return;
+  pcAway = away;
+  if (away) {
+    power = Power::Asleep;
+    applyLevel();
+  } else {
+    displayWake();
+  }
+}
 
 void displayWake() {
   lastActivity = millis();
@@ -145,7 +162,8 @@ void displayLoop() {
     power = Power::Dimmed;
     applyLevel();
   }
-  if (power != Power::Asleep && sleepAfterMs && idle >= sleepAfterMs) {
+  const uint32_t sleepMs = pcAway ? (sleepAfterMs ? min(sleepAfterMs, kAwaySleepMs) : kAwaySleepMs) : sleepAfterMs;
+  if (power != Power::Asleep && sleepMs && idle >= sleepMs) {
     power = Power::Asleep;
     applyLevel();
   }

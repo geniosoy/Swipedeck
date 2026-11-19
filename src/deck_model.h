@@ -16,6 +16,8 @@
 //
 // The first page of a desktop is its root. A key with "folder" opens that page (by page id);
 // every other key is an action: pressing it reports its "id" to the PC.
+// A key may also have "hold":true / "repeat":true (long press, see ui.cpp) and "on":{"color","icon","label"}: the look it
+// has while the PC says its state is on (a muted speaker, a running app ...).
 #pragma once
 #include <Arduino.h>
 
@@ -33,6 +35,12 @@ struct DeckKey {
   String id;         // action id reported to the PC
   uint32_t color = 0x2A3A4D;
   int folder = -1;   // index of the page to open, or -1 for a plain action key
+  bool hold = false;     // has a second action for a long press: the tap is then sent on release, the hold after ~0.4 s
+  bool repeat = false;   // holding the key sends the press again and again (volume keys)
+  bool hasOn = false;    // has a look for when its PC state is on ("on" in the layout, see keystate in link.h)
+  bool on = false;       // ... and the state is on right now
+  uint32_t onColor = 0;
+  String onIcon, onLabel;
 };
 
 struct DeckPage {
