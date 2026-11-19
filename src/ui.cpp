@@ -169,18 +169,63 @@ void onDesktopChanged(lv_event_t*) {
 }
 
 // Endless scrolling. The tileview cannot scroll past its first / last tile, so a swipe that does not move anything
-// ends up as a gesture on the screen (LVGL sends it there while the finger is still down): jump to the other end.
-void onGesture(lv_event_t*) {
-  const int n = static_cast<int>(uis.size());
-  if (!wrapDesktops || n < 2) return;
-  const lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_get_act());
-  int target = -1;
-  if (dir == LV_DIR_RIGHT && activeDesktop == 0) target = n - 1;       // finger moves right = towards the previous one
-  else if (dir == LV_DIR_LEFT && activeDesktop == n - 1) target = 0;
-  if (target < 0) return;
-  lv_indev_wait_release(lv_indev_get_act());  // the rest of this drag must not scroll the desktop we land on
-  lv_obj_set_tile(tv, uis[target].tile, LV_ANIM_OFF);
+// ends up as a gesture on the screen (LVGL sends it there while the finger is still down). The desktop at the other
+// end is moved next to the current one for a moment, the view slides over to it, and then it goes back to its real
+// place and becomes the active desktop. (LVGL only updates its active tile when a scroll ends with the finger up, so
+// that part is done here.)
+struct WrapSlide {
+  bool running = false;
+  int target = 0;
+  lv_coord_t realX = 0;
+} wrapSlide;
+
+void wrapStep(void*, int32_t x) { lv_obj_scroll_to_x(tv, x, LV_ANIM_OFF); }
+
+void wrapDone(lv_anim_t*) {
+  if (!wrapSlide.running) return;
+  wrapSlide.running = false;
+  lv_obj_set_x(uis[wrapSlide.target].tile, wrapSlide.realX);
+  lv_obj_set_tile(tv, uis[wrapSlide.target].tile, LV_ANIM_OFF);  // the tile is the active one, scroll limits as its own
+  onDesktopChanged(nullptr);                                      // dots, title, event to the PC
 }
+
+void wrapCancel() {
+  lv_anim_del(tv, reinterpret_cast<lv_anim_exec_xcb_t>(wrapStep));
+  wrapSlide.running = false;
+}
+
+// `dir` is the way the finger moved. Returns false when nothing wraps (not at an end, option off, already sliding).
+bool startWrap(lv_dir_t dir, bool fromTouch) {
+  const int n = static_cast<int>(uis.size());
+  if (!wrapDesktops || n < 2 || wrapSlide.running) return false;
+  int target = -1;
+  if (dir == LV_DIR_RIGHT && activeDesktop == 0) target = n - 1;  // finger moves right = towards the previous one
+  else if (dir == LV_DIR_LEFT && activeDesktop == n - 1) target = 0;
+  if (target < 0) return false;
+  if (fromTouch) lv_indev_wait_release(lv_indev_get_act());  // the rest of this drag must not scroll anything
+
+  const lv_coord_t w = lv_obj_get_content_width(tv);
+  const lv_coord_t curX = lv_obj_get_x(uis[activeDesktop].tile);
+  const lv_coord_t nextX = dir == LV_DIR_RIGHT ? curX - w : curX + w;  // right beside the current desktop
+  wrapSlide.running = true;
+  wrapSlide.target = target;
+  wrapSlide.realX = lv_obj_get_x(uis[target].tile);
+  lv_obj_set_x(uis[target].tile, nextX);
+  lv_obj_set_scroll_dir(tv, LV_DIR_HOR);
+
+  lv_anim_t a;
+  lv_anim_init(&a);
+  lv_anim_set_var(&a, tv);
+  lv_anim_set_exec_cb(&a, reinterpret_cast<lv_anim_exec_xcb_t>(wrapStep));
+  lv_anim_set_values(&a, curX, nextX);
+  lv_anim_set_time(&a, 260);
+  lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+  lv_anim_set_ready_cb(&a, wrapDone);
+  lv_anim_start(&a);
+  return true;
+}
+
+void onGesture(lv_event_t*) { startWrap(lv_indev_get_gesture_dir(lv_indev_get_act()), true); }
 
 void buildPage(int d, int p) {
   DesktopUi& u = uis[d];
@@ -334,9 +379,12 @@ void uiInit(UiEventFn eventSink) {
 
 void uiSetWrap(bool on) { wrapDesktops = on; }
 
+bool uiSwipe(bool fingerRight) { return startWrap(fingerRight ? LV_DIR_RIGHT : LV_DIR_LEFT, false); }
+
 bool uiLoadLayout(const char* json, String& err) {
   Deck fresh;
   if (!deckParse(json, fresh, err)) return false;
+  wrapCancel();  // a sliding desktop is about to be deleted
   lv_obj_clean(tv);
   uis.clear();
   deck = std::move(fresh);

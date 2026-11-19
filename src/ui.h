@@ -19,6 +19,8 @@ void uiShowDesktop(int index, bool animate = true);  // programmatic swipe (PC "
 int uiDesktopCount();
 // Endless scrolling: swiping past the last desktop goes to the first one, and the other way round.
 void uiSetWrap(bool on);
+// Debug: does what a swipe past the first / last desktop does (finger moving right or left). False if nothing wraps.
+bool uiSwipe(bool fingerRight);
 // Look of the key grid: corner radius 0..24 and gap 2..12 px. Rebuilds the screen when it changes
 // (keeping the desktop that is shown) and returns true in that case.
 bool uiSetKeyLook(int radius, int gap);
