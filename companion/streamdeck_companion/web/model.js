@@ -266,7 +266,7 @@ export const joinCommand = (list) => list.map((a) => (/[\s"']/.test(a) || a === 
 
 // ---- actions ---------------------------------------------------------------------------------------
 
-export const ACTION_TYPES = ['hotkey', 'text', 'open', 'run', 'lock', 'multi'];
+export const ACTION_TYPES = ['hotkey', 'text', 'open', 'run', 'lock', 'http', 'obs', 'multi'];
 
 export function defaultAction(type) {
   switch (type) {
@@ -275,6 +275,8 @@ export function defaultAction(type) {
     case 'open': return { type, target: 'https://www.google.com' };
     case 'run': return { type, command: 'notepad', shell: true };
     case 'lock': return { type };
+    case 'http': return { type, method: 'GET', url: 'http://localhost:8080/' };
+    case 'obs': return { type, request: 'ToggleRecord' };
     case 'multi': return { type, steps: [{ type: 'hotkey', keys: 'ctrl+c' }] };
     default: return null;
   }
@@ -289,10 +291,49 @@ export function describeAction(a) {
     case 'open': return `open ${a.target}`;
     case 'run': return `run ${Array.isArray(a.command) ? joinCommand(a.command) : a.command}`;
     case 'lock': return 'lock the PC';
+    case 'http': return `${String(a.method || 'GET').toUpperCase()} ${String(a.url || '').split('?')[0]}`;  // the query may hold a token
+    case 'obs': return `OBS: ${a.request}`;
     case 'multi': return `${(a.steps || []).length} steps`;
     default: return String(a.type);
   }
 }
+
+// ---- HTTP and OBS actions ---------------------------------------------------------------------------------
+
+export const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
+
+// "Name: value" lines <-> a headers object. The value keeps everything after the first colon (a Bearer token, a URL ...).
+export function parseHeaders(text) {
+  const out = {};
+  for (const line of String(text || '').split(/\r?\n/)) {
+    const i = line.indexOf(':');
+    if (i < 1) continue;
+    const name = line.slice(0, i).trim();
+    if (name) out[name] = line.slice(i + 1).trim();
+  }
+  return out;
+}
+export const joinHeaders = (headers) => Object.entries(headers || {}).map(([k, v]) => `${k}: ${v}`).join('\n');
+
+// A JSON body or request data typed into a text box: an object or a list, else why not.
+export function parseJsonBody(text) {
+  let value;
+  try { value = JSON.parse(text); } catch (e) { return { ok: false, error: e.message }; }
+  if (value === null || typeof value !== 'object') return { ok: false, error: 'must be an object {...} or a list [...]' };
+  return { ok: true, value };
+}
+
+// obs-websocket 5 requests the editor knows by name; `fields` are the parameters (data key, label, example).
+export const OBS_REQUESTS = [
+  { id: 'ToggleRecord', label: 'Start / stop recording' },
+  { id: 'ToggleRecordPause', label: 'Pause / resume recording' },
+  { id: 'ToggleStream', label: 'Go live / stop the stream' },
+  { id: 'SetCurrentProgramScene', label: 'Switch to a scene', fields: [['sceneName', 'Scene name', 'Game']] },
+  { id: 'ToggleInputMute', label: 'Mute / unmute an input', fields: [['inputName', 'Input name', 'Mic/Aux']] },
+  { id: 'SaveReplayBuffer', label: 'Save the replay buffer' },
+  { id: 'ToggleVirtualCam', label: 'Start / stop the virtual camera' },
+];
+export const obsRequestInfo = (name) => OBS_REQUESTS.find((r) => r.id === name) || null;
 
 // ---- hold, repeat and state keys; desktops that follow an app ----------------------------------------------
 

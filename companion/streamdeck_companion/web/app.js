@@ -633,8 +633,9 @@ function hotkeyEditor(action) {
 // `replace(newAction)` swaps the whole action (type change); field edits mutate `action` in place.
 function actionEditor(action, replace, inMulti = false) {
   const id = 'act' + nextEditorId++;
-  const types = inMulti ? ['hotkey', 'text', 'open', 'run', 'lock', 'wait'] : ['hotkey', 'text', 'open', 'run', 'lock', 'multi'];
-  const names = { hotkey: 'Press keys', text: 'Type text', open: 'Open file / URL / app', run: 'Run a program', lock: 'Lock the PC', multi: 'Several steps', wait: 'Wait' };
+  const types = inMulti ? ['hotkey', 'text', 'open', 'run', 'lock', 'http', 'obs', 'wait'] : ['hotkey', 'text', 'open', 'run', 'lock', 'http', 'obs', 'multi'];
+  const names = { hotkey: 'Press keys', text: 'Type text', open: 'Open file / URL / app', run: 'Run a program', lock: 'Lock the PC',
+    http: 'Send an HTTP request', obs: 'Control OBS', multi: 'Several steps', wait: 'Wait' };
   const cur = !action ? 'none' : action.wait !== undefined ? 'wait' : action.type;
   const select = h('select', { onchange: (e) => {
     const t = e.target.value;
@@ -662,8 +663,81 @@ function actionEditor(action, replace, inMulti = false) {
   } else if (cur === 'wait') {
     body = field('Seconds', h('input', { type: 'number', min: 0, max: 30, step: 0.1, value: action.wait, oninput: (e) => edit(() => { action.wait = Math.min(30, Math.max(0, +e.target.value || 0)); }) }));
   } else if (cur === 'lock') body = h('div', { class: 'hint' }, 'Locks the Windows session, like Win+L.');
+  else if (cur === 'http') body = httpEditor(action, edit);
+  else if (cur === 'obs') body = obsEditor(action, edit);
   else if (cur === 'multi') body = multiEditor(action);
   return h('div', {}, field('What it does', select), body);
+}
+
+// A box for JSON typed by hand: it saves only what parses, and says so when it does not.
+function jsonBox(value, onValid, rows = 4) {
+  const status = h('div', { class: 'hint' });
+  const area = h('textarea', { rows, spellcheck: false, value: value === undefined ? '' : JSON.stringify(value, null, 2) });
+  area.addEventListener('input', () => {
+    const r = M.parseJsonBody(area.value);
+    status.className = 'hint' + (r.ok ? '' : ' bad');
+    status.textContent = r.ok ? '' : `Not saved yet: ${r.error}`;
+    if (r.ok) onValid(r.value);
+  });
+  return h('div', {}, area, status);
+}
+
+function httpEditor(action, edit) {
+  const method = (action.method || 'GET').toUpperCase();
+  const mode = action.json !== undefined ? 'json' : action.body !== undefined ? 'text' : 'none';
+  const headers = h('textarea', { rows: 2, spellcheck: false, placeholder: 'Authorization: Bearer ${HA_TOKEN}', value: M.joinHeaders(action.headers) });
+  headers.addEventListener('input', () => edit(() => {
+    const parsed = M.parseHeaders(headers.value);
+    if (Object.keys(parsed).length) action.headers = parsed; else delete action.headers;
+  }));
+  const bodyMode = h('select', { onchange: (e) => commit(() => {
+    delete action.json;
+    delete action.body;
+    if (e.target.value === 'json') action.json = {};
+    if (e.target.value === 'text') action.body = '';
+  }) }, [['none', 'No body'], ['json', 'JSON'], ['text', 'Text']].map(([v, t]) => h('option', { value: v, selected: mode === v }, t)));
+  const box = h('div', { id: 'httpEditor' },
+    h('div', { class: 'row' },
+      h('select', { id: 'httpMethod', onchange: (e) => edit(() => { action.method = e.target.value; }) },
+        M.HTTP_METHODS.map((m) => h('option', { value: m, selected: method === m }, m))),
+      textInput(action.url || '', (v) => edit(() => { action.url = v; }), { placeholder: 'http://homeassistant.local:8123/api/services/light/toggle', id: 'httpUrl', style: { flex: '1', minWidth: '180px' } })),
+    field('Headers (one per line)', headers),
+    field('Body', bodyMode));
+  if (mode === 'json') box.append(jsonBox(action.json, (v) => edit(() => { action.json = v; })));
+  if (mode === 'text') {
+    const area = h('textarea', { rows: 3, value: action.body || '' });
+    area.addEventListener('input', () => edit(() => { action.body = area.value; }));
+    box.append(area);
+  }
+  box.append(field('Give up after (seconds)', h('input', { type: 'number', min: 1, max: 30, step: 1, value: action.timeout ?? 5, style: { width: '90px' },
+    oninput: (e) => edit(() => { const t = Math.min(30, Math.max(1, +e.target.value || 5)); if (t === 5) delete action.timeout; else action.timeout = t; }) })),
+  h('div', { class: 'hint' }, 'Write ${NAME} in the address, a header or the body to use the environment variable NAME at the moment of the request: keep tokens and passwords out of this file.'));
+  return box;
+}
+
+function obsEditor(action, edit) {
+  const info = M.obsRequestInfo(action.request);
+  const choose = h('select', { id: 'obsRequest', onchange: (e) => commit(() => {
+    delete action.data;
+    action.request = e.target.value === '__other' ? 'GetVersion' : e.target.value;
+  }) }, M.OBS_REQUESTS.map((r) => h('option', { value: r.id, selected: action.request === r.id }, r.label)),
+  h('option', { value: '__other', selected: !info }, 'Another request\u2026'));
+  const box = h('div', { id: 'obsEditor' }, field('OBS should', choose));
+  if (info && info.fields) {
+    for (const [key, label, example] of info.fields) {
+      box.append(field(label, textInput((action.data || {})[key] || '', (v) => edit(() => {
+        action.data = action.data || {};
+        if (v) action.data[key] = v; else delete action.data[key];
+        if (!Object.keys(action.data).length) delete action.data;
+      }), { placeholder: example, id: 'obsField' })));
+    }
+  } else if (!info) {
+    box.append(field('Request name', textInput(action.request || '', (v) => edit(() => { action.request = v; }), { placeholder: 'GetVersion', id: 'obsRequestName' }),
+      'Any obs-websocket 5 request, written as in its documentation.'),
+    field('Request data (JSON, optional)', jsonBox(action.data, (v) => edit(() => { if (Array.isArray(v) || !Object.keys(v).length) delete action.data; else action.data = v; }), 3)));
+  }
+  box.append(h('div', { class: 'hint' }, 'OBS needs its WebSocket server on (Tools > WebSocket Server Settings). Where to connect, and the password, are in General settings.'));
+  return box;
 }
 
 function multiEditor(action) {
@@ -1243,6 +1317,7 @@ function renderSettingsPage() {
         sample,
         slider('setRadius', 'Corner roundness', 0, 24, s.keyRadius, 'keyRadius', ' px'),
         slider('setGap', 'Space between keys', 2, 12, s.keyGap, 'keyGap', ' px')),
+      obsCard(),
       h('div', { class: 'card' }, h('h4', {}, 'This deck'),
         info('Desktops', String(state.deck.desktops.length)),
         info('Layout sent to the board', `${(M.layoutBytes(state.deck) / 1024).toFixed(1)} KB`),
@@ -1250,6 +1325,36 @@ function renderSettingsPage() {
         h('div', { class: 'hint', style: { marginTop: '8px' } }, 'Every save keeps the previous deck as deck.json.bak next to deck.json.'),
         h('div', { class: 'hint', style: { marginTop: '8px' } }, 'The key font is fixed for now: the board only has a built-in font without accents.'))),
   ));
+}
+
+function obsCard() {
+  const obs = state.deck.obs || {};
+  const set = (name, value) => commit((d) => {
+    d.obs = d.obs || {};
+    if (value === '') delete d.obs[name]; else d.obs[name] = value;
+    if (!Object.keys(d.obs).length) delete d.obs;
+  }, { coalesce: 'obs-' + name, rerender: 'live' });
+  const result = h('span', { class: 'hint', id: 'obsResult' });
+  const test = async () => {
+    result.className = 'hint';
+    result.textContent = 'Connecting\u2026';
+    try {
+      const r = await api('POST', '/api/obs/test', { obs: state.deck.obs || {} });
+      result.className = 'hint' + (r.ok ? ' good' : ' bad');
+      result.textContent = r.ok ? `Connected: OBS ${r.obs || '?'}, obs-websocket ${r.websocket || '?'}` : r.error;
+    } catch (e) {
+      result.className = 'hint bad';
+      result.textContent = e.message;
+    }
+  };
+  return h('div', { class: 'card', id: 'obsCard' }, h('h4', {}, 'OBS'),
+    h('div', { class: 'hint' }, 'For the "Control OBS" action. In OBS: Tools > WebSocket Server Settings > Enable WebSocket server.'),
+    field('Address', textInput(obs.host || '', (v) => set('host', v.trim()), { placeholder: '127.0.0.1', id: 'obsHost' })),
+    field('Port', h('input', { type: 'number', id: 'obsPort', min: 1, max: 65535, placeholder: '4455', value: obs.port ?? '', style: { width: '110px' },
+      oninput: (e) => { const n = Math.round(+e.target.value); if (e.target.value === '') set('port', ''); else if (n >= 1 && n <= 65535) set('port', n); } })),
+    field('Password', textInput(obs.password || '', (v) => set('password', v), { placeholder: 'none, or ${OBS_PASSWORD}', id: 'obsPassword' }),
+      'Saved in deck.json as you type it. To keep it out of the file write ${OBS_PASSWORD} here and set that environment variable on this PC.'),
+    h('div', { class: 'row' }, h('button', { class: 'small', id: 'obsTest', onclick: test }, 'Test connection'), result));
 }
 
 function renderView() {

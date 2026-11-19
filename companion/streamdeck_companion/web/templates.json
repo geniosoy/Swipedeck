@@ -1,11 +1,11 @@
 {
  "templates": [
   { "id": "discord", "name": "Discord", "icon": "call",
-    "description": "Mute, deafen, switch channels and servers (Discord's default shortcuts)",
+    "description": "Mute and deafen work in the background once you bind Ctrl+Shift+F13 / F14 in Discord (Settings > Keybinds); the rest are Discord's default shortcuts (Discord in front)",
     "desktop": { "name": "Discord", "pages": [
      { "id": "root", "title": "Discord", "cols": 4, "rows": 3, "keys": [
-      { "label": "Mute", "icon": "mute", "color": "#B3261E", "action": { "type": "hotkey", "keys": "ctrl+shift+m" } },
-      { "label": "Deafen", "icon": "eye_off", "color": "#B3261E", "action": { "type": "hotkey", "keys": "ctrl+shift+d" } },
+      { "label": "Mute", "icon": "mute", "color": "#B3261E", "action": { "type": "hotkey", "keys": "ctrl+shift+f13" } },
+      { "label": "Deafen", "icon": "eye_off", "color": "#B3261E", "action": { "type": "hotkey", "keys": "ctrl+shift+f14" } },
       { "label": "Switcher", "icon": "gps", "action": { "type": "hotkey", "keys": "ctrl+k" } },
       { "label": "Search", "icon": "eye", "action": { "type": "hotkey", "keys": "ctrl+f" } },
       { "label": "Chan up", "icon": "up", "action": { "type": "hotkey", "keys": "alt+up" } },

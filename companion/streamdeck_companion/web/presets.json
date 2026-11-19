@@ -100,6 +100,25 @@
    { "name": "Scene 3", "key": { "label": "Scene 3", "icon": "image", "action": { "type": "hotkey", "keys": "f19" } } },
    { "name": "Scene 4", "key": { "label": "Scene 4", "icon": "image", "action": { "type": "hotkey", "keys": "f20" } } }
   ] },
+  { "id": "obs", "name": "OBS (WebSocket)", "presets": [
+   { "name": "OBS: record", "key": { "label": "Record", "icon": "video", "color": "#B3261E", "action": { "type": "obs", "request": "ToggleRecord" } } },
+   { "name": "OBS: pause recording", "key": { "label": "Pause", "icon": "pause", "action": { "type": "obs", "request": "ToggleRecordPause" } } },
+   { "name": "OBS: go live", "key": { "label": "Live", "icon": "wifi", "color": "#B3261E", "action": { "type": "obs", "request": "ToggleStream" } } },
+   { "name": "OBS: switch scene", "key": { "label": "Scene", "icon": "image", "action": { "type": "obs", "request": "SetCurrentProgramScene", "data": { "sceneName": "Scene" } } } },
+   { "name": "OBS: mute an input", "key": { "label": "Mic", "icon": "mute", "action": { "type": "obs", "request": "ToggleInputMute", "data": { "inputName": "Mic/Aux" } } } },
+   { "name": "OBS: save replay", "key": { "label": "Replay", "icon": "save", "action": { "type": "obs", "request": "SaveReplayBuffer" } } },
+   { "name": "OBS: virtual camera", "key": { "label": "Cam", "icon": "video", "action": { "type": "obs", "request": "ToggleVirtualCam" } } }
+  ] },
+  { "id": "http", "name": "Web & smart home (HTTP)", "presets": [
+   { "name": "Webhook (GET)", "key": { "label": "Hook", "icon": "upload", "action": { "type": "http", "method": "GET", "url": "http://localhost:8080/hook" } } },
+   { "name": "Webhook (POST JSON)", "key": { "label": "Post", "icon": "upload", "action": { "type": "http", "method": "POST", "url": "http://localhost:8080/hook", "json": { "pressed": true } } } },
+   { "name": "Home Assistant: toggle a light", "key": { "label": "Light", "icon": "eye", "color": "#C77700", "action": { "type": "http", "method": "POST", "url": "http://homeassistant.local:8123/api/services/light/toggle", "headers": { "Authorization": "Bearer ${HA_TOKEN}" }, "json": { "entity_id": "light.living_room" } } } },
+   { "name": "Home Assistant: run a script", "key": { "label": "Script", "icon": "play", "action": { "type": "http", "method": "POST", "url": "http://homeassistant.local:8123/api/services/script/turn_on", "headers": { "Authorization": "Bearer ${HA_TOKEN}" }, "json": { "entity_id": "script.goodnight" } } } }
+  ] },
+  { "id": "discord", "name": "Discord (global keybinds)", "presets": [
+   { "name": "Discord mute", "key": { "label": "Mute", "icon": "mute", "color": "#B3261E", "action": { "type": "hotkey", "keys": "ctrl+shift+f13" } } },
+   { "name": "Discord deafen", "key": { "label": "Deafen", "icon": "eye_off", "color": "#B3261E", "action": { "type": "hotkey", "keys": "ctrl+shift+f14" } } }
+  ] },
   { "id": "text", "name": "Text", "presets": [
    { "name": "Type text", "key": { "label": "Text", "icon": "keyboard", "action": { "type": "text", "text": "Hello!" } } },
    { "name": "Shrug", "key": { "label": "Shrug", "icon": "bell", "action": { "type": "text", "text": "¯\\_(ツ)_/¯" } } },

@@ -24,7 +24,8 @@ from pathlib import Path
 from typing import Callable
 from urllib.parse import unquote, urlparse
 
-from .deck import Deck, DeckError, check_settings
+from .actions import expand_env
+from .deck import Deck, DeckError, check_obs, check_settings
 
 log = logging.getLogger("editor")
 
@@ -258,6 +259,8 @@ class EditorServer:
                     status, result = server.board_settings(body)
                 elif path == "/api/board/sound":
                     status, result = server.board_sound(body)
+                elif path == "/api/obs/test":
+                    status, result = server.obs_test(body)
                 else:
                     status, result = 404, {"error": "not found"}
                 self._json(status, result)
@@ -307,6 +310,21 @@ class EditorServer:
         if self._command_fn is None:
             return 200, {"ok": True, "sent": False}
         return 200, {"ok": True, "sent": bool(self._command_fn({"kind": "settings", "settings": settings}))}
+
+    def obs_test(self, data) -> tuple[int, dict]:
+        """Connects to OBS with the connection from the General settings page (as typed there, saved or not) and asks for its
+        version: the answer is what the editor shows next to the Test button."""
+        from .obs import ObsError, obs_request
+
+        try:
+            config = check_obs(data.get("obs") if isinstance(data, dict) else None)
+        except DeckError as e:
+            return 400, {"error": str(e)}
+        try:
+            info = obs_request(expand_env(config), "GetVersion", timeout=4)
+        except (ObsError, ValueError) as e:  # ValueError: a ${VARIABLE} that is not set
+            return 200, {"ok": False, "error": str(e)}
+        return 200, {"ok": True, "obs": info.get("obsVersion"), "websocket": info.get("obsWebSocketVersion")}
 
     def board_sound(self, data) -> tuple[int, dict]:
         name = data.get("name") if isinstance(data, dict) else None

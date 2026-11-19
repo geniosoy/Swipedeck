@@ -335,3 +335,36 @@ test('state keys: the source, the look and what the board receives', () => {
   assert.deepEqual(a, { label: 'Mute', hold: true, on: { color: '#B3261E', icon: 'mute', label: 'Off' } });   // no actions, no source
   assert.deepEqual(b, { label: 'Vol', repeat: true });
 });
+
+test('http and obs actions: defaults, descriptions, headers and JSON bodies', () => {
+  assert.deepEqual(M.defaultAction('http'), { type: 'http', method: 'GET', url: 'http://localhost:8080/' });
+  assert.deepEqual(M.defaultAction('obs'), { type: 'obs', request: 'ToggleRecord' });
+  assert.ok(M.ACTION_TYPES.includes('http') && M.ACTION_TYPES.includes('obs'));
+  assert.equal(M.describeAction({ type: 'http', method: 'post', url: 'https://h.example/api/x?token=SECRET' }), 'POST https://h.example/api/x');
+  assert.equal(M.describeAction({ type: 'http', url: 'http://a.b/' }), 'GET http://a.b/');
+  assert.equal(M.describeAction({ type: 'obs', request: 'ToggleStream' }), 'OBS: ToggleStream');
+
+  assert.deepEqual(M.parseHeaders('Authorization: Bearer abc:def\n  X-Key :  1  \n\nnocolon\n: empty name\r\nAccept: */*'),
+    { Authorization: 'Bearer abc:def', 'X-Key': '1', Accept: '*/*' });   // everything after the first colon is the value
+  assert.deepEqual(M.parseHeaders(''), {});
+  assert.equal(M.joinHeaders({ A: '1', B: 'two' }), 'A: 1\nB: two');
+  assert.deepEqual(M.parseHeaders(M.joinHeaders({ Authorization: 'Bearer ${HA_TOKEN}' })), { Authorization: 'Bearer ${HA_TOKEN}' });
+
+  assert.deepEqual(M.parseJsonBody('{"a": [1, 2]}'), { ok: true, value: { a: [1, 2] } });
+  assert.deepEqual(M.parseJsonBody('[1]'), { ok: true, value: [1] });
+  for (const bad of ['', '{', '5', '"text"', 'null', 'true']) assert.equal(M.parseJsonBody(bad).ok, false, bad);
+
+  assert.equal(M.obsRequestInfo('SetCurrentProgramScene').fields[0][0], 'sceneName');
+  assert.equal(M.obsRequestInfo('ToggleRecord').fields, undefined);
+  assert.equal(M.obsRequestInfo('SomethingElse'), null);
+  assert.equal(new Set(M.OBS_REQUESTS.map((r) => r.id)).size, M.OBS_REQUESTS.length);
+});
+
+test('http and obs keys are sent to the board without their actions', () => {
+  const deck = { desktops: [{ name: 'D', pages: [{ id: 'r', title: 'T', cols: 2, rows: 1, keys: [
+    { label: 'Hook', action: { type: 'http', url: 'http://x.y/', headers: { A: 'secret' } } },
+    { label: 'Rec', action: { type: 'obs', request: 'ToggleRecord' } },
+  ] }] }] };
+  const text = JSON.stringify(M.boardLayout(deck));
+  assert.ok(!text.includes('secret') && !text.includes('ToggleRecord') && !text.includes('http://'));
+});

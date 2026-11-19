@@ -99,6 +99,44 @@ class EditorServerTest(unittest.TestCase):
         self.assertEqual(self.server.board_sound({"name": "tap"}), (200, {"ok": True, "sent": False}))  # no command function
         down._httpd.server_close()
 
+    def test_obs_connection_test_endpoint(self):
+        try:
+            from test_netactions import FakeObs  # run as `unittest discover -s tests`
+        except ImportError:
+            from tests.test_netactions import FakeObs  # run as `unittest tests.test_editor`
+        import os
+        import socket
+        from unittest import mock
+
+        fake = FakeObs(password="pw", answers={"GetVersion": (True, 100, None, {"obsVersion": "30.2.1", "obsWebSocketVersion": "5.5.2"})})
+        self.addCleanup(fake.close)
+        self.assertEqual(self.server.obs_test({"obs": {"port": fake.port, "password": "pw"}}),
+                         (200, {"ok": True, "obs": "30.2.1", "websocket": "5.5.2"}))
+        status, result = self.server.obs_test({"obs": {"port": fake.port, "password": "wrong"}})
+        self.assertEqual((status, result["ok"]), (200, False))
+        self.assertIn("password", result["error"])
+        with mock.patch.dict(os.environ, {"SD_TEST_OBS_PW": "pw"}):  # ${VARIABLE} is read here, as when the action runs
+            self.assertTrue(self.server.obs_test({"obs": {"port": fake.port, "password": "${SD_TEST_OBS_PW}"}})[1]["ok"])
+        os.environ.pop("SD_TEST_OBS_PW", None)
+        status, result = self.server.obs_test({"obs": {"port": fake.port, "password": "${SD_TEST_OBS_PW}"}})
+        self.assertEqual(status, 200)
+        self.assertIn("SD_TEST_OBS_PW", result["error"])
+        free = socket.socket()
+        free.bind(("127.0.0.1", 0))
+        port = free.getsockname()[1]
+        free.close()
+        status, result = self.server.obs_test({"obs": {"port": port}})
+        self.assertEqual((status, result["ok"]), (200, False))
+        self.assertIn("is OBS running", result["error"])
+        for bad in ({"obs": "x"}, {"obs": {"port": 0}}, {"obs": {"bogus": 1}}, {"obs": []}):
+            self.assertEqual(self.server.obs_test(bad)[0], 400, bad)  # (no settings at all would try the default 127.0.0.1:4455)
+        # over HTTP: needs the token like every write
+        conn = http.client.HTTPConnection("127.0.0.1", self.server.port, timeout=10)
+        headers = {"Host": self.host, "Origin": f"http://{self.host}", "Content-Type": "application/json"}
+        conn.request("POST", "/api/obs/test", body=json.dumps({"obs": {"port": port}}).encode(), headers=headers)
+        self.assertEqual(conn.getresponse().status, 403)
+        conn.close()
+
     def test_running_apps_endpoint(self):
         self.assertEqual(self.call("GET", "/api/running-apps")[0], 501)  # this server has no such function
         ok = EditorServer(self.deck_path, port=0, running_apps_fn=lambda: ["chrome", "code"])

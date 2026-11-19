@@ -2,22 +2,23 @@
 
 The rest of this list is not started. Everything builds on what already exists (see [README.md](README.md)).
 
-## Built (the small ones)
+## Built
 
-These four are implemented, documented in the README ("Hold, state and active-app features") and covered by tests. The
-firmware part (0.12.0) builds but still has to be tried on the real board: hold and repeat on the touch screen, the
-"on" look of a state key, and the screen going off with the PC.
+Documented in the README and covered by tests.
 
-* Switch desktops by active app, keys that show state (speakers or microphone muted, a program running), long-press
-  actions and hold-to-repeat keys, sleep with the PC.
+* **The small ones** ("Hold, state and active-app features"): switch desktops by active app, keys that show state
+  (speakers or microphone muted, a program running), long-press and hold-to-repeat keys, sleep with the PC. The firmware
+  part (0.12.0) builds but still has to be tried on the real board: hold and repeat on the touch screen, the "on" look
+  of a state key, and the screen going off with the PC.
+* **More action types** ("HTTP, OBS and Discord actions"): an HTTP request (webhooks, Home Assistant), OBS control over
+  its WebSocket, and Discord mute / deafen through global keybinds (a real Discord integration needs a registered app, so
+  it was left out). The OBS side is tested against a stand-in server, not yet against a real OBS.
 
 ## Medium
 
 * **Volume mixer screen.** A touch screen with sliders for the master volume and for each app, as a new live desktop
   like Now playing and PC stats.
 * **Clock, timer and weather screen.** It could also be the screensaver shown while the board is dimmed.
-* **More action types.** An HTTP request (Home Assistant, smart lights), OBS control over its WebSocket, Discord mute
-  and deafen.
 
 ## Bigger
 

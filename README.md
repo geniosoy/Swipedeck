@@ -56,6 +56,8 @@ presets, and see the board's screen as you type.
   [Hold, state and active-app features](#hold-state-and-active-app-features).
 * **A desktop per app:** the desktop of the program in front (OBS, VS Code ...) comes to the front by itself.
 * **Sleeps with the PC:** the screen can go off while the PC is locked, asleep or off.
+* **Web and OBS actions:** a key can send an HTTP request (a webhook, Home Assistant ...) or control OBS (scenes,
+  recording, streaming, mute), see [HTTP, OBS and Discord actions](#http-obs-and-discord-actions).
 * The board stores the last layout and the settings, so it still works without the PC (key presses just do nothing).
 
 ## Running it
@@ -152,7 +154,7 @@ for explanation: the real file is plain JSON.
 
 * Up to 8 desktops, 16 pages per desktop, 6 x 5 keys per page. The first page of a desktop is its root.
 * Actions: `hotkey` (`"ctrl+shift+s"`, `"volume_up"`, `"f13"` ...), `text` (a newline presses Enter), `open`,
-  `run` (list, or string with `"shell": true`), `lock`, `multi` (steps, with `{"wait": seconds}`). Shared actions can
+  `run` (list, or string with `"shell": true`), `lock`, `http`, `obs` (see below), `multi` (steps, with `{"wait": seconds}`). Shared actions can
   be defined in a top-level `"actions"` map and referenced by a key's `"id"`. Everything is validated when loading, with
   readable errors (`--check`).
 * Icons on keys come from a built-in list of about 50 names (`mute`, `play`, `home`, `copy` ...), see `ICONS` in
@@ -248,6 +250,42 @@ Tests: `companion\.venv\Scripts\python -m unittest discover -s tests` (from `com
 server incl. its security checks) and `node --test companion/tests/js/model.test.mjs` (the editor's logic). A full browser
 test of the editor, which drives it in headless Edge/Chrome against a copy of the deck, is `tools/e2e_editor.py`
 (needs `pip install websocket-client`; `--shots DIR` saves screenshots).
+
+## HTTP, OBS and Discord actions
+
+Both are chosen in the action list of a key (editor), or written in `deck.json`; the preset list has an "OBS (WebSocket)"
+and a "Web & smart home (HTTP)" group:
+
+```jsonc
+{ "type": "http", "method": "POST", "url": "http://homeassistant.local:8123/api/services/light/toggle",
+  "headers": { "Authorization": "Bearer ${HA_TOKEN}" }, "json": { "entity_id": "light.living_room" } }
+{ "type": "obs", "request": "SetCurrentProgramScene", "data": { "sceneName": "Game" } }
+// and, top level in deck.json, how to reach OBS (all optional):
+"obs": { "host": "127.0.0.1", "port": 4455, "password": "${OBS_PASSWORD}" }
+```
+
+* **`http`** sends a request when the key is pressed: `method` (`GET` by default, `POST`, `PUT`, `PATCH`, `DELETE`),
+  `url` (`http://` or `https://` only), `headers`, a body as `json` (object or list) or `body` (text), and `timeout`
+  (1 to 30 s, 5 by default). A reply other than 2xx, no connection or a timeout is logged as a warning (nothing shows on
+  the board).
+* **Tokens and passwords:** `${NAME}` in the address, a header, the body or the OBS data/password is replaced by the
+  environment variable `NAME` when the action runs, so a secret does not have to be written into `deck.json` (which you may
+  share or commit). If the variable is not set the action does not run and says which one. The log shows only the method
+  and the address without its query, never headers or body.
+* **`obs`** sends any [obs-websocket 5](https://github.com/obsproject/obs-websocket/blob/master/docs/generated/protocol.md)
+  request (`ToggleRecord`, `ToggleStream`, `SetCurrentProgramScene`, `ToggleInputMute` ...) with optional `data`. In OBS
+  (28 or newer) turn the server on under Tools > WebSocket Server Settings. The connection is the top-level `obs` object
+  (the default is `127.0.0.1:4455` with no password); **General settings > OBS** edits it and has a **Test connection**
+  button. Every press opens a connection, sends the request and closes it, so there is nothing to keep alive.
+* Both run without holding up other key presses, and work as steps of a `multi` action.
+* **Discord:** Discord offers no local control that does not first need an application registered with Discord and
+  approved by it, so there is no Discord action. The Discord desktop template and the preset group "Discord (global
+  keybinds)" press `Ctrl+Shift+F13` (mute) and `Ctrl+Shift+F14` (deafen): bind them in Discord (Settings > Keybinds >
+  Toggle Mute / Toggle Deafen) and they work while Discord is in the background. The template's other keys are Discord's
+  default shortcuts, which need Discord in front. (Nothing can show Discord's own mute state on a key.)
+* **How this was tested:** the `http` action against a real local HTTP server, and the OBS client against a stand-in that
+  speaks obs-websocket 5 (hello, the password challenge, requests and answers). The password answer was checked against
+  the algorithm in the protocol documentation. It has **not** been tried against a real OBS: use *Test connection* first.
 
 ## Hold, state and active-app features
 
