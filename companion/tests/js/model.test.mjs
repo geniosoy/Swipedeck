@@ -282,3 +282,56 @@ test('stats items: order, toggling, never empty', () => {
   assert.equal(M.STAT_ITEMS.length, 6);
   assert.deepEqual(M.STAT_STYLES.map((s) => s.id), ['gauges', 'bars', 'tiles']);
 });
+
+test('program names: compared without case, spaces and .exe; lists are cleaned up', () => {
+  assert.equal(M.normalizeApp(' OBS64.exe '), 'obs64');
+  assert.deepEqual(M.parseApps('OBS64.exe, code ; Code\n discord'), ['obs64', 'code', 'discord']);
+  assert.deepEqual(M.parseApps(''), []);
+  assert.deepEqual(M.parseApps(',, ,'), []);
+  assert.equal(M.parseApps(Array.from({ length: 20 }, (_, i) => 'app' + i).join(',')).length, 10);
+  assert.equal(M.joinApps(['obs64', 'code']), 'obs64, code');
+  assert.equal(M.joinApps(undefined), '');
+});
+
+test('hold and repeat are exclusive, and switching clears the other', () => {
+  const key = { label: 'Vol', action: { type: 'hotkey', keys: 'volume_up' } };
+  assert.equal(M.holdMode(key), 'none');
+  M.setHoldMode(key, 'repeat');
+  assert.deepEqual([M.holdMode(key), key.repeat, key.hold], ['repeat', true, undefined]);
+  M.setHoldMode(key, 'action');
+  assert.equal(M.holdMode(key), 'action');
+  assert.equal(key.repeat, undefined);
+  assert.equal(key.hold.type, 'hotkey');
+  const chosen = key.hold;
+  M.setHoldMode(key, 'action');                // choosing it again keeps what was set up
+  assert.equal(key.hold, chosen);
+  M.setHoldMode(key, 'none');
+  assert.deepEqual(key, { label: 'Vol', action: { type: 'hotkey', keys: 'volume_up' } });
+});
+
+test('state keys: the source, the look and what the board receives', () => {
+  const key = { label: 'Mute', icon: 'mute', action: { type: 'hotkey', keys: 'volume_mute' } };
+  assert.equal(M.stateKind(key), 'none');
+  M.setStateKind(key, 'mute');
+  assert.deepEqual([M.stateKind(key), key.state], ['mute', { source: 'mute' }]);
+  assert.deepEqual(M.stateLook(key), { color: '#B3261E', icon: 'mute', label: 'Mute' });   // red unless told otherwise
+  key.state.color = '#112233';
+  key.state.label = 'Muted';
+  assert.deepEqual(M.stateLook(key), { color: '#112233', icon: 'mute', label: 'Muted' });
+  M.setStateKind(key, 'app', ' OBS64.exe ');
+  assert.deepEqual([M.stateKind(key), M.stateApp(key), key.state.color], ['app', 'obs64', '#112233']);  // the look survives a change of source
+  delete key.state.color;
+  assert.equal(M.stateLook(key).color, '#2EA043');                                           // green for a running program
+  M.setStateKind(key, 'app', '');
+  assert.equal(M.stateApp(key), 'obs64');                                                    // never an empty program name
+  M.setStateKind(key, 'none');
+  assert.equal(key.state, undefined);
+
+  const deck = { desktops: [{ name: 'D', pages: [{ id: 'r', title: 'T', cols: 2, rows: 1, keys: [
+    { label: 'Mute', action: { type: 'lock' }, hold: { type: 'lock' }, state: { source: 'mic_mute', icon: 'mute', label: 'Off' } },
+    { label: 'Vol', action: { type: 'lock' }, repeat: true },
+  ] }] }] };
+  const [a, b] = M.boardLayout(deck).desktops[0].pages[0].keys;
+  assert.deepEqual(a, { label: 'Mute', hold: true, on: { color: '#B3261E', icon: 'mute', label: 'Off' } });   // no actions, no source
+  assert.deepEqual(b, { label: 'Vol', repeat: true });
+});

@@ -36,6 +36,7 @@ const state = {
   deck: null, savedText: '', sel: { d: 0, p: 0, k: null }, icons: {}, presets: { builtin: [], user: [] },
   cat: 'all', query: '', status: null, clip: null, saving: false, capturing: false, sizeNote: '',
   templates: [], addMenu: false, view: 'deck', // 'deck' = the desktop editor, 'settings' = general settings
+  runningApps: null, previewOn: false,                    // programs with a window (datalist of the "programs" fields); preview a key's "on" look
   sources: null, sourcesBusy: false, sourcesError: '', sourcesTried: false, // media players running now (Now playing filter)
   catalog: { categories: [], apps: [] }, appSearch: '',   // known apps with icons (apps.json) and the library search box
 };
@@ -369,12 +370,16 @@ function deletePage(di, pi) {
 function keyEl(k, i, geo) {
   const kind = M.keyKind(k);
   const { x, y } = geo.pos(i);
+  const lit = state.previewOn && state.sel.k === i && M.stateKind(k) !== 'none';  // the editor previews the "on" look of the selected key
+  if (lit) k = { ...k, ...M.stateLook(k) };
   const unknownIcon = k.icon && !state.icons[k.icon];
   const el = h('div', {
     class: 'key ' + kind + (state.sel.k === i ? ' sel' : ''),
     draggable: kind !== 'empty',
     dataset: { i },
-    title: kind === 'empty' ? 'Empty slot' : kind === 'folder' ? `Folder \u2192 ${k.folder}` : M.describeAction(k.action),
+    title: kind === 'empty' ? 'Empty slot' : kind === 'folder' ? `Folder \u2192 ${k.folder}` : M.describeAction(k.action)
+      + (k.repeat ? ' \u00B7 repeats while held' : k.hold ? ` \u00B7 held: ${M.describeAction(k.hold)}` : '')
+      + (M.stateKind(k) !== 'none' ? ' \u00B7 changes look with the PC' : ''),
     style: { left: x * S + 'px', top: y * S + 'px', width: geo.keyW * S + 'px', height: geo.keyH * S + 'px',
       borderRadius: (geo.radius ?? M.SETTING_DEFAULTS.keyRadius) * S + 'px',
       background: kind === 'empty' ? '' : (k.color || M.DEFAULT_KEY_COLOR) },
@@ -736,6 +741,11 @@ function renderInspector() {
   const cards = [];
   cards.push(h('div', { class: 'card' }, h('h4', {}, 'Desktop'),
     field('Name', textInput(d.name, (v) => liveEdit(() => { desk().name = v; }, 'dname'), { maxLength: 24 })),
+    field('Show this desktop when these programs are in front', textInput(M.joinApps(d.apps), (v) => liveEdit(() => {
+      const apps = M.parseApps(v);
+      if (apps.length) desk().apps = apps; else delete desk().apps;
+    }, 'dapps'), { placeholder: 'obs64, code', list: 'runningApps', id: 'deskApps', onfocus: loadRunningApps }),
+    'Program names as in Task Manager, without .exe, separated by commas. The desktop comes to the front when one of them becomes the active window; it is checked only when the active program changes, so you can still swipe away.'),
     h('div', { class: 'hint' }, kind === 'keys' ? 'A desktop holds pages of keys; swipe between desktops on the board.' :
       kind === 'nowplaying' ? 'The Now playing screen shows the Windows media session: cover, title, progress bar and controls. Choose the players and the look below the preview.' :
         'The PC stats screen shows CPU, GPU, RAM, VRAM, disk and network. Choose the style, the items and their order below the preview.')));
@@ -755,7 +765,10 @@ function renderInspector() {
     keyCard.append(field('Label', textInput(k.label || '', (v) => liveEdit(() => { const key = page().keys[state.sel.k]; if (v) key.label = v; else delete key.label; }, 'label'), { maxLength: 10, placeholder: 'short text' }), 'Up to about 10 characters fit.'),
       iconPicker(k), colorPicker(k));
     if (kk === 'folder') keyCard.append(folderEditor(k));
-    else keyCard.append(actionEditor(k.action || null, (na) => commit(() => { const key = page().keys[state.sel.k]; if (na) key.action = na; else delete key.action; })));
+    else {
+      keyCard.append(actionEditor(k.action || null, (na) => commit(() => { const key = page().keys[state.sel.k]; if (na) key.action = na; else delete key.action; })),
+        holdSection(k), stateSection(k));
+    }
   } else {
     keyCard.append(h('div', { class: 'hint' }, 'This slot is empty. Pick a type above, or click a preset below.'));
   }
@@ -766,6 +779,61 @@ function renderInspector() {
     h('button', { class: 'small', disabled: kk !== 'action', onclick: saveAsPreset, title: kk === 'folder' ? 'Folders cannot be presets' : '' }, 'Save as preset')));
   cards.push(keyCard);
   box.replaceChildren(...cards);
+}
+
+// ---- a key held down, and a key that shows a state of the PC ------------------------------------------------
+
+async function loadRunningApps() {
+  if (state.runningApps !== null) return;
+  state.runningApps = [];
+  try {
+    state.runningApps = (await api('GET', '/api/running-apps')).apps || [];
+  } catch (e) {
+    state.runningApps = [];
+  }
+  const list = $('#runningApps');
+  if (list) list.replaceChildren(...state.runningApps.map((a) => h('option', { value: a })));
+}
+
+function holdSection(k) {
+  const mode = M.holdMode(k);
+  const select = h('select', { id: 'holdMode', onchange: (e) => commit(() => M.setHoldMode(page().keys[state.sel.k], e.target.value)) },
+    M.HOLD_MODES.map(([v, t]) => h('option', { value: v, selected: mode === v }, t)));
+  const box = h('div', { class: 'subsec', id: 'holdSection' }, h('h5', {}, 'When held'),
+    field('Holding the key for about half a second', select,
+      mode === 'repeat' ? 'Good for volume keys: the key is pressed again and again until you let go.' : mode === 'action' ? 'A short tap still does the action above.' : null));
+  if (mode === 'action') {
+    box.append(actionEditor(k.hold, (na) => commit(() => { const key = page().keys[state.sel.k]; if (na) key.hold = na; else delete key.hold; })));
+  }
+  return box;
+}
+
+function stateSection(k) {
+  const kind = M.stateKind(k);
+  const key = () => page().keys[state.sel.k];
+  const select = h('select', { id: 'stateKind', onchange: (e) => commit(() => M.setStateKind(key(), e.target.value)) },
+    M.STATE_SOURCES.map(([v, t]) => h('option', { value: v, selected: kind === v }, t)));
+  const box = h('div', { class: 'subsec', id: 'stateSection' }, h('h5', {}, 'Shows a state'),
+    field('The key changes its look when', select, kind === 'none' ? 'For example a mute key that turns red while the sound is muted.' : null));
+  if (kind === 'none') return box;
+  if (kind === 'app') {
+    box.append(field('Program', textInput(M.stateApp(k), (v) => liveEdit(() => { key().state.source = `app:${M.normalizeApp(v) || 'obs64'}`; }, 'stateapp'),
+      { placeholder: 'obs64', list: 'runningApps', id: 'stateApp', onfocus: loadRunningApps }), 'Name as in Task Manager, without .exe.'));
+  }
+  const look = M.stateLook(k);
+  const icons = Object.keys(state.icons).sort();
+  box.append(field('Look while it is on', h('div', { class: 'row tight' },
+    h('input', { type: 'color', id: 'stateColor', value: look.color.toLowerCase(), title: 'Color while on',
+      style: { width: '34px', height: '28px', padding: 0, border: 0, background: 'none' },
+      oninput: (e) => liveEdit(() => { key().state.color = e.target.value.toUpperCase(); }, 'statecolor') }),
+    textInput(k.state.label !== undefined ? k.state.label : '', (v) => liveEdit(() => { if (v) key().state.label = v; else delete key().state.label; }, 'statelabel'),
+      { maxLength: 10, placeholder: k.label ? `label: ${k.label}` : 'label', style: { flex: '1', minWidth: '90px' } }),
+    h('select', { id: 'stateIcon', onchange: (e) => commit(() => { if (e.target.value === '') delete key().state.icon; else key().state.icon = e.target.value; }) },
+      h('option', { value: '', selected: k.state.icon === undefined }, 'icon: same'),
+      icons.map((n) => h('option', { value: n, selected: k.state.icon === n }, n)))),
+    'Empty label and "same" icon keep the key\'s own.'));
+  box.append(checkRow('Preview this look on the screen above', !!state.previewOn, (v) => { state.previewOn = v; renderScreen(); }));
+  return box;
 }
 
 function copyKey() { const k = keyObj(); if (k && !M.isEmptyKey(k)) { state.clip = M.clone(k); toast('Key copied'); renderInspector(); } }
@@ -1160,7 +1228,9 @@ function renderSettingsPage() {
         choice('setSleep', 'Turn the screen off after no touch for', SLEEP_CHOICES, s.sleepAfter, 'sleepAfter',
           'The first touch only wakes the screen; it does not press a key.'),
         dimClash ? h('div', { class: 'hint bad', id: 'dimClash' }, 'The screen turns off before it would dim, so dimming is skipped.') : null,
-        checkRow('Flip the screen upside down (for a case mounted the other way up)', s.flip, (v) => setting('flip', v, 'all'))),
+        checkRow('Flip the screen upside down (for a case mounted the other way up)', s.flip, (v) => setting('flip', v, 'all')),
+        checkRow('Turn the screen off while the PC is locked, asleep or not talking to the board', s.sleepWithPc, (v) => setting('sleepWithPc', v, 'all')),
+        h('div', { class: 'hint' }, 'A touch lights it for 30 seconds. When the PC unlocks or the companion comes back it turns on by itself.')),
       h('div', { class: 'card' }, h('h4', {}, 'Desktops'),
         h('div', { class: 'field' }, h('label', {}, 'Swipe needed to change desktop'),
           h('select', { id: 'setSwipe', onchange: (e) => setting('swipe', e.target.value, 'all') },

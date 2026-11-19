@@ -129,6 +129,7 @@ window.lookCheck = (text) => [...$$('#liveConfig .check')].find((l) => l.textCon
 window.press = (key, opts = {}) => document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...opts }));
 window.setInput = (el, value) => { el.value = value; el.dispatchEvent(new Event('input', { bubbles: true })); };
 window.setSelect = (el, value) => { el.value = value; el.dispatchEvent(new Event('change', { bubbles: true })); };
+window.settingCheck = (text) => [...$$('#settingsPage .check')].find((l) => l.textContent.includes(text)).querySelector('input');
 window.drag = (from, to) => {
   const dt = new DataTransfer();
   from.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
@@ -159,7 +160,8 @@ def main() -> int:
                {"id": "Spotify.exe", "title": "", "artist": "", "playing": False, "current": False}]
     board_commands: list = []  # what the editor asked the (pretend) companion to send to the board
     server = EditorServer(deck_path, port=0, status_fn=lambda: {"connected": False}, media_sources_fn=lambda: players,
-                          command_fn=lambda c: board_commands.append(c) or True)
+                          command_fn=lambda c: board_commands.append(c) or True,
+                          running_apps_fn=lambda: ["chrome", "obs64"])
     server.start()
     port = free_port()
     proc = subprocess.Popen([browser, "--headless=new", "--disable-gpu", "--no-first-run", f"--remote-debugging-port={port}",
@@ -433,6 +435,38 @@ def main() -> int:
 
         print("saving")
         cdp.js("$$('.deskrow')[0].click()")  # back to the first keys desktop
+        print("hold, repeat and state keys; programs of a desktop")
+        cdp.js("keyAt(1).click()")
+        check("a key has a 'When held' section, set to Nothing", cdp.js("document.querySelector('#holdMode').value") == "none")
+        cdp.js("setSelect(document.querySelector('#holdMode'), 'repeat')")
+        check("choosing repeat explains it and offers no second action", cdp.js("document.querySelector('#holdSection').textContent.includes('pressed again and again')")
+              and cdp.js("document.querySelectorAll('#holdSection select').length") == 1)
+        cdp.js("keyAt(2).click()")
+        check("another key still has Nothing", cdp.js("document.querySelector('#holdMode').value") == "none")
+        cdp.js("setSelect(document.querySelector('#holdMode'), 'action')")
+        check("'Do something else' shows an action editor for the hold", cdp.js("document.querySelectorAll('#holdSection select').length") == 2)
+        check("...and the tooltip of the key tells what it does when held", "held:" in cdp.js("keyAt(2).title"), cdp.js("keyAt(2).title"))
+        cdp.js("keyAt(0).click()")
+        check("the state is 'Never' by default", cdp.js("document.querySelector('#stateKind').value") == "none" and cdp.js("!document.querySelector('#stateColor')"))
+        cdp.js("setSelect(document.querySelector('#stateKind'), 'mute')")
+        check("a mute state shows its look controls, red by default", cdp.js("!!document.querySelector('#stateColor') && !document.querySelector('#stateApp')")
+              and cdp.js("document.querySelector('#stateColor').value") == "#b3261e")
+        cdp.js("setSelect(document.querySelector('#stateKind'), 'app')")
+        check("a program state asks for the program, and is green by default", cdp.js("document.querySelector('#stateApp').value") == "obs64"
+              and cdp.js("document.querySelector('#stateColor').value") == "#2ea043")
+        cdp.js("setInput(document.querySelector('#stateApp'), 'Discord.exe')")
+        normal_color = cdp.js("getComputedStyle(keyAt(0)).backgroundColor")
+        cdp.js("$$('#stateSection .check input')[0].click()")  # preview the on look
+        check("previewing the on look changes the key in the preview", cdp.js("getComputedStyle(keyAt(0)).backgroundColor") != normal_color)
+        cdp.js("$$('#stateSection .check input')[0].click()")
+        check("...and switching it off restores the key", cdp.js("getComputedStyle(keyAt(0)).backgroundColor") == normal_color)
+        cdp.js("$$('.deskrow')[0].click()")
+        cdp.js("document.querySelector('#deskApps').dispatchEvent(new Event('focus'))")
+        check("the programs field offers the programs that are open", cdp.wait("document.querySelectorAll('#runningApps option').length === 2"))
+        cdp.js("setInput(document.querySelector('#deskApps'), 'OBS64.exe, Code, obs64')")
+        cdp.js("$$('.deskrow')[1].click()")
+        cdp.js("$$('.deskrow')[0].click()")
+        check("the programs of a desktop are kept, cleaned up (no .exe, no repeats)", cdp.js("document.querySelector('#deskApps').value") == "obs64, code")
         print("general settings page")
         check("the board settings are no longer at the bottom of the desktop list", cdp.js("!document.body.textContent.includes('Board settings')"))
         check("the editor starts on the desktops view", cdp.js("!document.querySelector('#deckView').hidden && document.querySelector('#settingsPage').hidden"))
@@ -481,18 +515,21 @@ def main() -> int:
         cdp.js("setSelect(document.querySelector('#setDim'), '120')")
         check("dimming after the screen turns off is flagged", cdp.js("!!document.querySelector('#dimClash')"))
         cdp.js("setSelect(document.querySelector('#setDim'), '30')")
-        cdp.js("$$('#settingsPage .check input')[2].click()")  # flip
-        check("flip is stored", cdp.js("$$('#settingsPage .check input')[2].checked") is True)
-        cdp.js("$$('#settingsPage .check input')[2].click()")  # and back
+        cdp.js("settingCheck('Flip the screen').click()")  # flip
+        check("flip is stored", cdp.js("settingCheck('Flip the screen').checked") is True)
+        cdp.js("settingCheck('Flip the screen').click()")  # and back
         cdp.js("setSelect(document.querySelector('#setStart'), '1')")
         check("the start desktop is stored", cdp.js("document.querySelector('#setStart').value") == "1")
         cdp.js("setSelect(document.querySelector('#setStart'), '0')")
         check("the swipe length is normal by default", cdp.js("document.querySelector('#setSwipe').value") == "normal")
         cdp.js("setSelect(document.querySelector('#setSwipe'), 'long')")
         check("choosing a swipe length is sent to the board", wait_py(lambda: any(c.get("kind") == "settings" and c["settings"].get("swipe") == "long" for c in board_commands)))
-        check("endless scrolling is off by default", cdp.js("!$$('#settingsPage .check input')[3].checked"))
-        cdp.js("$$('#settingsPage .check input')[3].click()")
+        check("endless scrolling is off by default", cdp.js("!settingCheck('Endless scrolling').checked"))
+        cdp.js("settingCheck('Endless scrolling').click()")
         check("turning endless scrolling on is sent to the board", wait_py(lambda: any(c.get("kind") == "settings" and c["settings"].get("wrap") is True for c in board_commands)))
+        check("sleeping with the PC is off by default", cdp.js("!settingCheck('Turn the screen off while the PC').checked"))
+        cdp.js("settingCheck('Turn the screen off while the PC').click()")
+        check("turning it on is sent to the board", wait_py(lambda: any(c.get("kind") == "settings" and c["settings"].get("sleepWithPc") is True for c in board_commands)))
         before = cdp.js("document.querySelector('#lookSample .sampleKey').style.borderRadius")
         left_before = cdp.js("document.querySelectorAll('#lookSample .sampleKey')[1].style.left")
         cdp.js("setInput(document.querySelector('#setRadius'), '3')")
@@ -521,6 +558,16 @@ def main() -> int:
         check("the file has the new settings too", saved["settings"]["wrap"] is True and saved["settings"]["swipe"] == "long" and saved["settings"]["dimAfter"] == 30 and saved["settings"]["sleepAfter"] == 60
               and saved["settings"]["soundTheme"] == "classic" and saved["settings"]["keyRadius"] == 12 and saved["settings"]["keyGap"] == 6, str(saved["settings"]))
         check("a saved deck with these settings loads in the companion", Deck(saved).effective_settings()["dimAfter"] == 30)
+        check("the file has sleepWithPc", saved["settings"].get("sleepWithPc") is True, str(saved["settings"]))
+        first_keys = saved["desktops"][0]["pages"][0]["keys"]
+        check("the saved file has the repeat key (and no hold action on it)", first_keys[1].get("repeat") is True and "hold" not in first_keys[1], str(first_keys[1]))
+        check("...the hold action", first_keys[2].get("hold", {}).get("type") == "hotkey" and "repeat" not in first_keys[2], str(first_keys[2]))
+        check("...the state key", first_keys[0].get("state") == {"source": "app:discord"}, str(first_keys[0].get("state")))
+        check("...the programs of the desktop", saved["desktops"][0].get("apps") == ["obs64", "code"], str(saved["desktops"][0].get("apps")))
+        companion_deck = Deck(saved)
+        check("the companion understands all of it",
+              companion_deck.auto_apps == [(0, {"obs64", "code"})] and companion_deck.key_states == [(0, 0, 0, "app:discord")]
+              and companion_deck.hold_action_at(0, 0, 2) is not None and '"repeat":true' in companion_deck.layout_text())
         stats_options = next(d for d in saved["desktops"] if d.get("kind") == "stats")["options"]
         np_options = next(d for d in saved["desktops"] if d.get("kind") == "nowplaying")["options"]
         check("the saved file has the stats style and items", stats_options["style"] == "gauges" and stats_options["items"] == ["gpu", "net", "disk", "vram", "cpu", "ram"], str(stats_options))

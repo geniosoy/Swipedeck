@@ -51,13 +51,19 @@ presets, and see the board's screen as you type.
   in one of four sound themes.
 * **Settings** you can try live: sounds, brightness, auto-dim and screen-off, flipping the screen, endless scrolling
   between desktops, swipe length, and how the keys look (see [Settings](#settings)).
+* **Keys that do more:** a second action when a key is held, volume-style keys that repeat while held, and keys that
+  change their look with the PC (red while the speakers are muted, green while a program runs), see
+  [Hold, state and active-app features](#hold-state-and-active-app-features).
+* **A desktop per app:** the desktop of the program in front (OBS, VS Code ...) comes to the front by itself.
+* **Sleeps with the PC:** the screen can go off while the PC is locked, asleep or off.
 * The board stores the last layout and the settings, so it still works without the PC (key presses just do nothing).
 
 ## Running it
 
 **PC side:** double-click **`Streamdeck.bat`**. On the first run it creates the Python environment
 (`companion\.venv`) and installs the requirements, then starts the companion; afterwards it just starts. Arguments are
-passed through: `--dry-run` (log actions, do not run them), `--no-media`, `--no-stats`, `--port COM3`, `--deck FILE`,
+passed through: `--dry-run` (log actions, do not run them), `--no-media`, `--no-stats`, `--no-watch` (do not look at the
+active app, mute state or screen lock), `--port COM3`, `--deck FILE`,
 `--check` (validate the deck file and exit), `-v` (debug log).
 
 * **`Streamdeck-background.vbs`** starts it without a window (log: `companion\companion.log`). A shortcut to it in the
@@ -152,8 +158,11 @@ for explanation: the real file is plain JSON.
 * Icons on keys come from a built-in list of about 50 names (`mute`, `play`, `home`, `copy` ...), see `ICONS` in
   `companion/streamdeck_companion/deck.py`; an unknown name shows a warning symbol and a log warning.
 * Layouts have only been tried at a few KB; the editor warns above 30 KB.
-* **Firmware 0.8.0 or newer** is needed for `appIcon` (older firmware ignores the option and the icon messages), and
-  **0.9.0 or newer** for the general settings below beyond volume, sounds and brightness.
+* **Firmware 0.8.0 or newer** is needed for `appIcon` (older firmware ignores the option and the icon messages),
+  **0.9.0 or newer** for the general settings below beyond volume, sounds and brightness, and **0.12.0 or newer** for
+  hold / repeat / state keys and sleeping with the PC. (0.12.0 builds and passes the companion and editor tests, but had
+  not been flashed or tried on the board when this was written: check the hold, state and sleep features on the real
+  screen first.) Desktops by active app need no firmware change: the companion just sends `focus`.
 * The live-screen options are checked by the companion when it loads the deck (a wrong value is an error with a clear
   message); the board never receives the Now playing player filter.
 
@@ -212,9 +221,10 @@ read shows as n/a. AMD / Intel GPUs are not read.
 ## Link protocol
 
 JSON lines over the USB serial port; the full table is in `src/link.h`. PC to board: `hello`, `ping`, chunked `layout`,
-`settings`, `focus`, `reset-layout`, `np` (media state), `cover` / `cover-clear`, `appicon` / `appicon-clear`, `stats`.
+`settings`, `focus`, `keystate` (which keys show their "on" look), `pc` (the PC is `locked` / `active`), `sound`,
+`reset-layout`, `np` (media state), `cover` / `cover-clear`, `appicon` / `appicon-clear`, `stats`.
 Board to PC: `hello` (firmware, screen size, layout CRC, cover and icon sizes, visible desktop), `pong`,
-`layout-part` / `layout-ack`, `settings-ack`, `cover-part` / `cover-ack`, `appicon-ack`, and the events `press`, `nav`, `desktop`, `media` (`toggle|next|prev|shuffle|repeat`),
+`layout-part` / `layout-ack`, `settings-ack`, `cover-part` / `cover-ack`, `appicon-ack`, and the events `press` (with `hold` or `repeat` for held keys), `nav`, `desktop`, `media` (`toggle|next|prev|shuffle|repeat`),
 `seek`. An unchanged layout is not re-sent (FNV-1a CRC). Plain-text debug commands work on the same port:
 `ping`, `beep`, `info`, `reboot`, `vol N`, `amp 0|1`, `desktop N`, `back`.
 
@@ -227,6 +237,7 @@ lib/                                                            patched TFT_eSPI
 tools/gen_icons.py, tools/icons/                                icon generator and its SVG sources
 tools/gen_icon_map.py, gen_favicon.py, e2e_editor.py            editor icon table and favicon generators, browser test
 tools/screenshots.py                                             takes the pictures in docs/images from the editor (headless Edge/Chrome)
+tools/hw_check_0_12.py                                           serial check of firmware 0.12.0 on the real board (hold/state keys, screen away); stop the companion first
 docs/architecture.svg, assets/logo.svg                           the diagram and the logo used in this README
 Streamdeck-Editor.bat                                           opens the editor
 companion/                                                      the Python companion: deck.json, streamdeck_companion/ (incl.
@@ -237,6 +248,37 @@ Tests: `companion\.venv\Scripts\python -m unittest discover -s tests` (from `com
 server incl. its security checks) and `node --test companion/tests/js/model.test.mjs` (the editor's logic). A full browser
 test of the editor, which drives it in headless Edge/Chrome against a copy of the deck, is `tools/e2e_editor.py`
 (needs `pip install websocket-client`; `--shots DIR` saves screenshots).
+
+## Hold, state and active-app features
+
+All of these are set in the editor (the key inspector, the desktop inspector, General settings) or in `deck.json`:
+
+```jsonc
+{ "label": "Mute", "icon": "mute",
+  "action": { "type": "hotkey", "keys": "volume_mute" },
+  "hold":   { "type": "lock" },                                   // held for about half a second: a second action
+  "state":  { "source": "mute", "label": "Muted", "color": "#B3261E" } }   // look while the speakers are muted
+{ "label": "Vol +", "action": { "type": "hotkey", "keys": "volume_up" }, "repeat": true }  // pressed again and again while held
+{ "name": "OBS", "apps": ["obs64", "code"], "pages": [ ... ] }    // a desktop that comes to the front with these programs
+```
+
+* **Hold:** `hold` is a second action (an action object, or the id of a shared action). The tap then counts only for a
+  short press. `repeat: true` presses the key again and again while it is held (about every 0.1 s, one tick at the start).
+  A key has `hold` or `repeat`, not both; folders have neither.
+* **State keys:** `state.source` is `mute` (the speakers are muted), `mic_mute` (the default microphone is muted) or
+  `app:<program>` (that program is running, names as in Task Manager without `.exe`). While it is true the key shows
+  `state.color` / `icon` / `label` (each optional; the color defaults to red, or green for a program). The companion
+  checks Windows about once a second (Core Audio for the mute state, the process list for programs) and sends the board
+  the list of keys that are on; it is sent again after a new layout or connection.
+* **Desktops by active app:** `apps` on a desktop lists programs (names as above). When one of them becomes the active
+  window the companion sends `focus` for that desktop. It reacts to the active program *changing*, so you can still swipe
+  away. The first desktop listing a program wins. The editor offers the programs that are open right now.
+* **Sleep with the PC:** the setting `sleepWithPc` turns the screen off while Windows is locked (the companion reports
+  it) and when the board hears nothing from the PC for 15 s (PC asleep or off, companion stopped). A touch lights the
+  screen for 30 s; it turns on by itself when the PC is back. Off by default.
+* The companion reads none of this unless the deck uses it, and `--no-watch` turns it all off. The actions, the programs
+  of a desktop and the sources of state keys stay on the PC; the board only gets "this key has a hold / repeat" and the
+  look to show.
 
 ## Settings
 
@@ -258,6 +300,7 @@ companion connects and when the deck is saved, and the board stores them. Wrong 
 | `keyGap`       | 2..12                                       | 6           | space between keys, px                                                                                                                                                                          |
 | `swipe`        | `short`, `normal`, `long`             | `normal`  | how far or hard a swipe has to be to pass to another desktop: with `short` a quick flick is enough, with `long` a deliberate drag (also the swipe that wraps around; needs firmware 0.11.0) |
 | `wrap`         | true / false                                | false       | endless scrolling: swiping right on the first desktop goes to the last one, swiping left on the last goes to the first (needs firmware 0.10.0)                                                  |
+| `sleepWithPc`  | true / false                                | false       | the screen goes off while the PC is locked, asleep, off, or the companion is not running (needs firmware 0.12.0)                                                                                |
 
 * **Waking the screen:** the touch that wakes a dimmed or sleeping screen is swallowed: it does not press anything, and
   neither does a swipe started with it. Sounds played by the Test buttons also wake the screen.

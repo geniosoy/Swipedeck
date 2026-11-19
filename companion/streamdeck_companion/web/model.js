@@ -294,6 +294,47 @@ export function describeAction(a) {
   }
 }
 
+// ---- hold, repeat and state keys; desktops that follow an app ----------------------------------------------
+
+// A program name the way the companion compares it (deck.py / pcwatch.normalize_app): lower case, no ".exe".
+export function normalizeApp(name) {
+  const n = String(name || '').trim().toLowerCase();
+  return n.endsWith('.exe') ? n.slice(0, -4) : n;
+}
+export const parseApps = (text) => [...new Set(String(text || '').split(/[,;\n]+/).map(normalizeApp).filter(Boolean))].slice(0, 10);
+export const joinApps = (apps) => (apps || []).join(', ');
+
+export const HOLD_MODES = [['none', 'Nothing'], ['repeat', 'Repeat the key while it is held'], ['action', 'Do something else']];
+export const holdMode = (k) => (k && k.repeat ? 'repeat' : k && k.hold ? 'action' : 'none');
+export function setHoldMode(key, mode) {
+  delete key.repeat;
+  if (mode === 'none') delete key.hold;
+  else if (mode === 'repeat') { key.repeat = true; delete key.hold; }
+  else if (!key.hold) key.hold = defaultAction('hotkey');
+}
+
+export const STATE_SOURCES = [['none', 'Never'], ['mute', 'The speakers are muted'], ['mic_mute', 'The microphone is muted'], ['app', 'A program is running']];
+export function stateKind(k) {
+  const s = k && k.state && k.state.source;
+  if (!s) return 'none';
+  return String(s).startsWith('app:') ? 'app' : s;
+}
+export const stateApp = (k) => (stateKind(k) === 'app' ? String(k.state.source).slice(4) : '');
+export function setStateKind(key, kind, app = 'obs64') {
+  if (kind === 'none') { delete key.state; return; }
+  key.state = { ...(key.state || {}), source: kind === 'app' ? `app:${normalizeApp(app) || 'obs64'}` : kind };
+}
+// What a key shows while its state is on: its own look with the state's changes on top (red for a mute, green for a
+// running program, as deck.py decides).
+export function stateLook(k) {
+  const s = k.state || {};
+  return {
+    color: s.color || (stateKind(k) === 'app' ? '#2EA043' : '#B3261E'),
+    icon: s.icon !== undefined ? s.icon : k.icon,
+    label: s.label !== undefined ? s.label : k.label,
+  };
+}
+
 // ---- what the board receives (for the size display) --------------------------------------------------
 
 export function boardLayout(deck) {
@@ -312,6 +353,16 @@ export function boardLayout(deck) {
           keys: (p.keys || []).map((k) => {
             const o = {};
             for (const f of ['label', 'icon', 'id', 'color', 'folder']) if (k[f]) o[f] = k[f];
+            if (!k.folder) {
+              if (k.hold) o.hold = true;
+              if (k.repeat) o.repeat = true;
+              if (stateKind(k) !== 'none') {
+                const look = stateLook(k);
+                o.on = { color: look.color };
+                if (k.state.icon !== undefined) o.on.icon = k.state.icon;
+                if (k.state.label !== undefined) o.on.label = k.state.label;
+              }
+            }
             return o;
           }),
         })),

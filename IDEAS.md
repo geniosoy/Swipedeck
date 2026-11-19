@@ -1,19 +1,15 @@
 # Streamdeck: ideas for later
 
-Nothing here is started. They build on what already exists (see [README.md](README.md)).
+The rest of this list is not started. Everything builds on what already exists (see [README.md](README.md)).
 
-## Small and useful
+## Built (the small ones)
 
-* **Switch desktops by active app.** The companion notices which window is in front (OBS, VS Code, Discord ...) and
-  focuses the matching desktop. The board already accepts a `focus` message, so this is mostly a list of rules
-  ("when this app is active, show this desktop") in `deck.json` and the editor. *Suggested first pick: the most noticeable
-  in daily use and the cheapest.*
-* **Keys that show state.** A mute key that turns red while you are muted, a mic key that shows the mic state. The
-  companion reads the state on the PC and tells the board to change a key's colour or icon (needs a new message for that).
-* **Long-press actions.** A tap does one thing, holding the key does another. Hold-to-repeat for the volume keys fits
-  here too.
-* **Sleep with the PC.** Turn the screen off when Windows locks or goes to sleep, and wake it on unlock. Builds on the
-  screen-off setting and the wake-up touch handling that already exist.
+These four are implemented, documented in the README ("Hold, state and active-app features") and covered by tests. The
+firmware part (0.12.0) builds but still has to be tried on the real board: hold and repeat on the touch screen, the
+"on" look of a state key, and the screen going off with the PC.
+
+* Switch desktops by active app, keys that show state (speakers or microphone muted, a program running), long-press
+  actions and hold-to-repeat keys, sleep with the PC.
 
 ## Medium
 

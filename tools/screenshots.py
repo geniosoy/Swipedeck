@@ -44,7 +44,7 @@ def main() -> int:
     shutil.copyfile(ROOT / "companion" / "tests" / "fixtures" / "deck.json", deck_path)
     players = [{"id": "Chrome", "title": "A video", "artist": "A channel", "playing": True, "current": True},
                {"id": "Spotify.exe", "title": "", "artist": "", "playing": False, "current": False}]
-    server = EditorServer(deck_path, port=0, status_fn=lambda: {"connected": True, "port": "COM3", "firmware": "0.11.0",
+    server = EditorServer(deck_path, port=0, status_fn=lambda: {"connected": True, "port": "COM3", "firmware": "0.12.0",
                                                                 "desktop": 0, "kind": "keys"},
                           media_sources_fn=lambda: players, command_fn=lambda c: True)
     server.start()
