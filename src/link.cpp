@@ -11,11 +11,13 @@
 #include "display_hal.h"
 #include "nowplaying.h"
 #include "stats.h"
+#include "mixer.h"
+#include "clockscreen.h"
 #include "ui.h"
 
 namespace {
 
-constexpr const char* kFirmware = "0.12.0";
+constexpr const char* kFirmware = "0.13.0";
 constexpr const char* kLayoutFile = "/layout.json";
 constexpr const char* kLayoutTmp = "/layout.tmp";
 
@@ -278,6 +280,45 @@ void onStats(JsonDocument& m) {
   statsSet(s);
 }
 
+// {"type":"mixer","master":{"vol":50,"mute":false},"apps":[{"id":"chrome","name":"Chrome","vol":80,"mute":false}, ...]}
+void onMixer(JsonDocument& m) {
+  MixerInfo info;
+  info.master.id = "master";
+  info.master.name = "Master";
+  info.master.vol = constrain(m["master"]["vol"] | 0, 0, 100);
+  info.master.mute = m["master"]["mute"] | false;
+  for (JsonObject a : m["apps"].as<JsonArray>()) {
+    if (info.apps.size() >= 4) break;
+    MixerFader f;
+    f.id = String(a["id"] | "");
+    f.name = String(a["name"] | "");
+    f.vol = constrain(a["vol"] | 0, 0, 100);
+    f.mute = a["mute"] | false;
+    if (!f.id.isEmpty()) info.apps.push_back(f);
+  }
+  mixerSet(info);
+}
+
+// {"type":"clock","epoch":1731999999,"offsetMin":-180}
+void onClock(JsonDocument& m) {
+  if (m["epoch"].isNull()) return;
+  clockSync(m["epoch"].as<int64_t>(), m["offsetMin"] | 0);
+}
+
+// {"type":"weather","ok":true,"temp":9,"unit":"C","text":"Overcast","hi":10,"lo":6,"place":"London"}
+void onWeather(JsonDocument& m) {
+  WeatherInfo w;
+  w.valid = true;
+  w.ok = m["ok"] | false;
+  w.temp = m["temp"] | 0;
+  w.hi = m["hi"] | 0;
+  w.lo = m["lo"] | 0;
+  w.unit = String(m["unit"] | "C")[0];
+  w.text = String(m["text"] | "");
+  w.place = String(m["place"] | "");
+  clockSetWeather(w);
+}
+
 void sendCoverAck(bool ok, const char* id, const char* err) {
   JsonDocument d;
   d["type"] = "cover-ack";
@@ -387,6 +428,7 @@ void onSound(JsonDocument& m) {
   if (name == "nav") audioPlay(Sound::Nav);
   else if (name == "back") audioPlay(Sound::Back);
   else if (name == "error") audioPlay(Sound::Error);
+  else if (name == "alarm") audioPlay(Sound::Alarm);
   else audioPlay(Sound::Tap);
 }
 
@@ -415,6 +457,9 @@ void onJson(const String& line) {
   else if (type == "pc") onPc(m);
   else if (type == "np") onNowPlaying(m);
   else if (type == "stats") onStats(m);
+  else if (type == "mixer") onMixer(m);
+  else if (type == "clock") onClock(m);
+  else if (type == "weather") onWeather(m);
   else if (type == "cover") onCover(m);
   else if (type == "cover-clear") npCoverClear();
   else if (type == "appicon") onAppIcon(m);

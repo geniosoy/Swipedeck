@@ -12,7 +12,8 @@
 //
 // A desktop can also be {"name":"Playing","kind":"nowplaying","options":{"tint":true,"album":true,"controls":"full"}}
 // (media screen) or {"name":"PC","kind":"stats","options":{"style":"gauges","items":["cpu","gpu","ram","vram","disk","net"]}}
-// (PC statistics): live screens fed by the companion, no pages. Options are optional (see live_options.h).
+// (PC statistics), {"name":"Mixer","kind":"mixer"} (volume faders) and {"name":"Clock","kind":"clock","options":{"hour12":false,
+// "seconds":false,"timer":true,"weather":true}} (time, weather, timer): live screens fed by the companion, no pages. Options are optional (see live_options.h).
 //
 // The first page of a desktop is its root. A key with "folder" opens that page (by page id);
 // every other key is an action: pressing it reports its "id" to the PC.
@@ -55,6 +56,8 @@ enum class DeskKind : uint8_t {
   Keys,        // pages of keys (default)
   NowPlaying,  // the live media screen (nowplaying.cpp); has no pages. At most one per deck.
   Stats,       // PC statistics dashboard (stats.cpp); has no pages. At most one per deck.
+  Mixer,       // volume faders (mixer.cpp); has no pages. At most one per deck.
+  Clock,       // time, weather and a countdown timer (clockscreen.cpp); has no pages. At most one per deck.
 };
 
 struct DeckDesktop {
@@ -62,6 +65,7 @@ struct DeckDesktop {
   DeskKind kind = DeskKind::Keys;
   NpOptions np;                 // Now playing: how it looks
   StatsOptions stats;           // PC stats: style and which items, in which order
+  ClockOptions clock;           // Clock: which parts it has
   std::vector<DeckPage> pages;  // pages[0] is the root (empty for the live screens)
 };
 

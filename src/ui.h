@@ -37,4 +37,5 @@ bool uiSetKeyLook(int radius, int gap);
 // Which keys are "on" right now (their `on` look is shown, the others show their normal look): ids from uiKeyId. Only the
 // pages that change are redrawn.
 void uiSetKeyStates(const std::vector<uint32_t>& onKeys);
+void uiShowClock();             // brings the Clock desktop to the front (the timer rings there)
 void uiGoBack();                // same as the on-screen back button

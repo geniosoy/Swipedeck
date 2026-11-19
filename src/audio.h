@@ -3,7 +3,7 @@
 #pragma once
 #include <Arduino.h>
 
-enum class Sound : uint8_t { Tap, Nav, Back, Swipe, Error, kCount };
+enum class Sound : uint8_t { Tap, Nav, Back, Swipe, Error, Alarm, kCount };  // Alarm (the timer) also rings with key sounds off
 
 // Starts I2S (MCLK first), initialises the codec over the shared Wire bus and enables the amp.
 // Call after displayBegin() (which starts Wire for the touch controller). Returns false on codec failure.

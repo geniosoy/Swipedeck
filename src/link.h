@@ -10,7 +10,7 @@
 //     "dimAfter":0,"sleepAfter":0,"flip":false,"startDesktop":0,"keyRadius":12,"keyGap":6,"wrap":false,"swipe":"normal","preview":false}
 //                                                 {"type":"settings-ack", ...current settings...,"preview":false}
 //        (every key is optional; out-of-range values are clamped; "preview":true applies without storing)
-//   {"type":"sound","name":"tap|nav|back|error"}  (plays a UI sound, e.g. the editor's Test buttons; wakes the screen)
+//   {"type":"sound","name":"tap|nav|back|error|alarm"}  (plays a UI sound, e.g. the editor's Test buttons; wakes the screen)
 //   {"type":"focus","desktop":1}                  (switch the visible desktop)
 //   {"type":"keystate","on":["0/0/3","1/0/0"]}    (the keys, as desktop/page/key, whose PC state is on right now: they show
 //                                                  their "on" look; all others show their normal one. Idempotent: send the
@@ -31,6 +31,10 @@
 //                                                 when the layout's nowplaying option appIcon is on; hello has "iconPx")
 //   {"type":"appicon-clear"}                      (no player shown)
 //   {"type":"stats","cpu":..,"gpu":..,"ramPct":..,...}  (-1 = not available; see stats.h)
+//   {"type":"mixer","master":{"vol":50,"mute":false},"apps":[{"id":"chrome","name":"Chrome","vol":80,"mute":false}]}
+//                                                 (the volume mixer desktop, see mixer.h; answered by mixer-set / mixer-mute events)
+//   {"type":"clock","epoch":1731999999,"offsetMin":-180}   (time of day for the clock desktop, see clockscreen.h)
+//   {"type":"weather","ok":true,"temp":9,"unit":"C","text":"Overcast","hi":10,"lo":6,"place":"London"}  ("ok":false = unavailable)
 //
 // board -> PC events from the UI (see ui.h, nowplaying.h):
 //   press {desktop,page,key,id[,hold:true|repeat:true]}   nav {desktop,page}   desktop {index}  (also after a layout load)

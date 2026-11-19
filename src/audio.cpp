@@ -46,6 +46,28 @@ void synth(Sound s, float f0, float f1, float ms, float amp, float decayMs) {
 }
 
 // Each theme is five short synthesised clips (see synth): freq start/end in Hz, length, amplitude, decay.
+// Several equal bursts with a gap between them in one clip (the timer's alarm: beep-beep-beep).
+void synthBeeps(Sound s, float f, int count, float burstMs, float gapMs, float amp) {
+  Clip& c = clips[static_cast<int>(s)];
+  if (c.pcm) { heap_caps_free(c.pcm); c.pcm = nullptr; }
+  const size_t burst = static_cast<size_t>(kRate * burstMs / 1000.0f), gap = static_cast<size_t>(kRate * gapMs / 1000.0f);
+  c.frames = static_cast<size_t>(count) * burst + static_cast<size_t>(count - 1) * gap;
+  c.pcm = static_cast<int16_t*>(heap_caps_calloc(c.frames * 2, sizeof(int16_t), MALLOC_CAP_8BIT));
+  if (!c.pcm) { c.frames = 0; return; }
+  float phase = 0;
+  for (int n = 0; n < count; n++) {
+    const size_t start = static_cast<size_t>(n) * (burst + gap);
+    for (size_t i = 0; i < burst; i++) {
+      const float t = i / static_cast<float>(kRate);
+      const float env = fminf(1.0f, t / 0.004f) * fminf(1.0f, (burst - i) / (0.012f * kRate));  // short fade in and out: no clicks
+      phase += 2.0f * PI * f / kRate;
+      const int16_t v = static_cast<int16_t>(sinf(phase) * env * amp * 32767.0f);
+      c.pcm[2 * (start + i)] = v;
+      c.pcm[2 * (start + i) + 1] = v;
+    }
+  }
+}
+
 void buildClips() {
   switch (theme) {
     default:
@@ -78,6 +100,7 @@ void buildClips() {
       synth(Sound::Error, 400, 150, 220, 0.55f, 100);
       break;
   }
+  synthBeeps(Sound::Alarm, 1900, 3, 110, 90, 0.75f);  // the same in every theme: an alarm has to be heard
 }
 
 void audioTask(void*) {
@@ -86,7 +109,7 @@ void audioTask(void*) {
     if (xQueueReceive(queue, &id, portMAX_DELAY) != pdTRUE) continue;
     xSemaphoreTake(clipLock, portMAX_DELAY);
     const Clip& c = clips[id];
-    if (c.pcm && enabled) {
+    if (c.pcm && (enabled || id == static_cast<uint8_t>(Sound::Alarm))) {
       size_t written = 0;
       i2s_write(kPort, c.pcm, c.frames * 2 * sizeof(int16_t), &written, portMAX_DELAY);
     }
@@ -150,7 +173,8 @@ bool audioBegin() {
 bool audioReady() { return ready; }
 
 void audioPlay(Sound s) {
-  if (!ready || !enabled) return;
+  if (!ready) return;
+  if (s != Sound::Alarm && !enabled) return;  // the timer's alarm ignores the key-sound switch
   if (!navSounds && (s == Sound::Nav || s == Sound::Back)) return;
   const uint8_t id = static_cast<uint8_t>(s);
   xQueueSend(queue, &id, 0);

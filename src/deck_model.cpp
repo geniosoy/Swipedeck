@@ -23,27 +23,32 @@ bool deckParse(const char* json, Deck& out, String& err) {
   }
 
   Deck deck;
-  bool hasNowPlaying = false, hasStats = false;
+  bool hasNowPlaying = false, hasStats = false, hasMixer = false, hasClock = false;
   for (JsonObject d : ds) {
     if (static_cast<int>(deck.desktops.size()) >= kMaxDesktops) break;
     DeckDesktop dk;
     dk.name = d["name"] | "Desktop";
     const String kind = d["kind"] | "keys";
-    if (kind == "nowplaying" || kind == "stats") {
-      bool& seen = kind == "nowplaying" ? hasNowPlaying : hasStats;
+    if (kind == "nowplaying" || kind == "stats" || kind == "mixer" || kind == "clock") {
+      bool& seen = kind == "nowplaying" ? hasNowPlaying : kind == "stats" ? hasStats : kind == "mixer" ? hasMixer : hasClock;
       if (seen) {
         err = "only one " + kind + " desktop is supported";
         return false;
       }
       seen = true;
-      dk.kind = kind == "nowplaying" ? DeskKind::NowPlaying : DeskKind::Stats;
+      dk.kind = kind == "nowplaying" ? DeskKind::NowPlaying : kind == "stats" ? DeskKind::Stats : kind == "mixer" ? DeskKind::Mixer : DeskKind::Clock;
       JsonObject options = d["options"];  // missing = all defaults
       if (dk.kind == DeskKind::NowPlaying) {
         dk.np.tint = options["tint"] | true;
         dk.np.album = options["album"] | true;
         dk.np.basicControls = String(options["controls"] | "full") == "basic";
         dk.np.appIcon = options["appIcon"] | false;
-      } else {
+      } else if (dk.kind == DeskKind::Clock) {
+        dk.clock.hour12 = options["hour12"] | false;
+        dk.clock.seconds = options["seconds"] | false;
+        dk.clock.timer = options["timer"] | true;
+        dk.clock.weather = options["weather"] | false;
+      } else if (dk.kind == DeskKind::Stats) {
         const String style = options["style"] | "gauges";
         dk.stats.style = style == "bars" ? StatsStyle::Bars : style == "tiles" ? StatsStyle::Tiles : StatsStyle::Gauges;
         JsonArray items = options["items"];

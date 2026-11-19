@@ -21,6 +21,14 @@ enum class StatsStyle : uint8_t {
   Tiles,   // two columns of tiles with a big number each
 };
 
+// The clock screen: which parts it has. `weather` is on only when the PC has a place to ask about.
+struct ClockOptions {
+  bool hour12 = false;    // 2:05 PM instead of 14:05
+  bool seconds = false;   // seconds next to the time
+  bool timer = true;      // the countdown timer
+  bool weather = false;   // the weather block
+};
+
 struct StatsOptions {
   StatsStyle style = StatsStyle::Gauges;
   std::vector<uint8_t> items = {kStatCpu, kStatGpu, kStatRam, kStatVram, kStatDisk, kStatNet};  // order = screen order

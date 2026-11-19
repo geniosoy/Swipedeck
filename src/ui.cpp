@@ -11,6 +11,8 @@
 #include "deck_model.h"
 #include "nowplaying.h"
 #include "stats.h"
+#include "mixer.h"
+#include "clockscreen.h"
 
 namespace {
 
@@ -337,6 +339,8 @@ void buildDesktops() {
   const int n = static_cast<int>(deck.desktops.size());
   npForget();  // the old widgets are gone (lv_obj_clean of the tileview)
   statsForget();
+  mixerForget();
+  clockForget();
   uis.clear();
   uis.resize(n);
   activeDesktop = 0;
@@ -352,6 +356,14 @@ void buildDesktops() {
     }
     if (deck.desktops[d].kind == DeskKind::Stats) {
       statsBuild(u.tile, deck.desktops[d].stats);
+      continue;
+    }
+    if (deck.desktops[d].kind == DeskKind::Mixer) {
+      mixerBuild(u.tile);
+      continue;
+    }
+    if (deck.desktops[d].kind == DeskKind::Clock) {
+      clockBuild(u.tile, deck.desktops[d].clock);
       continue;
     }
     showPage(d, 0);
@@ -385,6 +397,8 @@ void buildDesktops() {
 void uiInit(UiEventFn eventSink) {
   sink = eventSink;
   npInit(eventSink);
+  mixerInit(eventSink);
+  clockInit();
   lv_obj_t* scr = lv_scr_act();
   lv_obj_set_scrollbar_mode(scr, LV_SCROLLBAR_MODE_OFF);
   lv_obj_set_style_bg_color(scr, lv_color_hex(0x0B1220), 0);
@@ -455,6 +469,15 @@ void uiShowDesktop(int index, bool animate) {
 }
 
 int uiDesktopCount() { return static_cast<int>(uis.size()); }
+
+void uiShowClock() {
+  for (size_t d = 0; d < deck.desktops.size() && d < uis.size(); d++) {
+    if (deck.desktops[d].kind == DeskKind::Clock) {
+      uiShowDesktop(static_cast<int>(d), true);
+      return;
+    }
+  }
+}
 
 void uiSetKeyStates(const std::vector<uint32_t>& onKeys) {
   for (size_t d = 0; d < deck.desktops.size() && d < uis.size(); d++) {
