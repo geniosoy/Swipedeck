@@ -1,4 +1,6 @@
-# Streamdeck (ES3C28P)
+<p align="center"><img src="assets/logo.svg" alt="Deckhand logo" width="120"></p>
+
+# Deckhand (Streamdeck for the ES3C28P)
 
 A touch macro deck with a "Now playing" screen and a PC stats screen, for the Hosyond/LCDWiki 2.8" ESP32-S3 board
 (ES3C28P). The board shows the screens and sends touches; a small Python program on the PC (the **companion**) runs
