@@ -72,6 +72,7 @@ class Companion:
         for w in deck.warnings:
             log.warning("deck: %s", w)
         self.deck = deck
+        self.executor.configure(obs=deck.obs)  # where "obs" actions connect
         if self._reader is not None:
             self._reader.set_filter(deck.np_filter)
             self._reader.set_app_icon(deck.np_app_icon, self._icon_px)

@@ -72,6 +72,33 @@ def check_settings(settings) -> dict:
     return out
 
 
+def check_obs(obs) -> dict:
+    """The top-level "obs" object of a deck: how to reach OBS's WebSocket server. Only the fields that are present are
+    returned (the defaults, 127.0.0.1:4455 and no password, are applied when an obs action runs). The password may be
+    "${OBS_PASSWORD}": the environment variable is read when the action runs."""
+    if obs is None:
+        return {}
+    if not isinstance(obs, dict):
+        raise DeckError("'obs' must be an object")
+    out = {}
+    for name in obs:
+        if name not in ("host", "port", "password"):
+            raise DeckError(f"obs.{name}: unknown field (use host, port, password)")
+    if "host" in obs:
+        if not (isinstance(obs["host"], str) and 0 < len(obs["host"]) <= 200 and not any(c.isspace() for c in obs["host"])):
+            raise DeckError("obs.host must be a host name or address, like 127.0.0.1")
+        out["host"] = obs["host"]
+    if "port" in obs:
+        if isinstance(obs["port"], bool) or not isinstance(obs["port"], int) or not 1 <= obs["port"] <= 65535:
+            raise DeckError("obs.port must be an integer 1..65535")
+        out["port"] = obs["port"]
+    if "password" in obs:
+        if not (isinstance(obs["password"], str) and len(obs["password"]) <= 200):
+            raise DeckError("obs.password must be text (or ${OBS_PASSWORD} to read an environment variable)")
+        out["password"] = obs["password"]
+    return out
+
+
 COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
@@ -97,6 +124,7 @@ class Deck:
         self.auto_apps: list[tuple[int, set]] = []
         # Keys whose look follows a state of the PC: [(desktop, page, key, source)] (see pcwatch.check_state_source)
         self.key_states: list[tuple[int, int, int, str]] = []
+        self.obs: dict = {}          # how to reach OBS for "obs" actions (see check_obs); PC only
         self.layout = self._build(data)
 
     @classmethod
@@ -133,6 +161,7 @@ class Deck:
             self._check_action(act, f"actions[{aid!r}]")
 
         self.settings = check_settings(data.get("settings", {}))
+        self.obs = check_obs(data.get("obs"))
 
         desktops = data.get("desktops")
         if not isinstance(desktops, list) or not desktops:
