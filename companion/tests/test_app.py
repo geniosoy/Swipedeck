@@ -263,6 +263,42 @@ class AppTest(unittest.TestCase):
         self.assertEqual(types.count("np"), 1)  # unchanged state is not repeated
         self.assertTrue(all(m["bg"] == "#202840" for m in board.out if m["type"] == "cover"))
 
+    def test_a_layout_reload_gives_the_board_the_song_and_cover_again(self):
+        # The board rebuilds the Now playing screen (empty) whenever it gets a new layout. When that screen is the one
+        # shown, the visible kind does not change, so nothing re-triggers a send: the song stayed blank.
+        import json, os, shutil, tempfile
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        path = tmp / "deck.json"
+
+        def write(label):
+            path.write_text(json.dumps({"desktops": [
+                {"name": "Playing", "kind": "nowplaying"},
+                {"name": "D", "pages": [{"id": "root", "title": "T", "cols": 2, "rows": 1, "keys": [{"label": label}]}]}]}),
+                encoding="utf-8")
+
+        write("A")
+        reader = FakeReader(Snapshot(state="playing", title="x"), cover=("k", bytes(100), "#101010"))
+        board = FakeBoard(desktop=0)
+        app = Companion(path, executor=Recorder(), open_board_fn=lambda port: board, clock=Clock(), reader=reader, media=True)
+        stage = {"n": 0}
+
+        def idle():
+            stage["n"] += 1
+            if stage["n"] == 3:  # the song has been sent once; now the layout changes
+                write("B")
+                os.utime(path, (app._deck_mtime + 5, app._deck_mtime + 5))
+            elif stage["n"] == 8:
+                app.stop()
+
+        board.on_idle = idle
+        app.session(board)
+        covers = [m for m in board.out if m["type"] == "cover" and m["off"] == 0]
+        self.assertEqual(len(covers), 2, "the cover must be sent again after the layout was reloaded")
+        types = [m["type"] for m in board.out]
+        last_layout = max(i for i, t in enumerate(types) if t == "layout")
+        self.assertIn("np", types[last_layout:], "the song text must be sent again after the layout was reloaded")
+
     def test_no_cover_means_nothing_sent(self):
         reader = FakeReader(Snapshot(state="playing", title="x"), cover=None)
         board = FakeBoard(script=[{"type": "desktop", "index": 1}, None, None])

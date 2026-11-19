@@ -165,7 +165,10 @@ class Companion:
                 self._update_live(board, nps, now)
                 if self._deck_changed() and self.load_deck():
                     self._push_settings(board)
-                    board_crc = self._sync_layout(board, board_crc)
+                    new_crc = self._sync_layout(board, board_crc)
+                    if new_crc != board_crc:  # the board rebuilt its screens: the Now playing one is empty again
+                        nps.board_reset()
+                    board_crc = new_crc
         finally:
             self._switch_live(self._shown_kind, "keys", nps)  # the link is gone: stop all background work
             self._shown_kind = "keys"

@@ -171,6 +171,12 @@ class NowPlayingSync:
         The cover the board holds is kept: it is only re-sent when the track's cover differs."""
         self._sent = None
 
+    def board_reset(self) -> None:
+        """The board rebuilt its screens (a new layout): it holds no song, cover or app icon any more."""
+        self._sent = None
+        self.cover_sent = None
+        self.icon_sent = None
+
     def cover_action(self, snap: Snapshot) -> str:
         """'none' | 'clear' | 'send' for the cover of this snapshot."""
         want = snap.cover_key or ""
