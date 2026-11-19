@@ -104,9 +104,11 @@ def validate_preset_key(key) -> None:
 class EditorServer:
     def __init__(self, deck_path: str | Path, host: str = "127.0.0.1", port: int = 8765,
                  status_fn: Callable[[], dict] | None = None, media_sources_fn: Callable[[], list] | None = None,
-                 command_fn: Callable[[dict], bool] | None = None, running_apps_fn: Callable[[], list] | None = None):
+                 command_fn: Callable[[dict], bool] | None = None, running_apps_fn: Callable[[], list] | None = None,
+                 places_fn: Callable[[str], list] | None = None):
         self.deck_path = Path(deck_path)
         self._command_fn = command_fn  # Companion.submit: sends a live command to the board
+        self._places_fn = places_fn  # weather.search_places: finds a place for the clock screen's weather
         self._running_apps_fn = running_apps_fn  # names of the programs with a window open (for the desktop "apps" field)
         self._media_sources_fn = media_sources_fn
         self.presets_user_path = self.deck_path.with_name("presets.user.json")
@@ -217,6 +219,8 @@ class EditorServer:
                     return self._json(200, server._status_fn())
                 if path == "/api/media-sources":
                     return self._media_sources()
+                if path == "/api/places":
+                    return self._places(unquote(urlparse(self.path).query))
                 if path == "/api/running-apps":
                     if server._running_apps_fn is None:
                         return self._json(501, {"error": "listing running programs is not available here"})
@@ -225,6 +229,19 @@ class EditorServer:
                     except Exception as e:
                         return self._json(501, {"error": f"could not list the programs: {e}"})
                 return self._static(path)
+
+            def _places(self, query: str):
+                """Places matching ?q=...: the text typed in the editor goes to the geocoding service of Open-Meteo."""
+                if server._places_fn is None:
+                    return self._json(501, {"error": "searching for places is turned off (--no-weather)"})
+                text = dict(p.split("=", 1) for p in query.split("&") if "=" in p).get("q", "")
+                try:
+                    return self._json(200, {"places": server._places_fn(unquote(text.replace("+", " ")))})
+                except ValueError as e:
+                    return self._json(400, {"error": str(e)})
+                except Exception as e:  # no network, the service is down
+                    log.warning("places: %s", e)
+                    return self._json(502, {"error": "could not reach the place search"})
 
             def _media_sources(self):
                 """The media players Windows knows about right now (for the Now playing filter in the editor)."""

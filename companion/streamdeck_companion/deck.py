@@ -23,6 +23,8 @@ MAX_DESKTOPS, MAX_PAGES = 8, 16
 # Options of the two live screens (see deck.json). Defaults apply when "options" is missing or partial.
 NP_CONTROLS = ("full", "basic")
 STATS_STYLES = ("gauges", "bars", "tiles")
+LIVE_KINDS = ("nowplaying", "stats", "mixer", "clock")   # desktops without keys that the companion feeds; one of each at most
+MIXER_MAX_PINS = 4
 STAT_ITEMS = ("cpu", "gpu", "ram", "vram", "disk", "net")
 SOUND_THEMES = ("classic", "soft", "click", "chirp")
 SWIPE_LENGTHS = ("short", "normal", "long")
@@ -114,6 +116,12 @@ class Deck:
         self.warnings: list[str] = []
         self.has_nowplaying = False  # a desktop with "kind": "nowplaying" (live media screen)
         self.has_stats = False       # a desktop with "kind": "stats" (PC statistics)
+        self.has_mixer = False       # a desktop with "kind": "mixer" (volume faders)
+        self.has_clock = False       # a desktop with "kind": "clock" (clock, timer, weather)
+        self.mixer_pins: list[str] = []          # programs the mixer always shows first (PC only)
+        self.clock_place: dict | None = None     # {"name", "lat", "lon"} for the weather (PC only)
+        self.clock_units = "c"                   # "c" or "f"
+        self.clock_weather = False               # the clock screen shows the weather (it is on and a place is chosen)
         # Which media players the Now playing screen may show; stays on the PC (the board never sees it).
         self.np_filter: dict = {"allow": [], "block": []}
         self.np_app_icon = False     # show the icon of the playing app (the companion draws and sends it)
@@ -177,10 +185,10 @@ class Deck:
             where = f"desktops[{di}]"
             name = d.get("name", f"Desktop {di + 1}")
             kind = d.get("kind", "keys")
-            if kind not in ("keys", "nowplaying", "stats"):
-                raise DeckError(f"{where}: kind must be 'keys', 'nowplaying' or 'stats'")
+            if kind not in ("keys",) + LIVE_KINDS:
+                raise DeckError(f"{where}: kind must be 'keys', 'nowplaying', 'stats', 'mixer' or 'clock'")
             self._auto_apps(d.get("apps"), di, where)
-            if kind in ("nowplaying", "stats"):
+            if kind in LIVE_KINDS:
                 if getattr(self, f"has_{kind}"):
                     raise DeckError(f"{where}: only one '{kind}' desktop is supported")
                 setattr(self, f"has_{kind}", True)
@@ -259,7 +267,8 @@ class Deck:
             opts = {}
         if not isinstance(opts, dict):
             raise DeckError(f"{where}.options must be an object")
-        known = {"nowplaying": {"filter", "tint", "album", "controls", "appIcon"}, "stats": {"style", "items"}}[kind]
+        known = {"nowplaying": {"filter", "tint", "album", "controls", "appIcon"}, "stats": {"style", "items"},
+                 "mixer": {"apps"}, "clock": {"hour12", "seconds", "timer", "weather", "place", "units"}}[kind]
         for extra in sorted(set(opts) - known):
             self.warnings.append(f"{where}.options: unknown option '{extra}' ignored")
 
@@ -294,10 +303,45 @@ class Deck:
             return {"tint": flag("tint", True), "album": flag("album", True), "controls": choice("controls", NP_CONTROLS, "full"),
                     "appIcon": self.np_app_icon}
 
+        if kind == "mixer":
+            pins = opts.get("apps", [])
+            if not (isinstance(pins, list) and len(pins) <= MIXER_MAX_PINS
+                    and all(isinstance(a, str) and 0 < len(normalize_app(a)) <= 60 for a in pins)):
+                raise DeckError(f"{where}.options.apps must be a list of up to {MIXER_MAX_PINS} program names")
+            self.mixer_pins = list(dict.fromkeys(normalize_app(a) for a in pins))
+            return {}  # the board always shows the master fader and the programs the PC sends
+
+        if kind == "clock":
+            place = opts.get("place")
+            self.clock_place = self._place(place, where) if place is not None else None
+            self.clock_units = choice("units", ("c", "f"), "c")
+            weather = flag("weather", True)
+            if weather and self.clock_place is None:
+                self.warnings.append(f"{where}.options: weather is on but no place is chosen, so the weather is not shown")
+            self.clock_weather = weather and self.clock_place is not None
+            return {"hour12": flag("hour12", False), "seconds": flag("seconds", False), "timer": flag("timer", True),
+                    "weather": self.clock_weather}
+
         items = opts.get("items", list(STAT_ITEMS))
         if not (isinstance(items, list) and items and len(items) == len(set(items)) and all(i in STAT_ITEMS for i in items)):
             raise DeckError(f"{where}.options.items must be a non-empty list without repeats of: {', '.join(STAT_ITEMS)}")
         return {"style": choice("style", STATS_STYLES, "gauges"), "items": list(items)}
+
+    @staticmethod
+    def _place(place, where: str) -> dict:
+        """The `place` option of the clock screen: {"name", "lat", "lon"}."""
+        def number(name, low, high):
+            v = place.get(name) if isinstance(place, dict) else None
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or not low <= v <= high:
+                raise DeckError(f"{where}.options.place.{name} must be a number {low}..{high}")
+            return round(float(v), 4)
+
+        if not isinstance(place, dict):
+            raise DeckError(f"{where}.options.place must be an object like {{\"name\": \"Paris\", \"lat\": 48.85, \"lon\": 2.35}}")
+        name = place.get("name", "")
+        if not (isinstance(name, str) and 0 < len(name) <= 60):
+            raise DeckError(f"{where}.options.place.name must be 1 to 60 characters")
+        return {"name": name, "lat": number("lat", -90, 90), "lon": number("lon", -180, 180)}
 
     def _check_action(self, act, where: str) -> None:
         try:

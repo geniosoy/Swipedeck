@@ -22,13 +22,15 @@ HELLO_TIMEOUT = 15.0   # generous: the board may be booting (just plugged in or 
 PING_EVERY = 2.0
 SILENCE_LIMIT = 8.0    # no message at all for this long -> treat the link as dead
 ACK_TIMEOUT = 5.0
+CLOCK_SYNC_S = 30.0    # how often the clock screen is told the time of day (the board counts the seconds in between)
 
 
 class Companion:
     def __init__(self, deck_path: str | Path, port: str | None = None, executor: Executor | None = None,
                  open_board_fn: Callable = open_board, clock: Callable[[], float] = time.monotonic,
                  reader=None, media: bool = True, stats=None, stats_enabled: bool = True,
-                 pc=None, pc_enabled: bool = True):
+                 pc=None, pc_enabled: bool = True, mixer=None, mixer_enabled: bool = True,
+                 weather=None, weather_enabled: bool = True, wall_clock: Callable[[], float] = time.time):
         self.deck_path = Path(deck_path)
         self.port = port
         self.executor = executor or Executor()
@@ -44,6 +46,14 @@ class Companion:
         self._stats = stats            # StatsReader-like: set_active(), latest()
         self._stats_enabled = stats_enabled
         self._stats_sent = 0           # sequence number of the last sample sent to the board
+        self._mixer = mixer            # AudioMixer-like: configure(), set_active(), latest(), set_volume(), set_mute()
+        self._mixer_enabled = mixer_enabled
+        self._mixer_sent = 0           # sequence number of the last mixer reading sent to the board
+        self._weather = weather        # WeatherFeed-like: configure(), set_active(), latest()
+        self._weather_enabled = weather_enabled
+        self._weather_sent = 0
+        self._wall = wall_clock        # the time of day the board is told (tests replace it)
+        self._clock_next = 0.0         # when the board is next told the time (loop clock)
         self._pc = pc                  # PcWatcher-like: configure(), state(); None = created when first needed
         self._pc_enabled = pc_enabled  # False (--no-watch): never look at the active app, mute state or lock
         self._pc_wants_sent: dict | None = None
@@ -73,6 +83,10 @@ class Companion:
             log.warning("deck: %s", w)
         self.deck = deck
         self.executor.configure(obs=deck.obs)  # where "obs" actions connect
+        if self._mixer is not None:
+            self._mixer.configure(deck.mixer_pins)
+        if self._weather is not None:
+            self._weather.configure(deck.clock_place, deck.clock_units)
         if self._reader is not None:
             self._reader.set_filter(deck.np_filter)
             self._reader.set_app_icon(deck.np_app_icon, self._icon_px)
@@ -309,6 +323,10 @@ class Companion:
             self._pump_nowplaying(board, nps, now)
         elif kind == "stats":
             self._pump_stats(board)
+        elif kind == "mixer":
+            self._pump_mixer(board)
+        elif kind == "clock":
+            self._pump_clock(board, now)
 
     def _switch_live(self, old: str, new: str, nps: NowPlayingSync) -> None:
         """Stops the background work of the screen that was left, starts that of the one entered."""
@@ -318,6 +336,23 @@ class Companion:
             self._reader.set_active(False)
         if old == "stats" and old != new and self._stats is not None:
             self._stats.set_active(False)
+        if old == "mixer" and old != new and self._mixer is not None:
+            self._mixer.set_active(False)
+        if old == "clock" and old != new and self._weather is not None:
+            self._weather.set_active(False)
+        if new == "mixer" and old != new:
+            mixer = self._mixer_service()
+            if mixer is not None:
+                mixer.configure(self.deck.mixer_pins)
+                mixer.set_active(True)
+                self._mixer_sent = 0
+        if new == "clock" and old != new:
+            self._clock_next = 0.0     # tell the board the time at once
+            self._weather_sent = 0
+            feed = self._weather_feed()
+            if feed is not None:
+                feed.configure(self.deck.clock_place, self.deck.clock_units)
+                feed.set_active(True)
         if new == "nowplaying" and old != new:
             reader = self._media_reader()
             if reader is not None:
@@ -330,6 +365,57 @@ class Companion:
             if stats is not None:
                 stats.set_active(True)
                 self._stats_sent = 0
+
+    def _mixer_service(self):
+        if not self._mixer_enabled or not (self.deck and self.deck.has_mixer):
+            return None
+        if self._mixer is None:
+            from .mixer import AudioMixer
+
+            self._mixer = AudioMixer()
+            self._mixer.configure(self.deck.mixer_pins)
+            self._mixer.start()
+        return self._mixer
+
+    def _pump_mixer(self, board) -> None:
+        mixer = self._mixer_service()
+        if mixer is None:
+            return
+        if getattr(mixer, "error", None):
+            log.warning("Volume mixer disabled: %s", mixer.error)
+            self._mixer_enabled = False
+            return
+        latest = mixer.latest()
+        if latest is not None and latest[0] != self._mixer_sent:
+            self._mixer_sent = latest[0]
+            board.send({"type": "mixer", **latest[1]})
+
+    def _weather_feed(self):
+        if not self._weather_enabled or not (self.deck and self.deck.clock_weather):
+            return None
+        if self._weather is None:
+            from .weather import WeatherFeed
+
+            self._weather = WeatherFeed()
+            self._weather.start()
+        return self._weather
+
+    def _pump_clock(self, board, now: float) -> None:
+        """The board keeps the time itself between messages; it is told the time of day now and every half minute, and the
+        weather whenever there is a new reading."""
+        if now >= self._clock_next:
+            self._clock_next = now + CLOCK_SYNC_S
+            t = self._wall()
+            local = time.localtime(t)
+            offset = getattr(local, "tm_gmtoff", None)
+            if offset is None:
+                offset = -(time.altzone if local.tm_isdst > 0 else time.timezone)
+            board.send({"type": "clock", "epoch": int(t), "offsetMin": int(offset // 60)})
+        feed = self._weather_feed()
+        latest = feed.latest() if feed is not None else None
+        if latest is not None and latest[0] != self._weather_sent:
+            self._weather_sent = latest[0]
+            board.send({"type": "weather", **latest[1]})
 
     def _stats_reader(self):
         if not self._stats_enabled or not (self.deck and self.deck.has_stats):
@@ -431,6 +517,12 @@ class Companion:
             self.executor.run_async(action, f"{d}/{p}/{k}" + (" hold" if hold else ""))
         elif kind == "media":
             self._media_command(str(msg.get("cmd", "")))
+        elif kind == "mixer-set":
+            if self._mixer is not None and "vol" in msg:
+                self._mixer.set_volume(str(msg.get("id", "")), msg["vol"])
+        elif kind == "mixer-mute":
+            if self._mixer is not None:
+                self._mixer.set_mute(str(msg.get("id", "")), bool(msg.get("mute")))
         elif kind == "seek":
             if self._reader is not None and "posMs" in msg:
                 self._reader.seek(int(msg["posMs"]))

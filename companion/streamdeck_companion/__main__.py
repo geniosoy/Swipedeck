@@ -9,6 +9,12 @@ from .app import Companion
 from .deck import DeckError
 
 
+def places(query: str) -> list:
+    from .weather import search_places
+
+    return search_places(query)
+
+
 def running_apps() -> list:
     from .pcwatch import windowed_apps
 
@@ -31,6 +37,8 @@ def main() -> int:
     ap.add_argument("--no-stats", action="store_true", help="do not collect PC statistics (stats screen)")
     ap.add_argument("--no-watch", action="store_true",
                     help="do not look at the active app, mute state or screen lock (desktops by app, state keys, sleep with the PC)")
+    ap.add_argument("--no-mixer", action="store_true", help="do not read or change the volumes (volume mixer screen)")
+    ap.add_argument("--no-weather", action="store_true", help="do not fetch the weather (clock screen); nothing is sent to the internet")
     ap.add_argument("--no-editor", action="store_true", help="do not start the web editor")
     ap.add_argument("--editor-port", type=int, default=8765, help="port of the web editor (default 8765)")
     ap.add_argument("--open-editor", action="store_true", help="open the web editor in the browser at startup")
@@ -41,7 +49,8 @@ def main() -> int:
                         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s", datefmt="%H:%M:%S")
     try:
         app = Companion(args.deck, port=args.port, executor=Executor(dry_run=args.dry_run), media=not args.no_media,
-                        stats_enabled=not args.no_stats, pc_enabled=not args.no_watch)
+                        stats_enabled=not args.no_stats, pc_enabled=not args.no_watch,
+                        mixer_enabled=not args.no_mixer, weather_enabled=not args.no_weather)
     except (DeckError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
@@ -54,7 +63,8 @@ def main() -> int:
 
         try:
             editor = EditorServer(args.deck, port=args.editor_port, status_fn=lambda: dict(app.status),
-                                  media_sources_fn=media_sources, command_fn=app.submit, running_apps_fn=running_apps)
+                                  media_sources_fn=media_sources, command_fn=app.submit, running_apps_fn=running_apps,
+                                  places_fn=None if args.no_weather else places)
             logging.getLogger("companion").info("web editor: %s", editor.start())
             if args.open_editor:
                 import webbrowser

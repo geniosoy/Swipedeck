@@ -417,8 +417,8 @@ class HttpActionTest(unittest.TestCase):
         self.httpd = HTTPServer(("127.0.0.1", 0), Handler)
         self.base = f"http://127.0.0.1:{self.httpd.server_address[1]}"
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+        self.addCleanup(self.httpd.server_close)   # (cleanups run last-in first-out: shut down, then close)
         self.addCleanup(self.httpd.shutdown)
-        self.addCleanup(self.httpd.server_close)
         self.executor = Executor()
 
     def test_a_plain_get(self):
