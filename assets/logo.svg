@@ -14,7 +14,7 @@
   </g>
   <!-- a play triangle on the lit key, a tick on the green one -->
   <path d="M120 58 L120 82 L140 70 Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="6" stroke-linejoin="round"/>
-  <path d="M186 138 L196 148 L212 128" fill="none" stroke="#0B1220" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M183 138 L193 148 L209 128" fill="none" stroke="#0B1220" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
   <!-- desktop dots: swipe between desktops -->
   <circle cx="108" cy="204" r="7" fill="#FFFFFF"/>
   <circle cx="128" cy="204" r="7" fill="#55657A"/>
