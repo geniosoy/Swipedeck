@@ -15,7 +15,7 @@
 
 namespace {
 
-constexpr const char* kFirmware = "0.10.2";
+constexpr const char* kFirmware = "0.11.0";
 constexpr const char* kLayoutFile = "/layout.json";
 constexpr const char* kLayoutTmp = "/layout.tmp";
 
@@ -32,8 +32,10 @@ struct Settings {
   int keyRadius = 12;        // key corner radius, px
   int keyGap = 6;            // gap between keys, px
   bool wrap = false;         // endless scrolling between desktops
+  int swipe = 1;             // swipe length needed to pass to another desktop, see kSwipes
 };
 
+const char* const kSwipes[] = {"short", "normal", "long"};
 const char* const kThemes[] = {"classic", "soft", "click", "chirp"};
 static_assert(sizeof(kThemes) / sizeof(kThemes[0]) == kAudioThemes, "theme names and audio themes must match");
 
@@ -82,6 +84,7 @@ void putSettings(JsonObject o) {
   o["keyRadius"] = settings.keyRadius;
   o["keyGap"] = settings.keyGap;
   o["wrap"] = settings.wrap;
+  o["swipe"] = kSwipes[settings.swipe];
 }
 
 void applySettings() {
@@ -99,6 +102,7 @@ void applySettings() {
   }
   uiSetKeyLook(settings.keyRadius, settings.keyGap);
   uiSetWrap(settings.wrap);
+  displaySetSwipe(settings.swipe);
 }
 
 // The desktop the board opens on; a start desktop that no longer exists means the first one.
@@ -122,6 +126,7 @@ void saveSettings() {
   prefs.putInt("krd", settings.keyRadius);
   prefs.putInt("kgp", settings.keyGap);
   prefs.putBool("wrp", settings.wrap);
+  prefs.putInt("swp", settings.swipe);
   prefs.end();
 }
 
@@ -139,6 +144,7 @@ void loadSettings() {
   settings.keyRadius = prefs.getInt("krd", settings.keyRadius);
   settings.keyGap = prefs.getInt("kgp", settings.keyGap);
   settings.wrap = prefs.getBool("wrp", settings.wrap);
+  settings.swipe = constrain(prefs.getInt("swp", settings.swipe), 0, 2);
   prefs.end();
 }
 
@@ -328,6 +334,11 @@ void onSettings(JsonDocument& m) {
   if (m["keyRadius"].is<int>()) settings.keyRadius = constrain(m["keyRadius"].as<int>(), 0, 24);
   if (m["keyGap"].is<int>()) settings.keyGap = constrain(m["keyGap"].as<int>(), 2, 12);
   if (m["wrap"].is<bool>()) settings.wrap = m["wrap"].as<bool>();
+  if (m["swipe"].is<const char*>()) {
+    const String name = m["swipe"].as<const char*>();
+    for (int i = 0; i < 3; i++)
+      if (name == kSwipes[i]) settings.swipe = i;
+  }
   applySettings();
   if (!(m["preview"] | false)) saveSettings();
   JsonDocument d;

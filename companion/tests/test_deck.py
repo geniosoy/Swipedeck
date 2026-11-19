@@ -56,11 +56,11 @@ class DeckTest(unittest.TestCase):
 
     def test_general_settings(self):
         full = {"volume": 40, "sounds": False, "soundTheme": "chirp", "navSounds": False, "brightness": 90,
-                "dimAfter": 30, "sleepAfter": 300, "flip": True, "startDesktop": 0, "keyRadius": 20, "keyGap": 3, "wrap": True}
+                "dimAfter": 30, "sleepAfter": 300, "flip": True, "startDesktop": 0, "keyRadius": 20, "keyGap": 3, "wrap": True, "swipe": "long"}
         self.assertEqual(Deck({"settings": full, **simple([])}).settings, full)
         self.assertEqual(Deck({"settings": {"volume": 5, "bogus": 1}, **simple([])}).settings, {"volume": 5})
         self.assertEqual(Deck(simple([])).settings, {})
-        for bad in ({"soundTheme": "loud"}, {"soundTheme": 3}, {"navSounds": 1}, {"flip": "yes"}, {"wrap": 1}, {"dimAfter": -1},
+        for bad in ({"soundTheme": "loud"}, {"soundTheme": 3}, {"navSounds": 1}, {"flip": "yes"}, {"wrap": 1}, {"swipe": "far"}, {"swipe": 2}, {"dimAfter": -1},
                     {"sleepAfter": 99999}, {"keyRadius": 25}, {"keyGap": 1}, {"keyGap": 2.5}, {"startDesktop": 8},
                     {"volume": True}, {"brightness": 4}, {"sounds": 0}):
             with self.assertRaises(DeckError, msg=str(bad)):

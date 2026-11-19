@@ -24,6 +24,7 @@ NP_CONTROLS = ("full", "basic")
 STATS_STYLES = ("gauges", "bars", "tiles")
 STAT_ITEMS = ("cpu", "gpu", "ram", "vram", "disk", "net")
 SOUND_THEMES = ("classic", "soft", "click", "chirp")
+SWIPE_LENGTHS = ("short", "normal", "long")
 # General settings of the board: name -> (kind, default, extra). Ints carry (low, high); "theme" is one of SOUND_THEMES.
 SETTINGS_SPEC = {
     "volume": ("int", 70, (0, 100)),
@@ -37,6 +38,7 @@ SETTINGS_SPEC = {
     "startDesktop": ("int", 0, (0, MAX_DESKTOPS - 1)),
     "keyRadius": ("int", 12, (0, 24)),
     "keyGap": ("int", 6, (2, 12)),
+    "swipe": ("swipe", "normal", None),        # how far / hard a swipe must be to pass to another desktop
     "wrap": ("bool", False, None),             # endless scrolling: swiping past the last desktop wraps to the first
 }
 
@@ -60,8 +62,10 @@ def check_settings(settings) -> dict:
         elif kind == "bool":
             if not isinstance(v, bool):
                 raise DeckError(f"settings.{name} must be true or false")
-        elif v not in SOUND_THEMES:
-            raise DeckError(f"settings.{name} must be one of {', '.join(SOUND_THEMES)}")
+        else:
+            choices = SWIPE_LENGTHS if kind == "swipe" else SOUND_THEMES
+            if v not in choices:
+                raise DeckError(f"settings.{name} must be one of {', '.join(choices)}")
         out[name] = v
     return out
 

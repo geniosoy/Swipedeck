@@ -487,6 +487,9 @@ def main() -> int:
         cdp.js("setSelect(document.querySelector('#setStart'), '1')")
         check("the start desktop is stored", cdp.js("document.querySelector('#setStart').value") == "1")
         cdp.js("setSelect(document.querySelector('#setStart'), '0')")
+        check("the swipe length is normal by default", cdp.js("document.querySelector('#setSwipe').value") == "normal")
+        cdp.js("setSelect(document.querySelector('#setSwipe'), 'long')")
+        check("choosing a swipe length is sent to the board", wait_py(lambda: any(c.get("kind") == "settings" and c["settings"].get("swipe") == "long" for c in board_commands)))
         check("endless scrolling is off by default", cdp.js("!$$('#settingsPage .check input')[3].checked"))
         cdp.js("$$('#settingsPage .check input')[3].click()")
         check("turning endless scrolling on is sent to the board", wait_py(lambda: any(c.get("kind") == "settings" and c["settings"].get("wrap") is True for c in board_commands)))
@@ -515,7 +518,7 @@ def main() -> int:
         saved = json.loads(deck_path.read_text(encoding="utf-8"))
         check("the file has the new key", any(k.get("label") == "Mute" for k in saved["desktops"][0]["pages"][0]["keys"][8:]))
         check("the file has the volume, brightness and sounds settings", saved["settings"]["volume"] == 40 and saved["settings"]["brightness"] == 120 and saved["settings"]["sounds"] is False, str(saved["settings"]))
-        check("the file has the new settings too", saved["settings"]["wrap"] is True and saved["settings"]["dimAfter"] == 30 and saved["settings"]["sleepAfter"] == 60
+        check("the file has the new settings too", saved["settings"]["wrap"] is True and saved["settings"]["swipe"] == "long" and saved["settings"]["dimAfter"] == 30 and saved["settings"]["sleepAfter"] == 60
               and saved["settings"]["soundTheme"] == "classic" and saved["settings"]["keyRadius"] == 12 and saved["settings"]["keyGap"] == 6, str(saved["settings"]))
         check("a saved deck with these settings loads in the companion", Deck(saved).effective_settings()["dimAfter"] == 30)
         stats_options = next(d for d in saved["desktops"] if d.get("kind") == "stats")["options"]

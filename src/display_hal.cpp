@@ -75,6 +75,18 @@ static void touchCb(lv_indev_drv_t*, lv_indev_data_t* data) {
 
 void setBacklight(uint8_t level) { ledcWrite(BL_CHANNEL, level); }
 
+// How far / how hard a finger has to swipe to pass to the next desktop (and to wrap around at the ends):
+// 0 short = a quick flick is enough, 1 normal = LVGL's defaults, 2 long = a deliberate drag. scroll_throw is how fast
+// the momentum of a flick dies (lower = the desktop keeps going and passes on a short flick); gesture_limit is the
+// drag length that counts as a swipe for the endless-scrolling wrap.
+void displaySetSwipe(int level) {
+  switch (constrain(level, 0, 2)) {
+    case 0: indevDrv.scroll_limit = 6; indevDrv.scroll_throw = 3; indevDrv.gesture_limit = 30; break;
+    case 2: indevDrv.scroll_limit = 14; indevDrv.scroll_throw = 25; indevDrv.gesture_limit = 90; break;
+    default: indevDrv.scroll_limit = 10; indevDrv.scroll_throw = 10; indevDrv.gesture_limit = 50; break;
+  }
+}
+
 void displaySetBrightness(int level) {
   baseLevel = constrain(level, 5, 255);
   applyLevel();

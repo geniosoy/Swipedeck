@@ -12,13 +12,18 @@ export const clone = (v) => JSON.parse(JSON.stringify(v));
 // Mirrors SETTINGS_SPEC in deck.py. A setting that is missing from deck.json means its default.
 export const SETTING_DEFAULTS = {
   volume: 70, sounds: true, soundTheme: 'classic', navSounds: true, brightness: 255, dimAfter: 0, sleepAfter: 0,
-  flip: false, startDesktop: 0, keyRadius: 12, keyGap: 6, wrap: false,
+  flip: false, startDesktop: 0, keyRadius: 12, keyGap: 6, wrap: false, swipe: 'normal',
 };
 export const SOUND_THEMES = [
   ['classic', 'Classic', 'A crisp tick; a rising chirp for folders'],
   ['soft', 'Soft', 'Low and round'],
   ['click', 'Click', 'Very short, like a mechanical switch'],
   ['chirp', 'Chirp', 'Bubbly, like an old game'],
+];
+export const SWIPE_LENGTHS = [
+  ['short', 'Short (a quick flick is enough)'],
+  ['normal', 'Normal'],
+  ['long', 'Long (a deliberate drag)'],
 ];
 export const resolveSettings = (deck) => ({ ...SETTING_DEFAULTS, ...((deck && deck.settings) || {}) });
 

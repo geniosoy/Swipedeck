@@ -179,7 +179,8 @@ struct WrapSlide {
   lv_coord_t realX = 0;
 } wrapSlide;
 
-void wrapStep(void*, int32_t x) { lv_obj_scroll_to_x(tv, x, LV_ANIM_OFF); }
+// lv_obj_scroll_to_x would clamp to the scrollable area, which does not include the moved desktop on its left side.
+void wrapStep(void*, int32_t x) { _lv_obj_scroll_by_raw(tv, lv_obj_get_scroll_x(tv) - x, 0); }
 
 void wrapDone(lv_anim_t*) {
   if (!wrapSlide.running) return;
