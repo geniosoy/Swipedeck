@@ -1,4 +1,4 @@
-<p align="center"><img src="assets/logo.svg" alt="Swipedeck logo" width="120"></p>
+<p align="center"><img src="docs/images/banner.png" alt="Swipedeck: a homemade touch Stream Deck for the ES3C28P board, with Now playing, PC stats and key screens" width="900"></p>
 
 # Swipedeck (Streamdeck for the ES3C28P)
 

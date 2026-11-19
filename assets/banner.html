@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Swipedeck banner</title>
+<!-- 1200 x 627 (1.91:1). Render with tools/render_banner.py -> docs/images/banner.png -->
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1200px; height: 627px; overflow: hidden; }
+  body {
+    position: relative; font-family: "Segoe UI", system-ui, sans-serif; color: #E6EDF7;
+    background:
+      radial-gradient(ellipse 620px 520px at 82% 42%, rgba(59,130,246,.30), transparent 70%),
+      radial-gradient(ellipse 420px 360px at 60% 105%, rgba(30,215,96,.14), transparent 70%),
+      linear-gradient(135deg, #0B1220 0%, #111A26 100%);
+  }
+  .brand { position: absolute; left: 72px; top: 96px; width: 470px; }
+  .brand img { width: 104px; height: 104px; display: block; }
+  h1 { margin: 26px 0 0; font-size: 92px; line-height: 1; font-weight: 700; letter-spacing: -2px; }
+  .tag { margin: 22px 0 0; font-size: 29px; line-height: 1.25; font-weight: 500; color: #C5D1E3; white-space: nowrap; }
+  .chips { margin-top: 30px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .chip { font-size: 21px; font-weight: 600; padding: 7px 16px; border-radius: 999px; background: #162234; border: 2px solid #26384D; color: #9FB3CE; }
+  .url { position: absolute; left: 72px; bottom: 54px; font-size: 22px; color: #8A9BB3; }
+  .url b { color: #E6EDF7; font-weight: 600; }
+  .shot { position: absolute; border-radius: 18px; box-shadow: 0 22px 50px rgba(0,0,0,.55), 0 0 0 2px rgba(255,255,255,.06); }
+  .keys  { width: 316px; left: 586px; top: 322px; transform: rotate(-5deg); }
+  .stats { width: 330px; left: 828px; top: 52px; transform: rotate(5deg); }
+  .now   { width: 384px; left: 690px; top: 165px; transform: rotate(-2deg); z-index: 3; }
+</style>
+</head>
+<body>
+  <div class="brand">
+    <img src="logo.svg" alt="">
+    <h1>Swipedeck</h1>
+    <p class="tag">A homemade touch Stream Deck</p>
+    <div class="chips"><span class="chip">ESP32-S3</span><span class="chip">LVGL</span><span class="chip">Python</span></div>
+  </div>
+  <div class="url">Open source · <b>github.com/geniosoy/Swipedeck</b></div>
+  <img class="shot keys" src="../docs/images/screen-keys.png" alt="">
+  <img class="shot stats" src="../docs/images/screen-stats.png" alt="">
+  <img class="shot now" src="../docs/images/screen-nowplaying.png" alt="">
+</body>
+</html>
