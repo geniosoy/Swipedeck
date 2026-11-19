@@ -64,10 +64,10 @@ void tickTimer() {
 
 ClockOptions opts;
 bool built = false;
-lv_obj_t *timeLbl, *secLbl, *ampmLbl, *dateLbl, *tempLbl, *condLbl, *rangeLbl, *placeLbl, *timerLbl, *startBtn, *startLbl, *resetBtn;
+lv_obj_t *timeLbl, *ampmLbl, *dateLbl, *tempLbl, *condLbl, *rangeLbl, *placeLbl, *timerLbl, *startBtn, *startLbl, *resetBtn;
 lv_obj_t* presetBtn[4];
 WeatherInfo weather;
-char cTime[12], cSec[6], cAmpm[4], cDate[20], cTemp[12], cCond[24], cRange[20], cPlace[28], cTimer[8], cStart[8];
+char cTime[12], cAmpm[4], cDate[20], cTemp[12], cCond[24], cRange[20], cPlace[28], cTimer[8], cStart[8];
 uint32_t startColor = 0;
 
 void setText(lv_obj_t* label, char* cache, size_t size, const char* text) {
@@ -89,16 +89,11 @@ void refresh() {
     const time_t t = static_cast<time_t>(nowEpoch() + static_cast<int64_t>(offsetMin) * 60);
     struct tm tmv;
     gmtime_r(&t, &tmv);
-    if (opts.hour12) {
-      const int h = tmv.tm_hour % 12 == 0 ? 12 : tmv.tm_hour % 12;
-      snprintf(buf, sizeof buf, "%d:%02d", h, tmv.tm_min);
-      setText(ampmLbl, cAmpm, sizeof cAmpm, tmv.tm_hour < 12 ? "AM" : "PM");
-    } else {
-      snprintf(buf, sizeof buf, "%02d:%02d", tmv.tm_hour, tmv.tm_min);
-    }
+    const int hour = opts.hour12 ? (tmv.tm_hour % 12 == 0 ? 12 : tmv.tm_hour % 12) : tmv.tm_hour;
+    if (opts.seconds) snprintf(buf, sizeof buf, opts.hour12 ? "%d:%02d:%02d" : "%02d:%02d:%02d", hour, tmv.tm_min, tmv.tm_sec);
+    else snprintf(buf, sizeof buf, opts.hour12 ? "%d:%02d" : "%02d:%02d", hour, tmv.tm_min);
     setText(timeLbl, cTime, sizeof cTime, buf);
-    snprintf(buf, sizeof buf, "%02d", tmv.tm_sec);
-    setText(secLbl, cSec, sizeof cSec, buf);
+    if (opts.hour12) setText(ampmLbl, cAmpm, sizeof cAmpm, tmv.tm_hour < 12 ? "AM" : "PM");
     snprintf(buf, sizeof buf, "%s %d %s", kDays[tmv.tm_wday % 7], tmv.tm_mday, kMonths[tmv.tm_mon % 12]);
     setText(dateLbl, cDate, sizeof cDate, buf);
   } else {
@@ -220,9 +215,9 @@ void clockInit() { lv_timer_create(tick, 200, nullptr); }
 
 void clockForget() {
   built = false;
-  timeLbl = secLbl = ampmLbl = dateLbl = tempLbl = condLbl = rangeLbl = placeLbl = timerLbl = startBtn = startLbl = resetBtn = nullptr;
+  timeLbl = ampmLbl = dateLbl = tempLbl = condLbl = rangeLbl = placeLbl = timerLbl = startBtn = startLbl = resetBtn = nullptr;
   for (lv_obj_t*& b : presetBtn) b = nullptr;
-  cTime[0] = cSec[0] = cAmpm[0] = cDate[0] = cTemp[0] = cCond[0] = cRange[0] = cPlace[0] = cTimer[0] = cStart[0] = 0;
+  cTime[0] = cAmpm[0] = cDate[0] = cTemp[0] = cCond[0] = cRange[0] = cPlace[0] = cTimer[0] = cStart[0] = 0;
   startColor = 0;
 }
 
@@ -239,12 +234,11 @@ void clockBuild(lv_obj_t* tile, const ClockOptions& options) {
   const int yOff = opts.timer ? 0 : 36;       // without the timer the clock sits lower, nearer the middle
   const int x0 = opts.weather ? 16 : 62;      // without the weather the clock is centered
 
-  timeLbl = makeLabel(root, &lv_font_montserrat_48, 0xFFFFFF, x0, 4 + yOff, 142);
-  ampmLbl = makeLabel(root, &lv_font_montserrat_18, kMuted, x0 + 144, 8 + yOff, 40);
-  secLbl = makeLabel(root, &lv_font_montserrat_24, kMuted, x0 + 144, 28 + yOff, 40);
-  dateLbl = makeLabel(root, &lv_font_montserrat_18, kSoft, x0, 62 + yOff, 190);
+  // HH:MM, or HH:MM:SS in a slightly smaller font so it still fits next to the weather. AM / PM sits on the date's row.
+  timeLbl = makeLabel(root, opts.seconds ? &lv_font_montserrat_40 : &lv_font_montserrat_48, 0xFFFFFF, x0, (opts.seconds ? 10 : 4) + yOff, 190);
+  dateLbl = makeLabel(root, &lv_font_montserrat_18, kSoft, x0, 62 + yOff, 126);
+  ampmLbl = makeLabel(root, &lv_font_montserrat_18, kMuted, x0 + 136, 62 + yOff, 50, LV_TEXT_ALIGN_RIGHT);
   if (!opts.hour12) lv_obj_add_flag(ampmLbl, LV_OBJ_FLAG_HIDDEN);
-  if (!opts.seconds) lv_obj_add_flag(secLbl, LV_OBJ_FLAG_HIDDEN);
 
   if (opts.weather) {
     tempLbl = makeLabel(root, &lv_font_montserrat_32, 0xFFFFFF, 206, 2 + yOff, 108);

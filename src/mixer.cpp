@@ -10,7 +10,9 @@ constexpr uint32_t kBg = 0x101722, kTrack = 0x2A3A4D, kBlue = 0x3B82F6, kGreen =
 constexpr int kCols = 5;                  // the master fader and up to four programs
 constexpr int kColW = 56, kColGap = 8;
 constexpr int kTileW = 320, kTileH = 210;  // the area below the fixed top bar
-constexpr int kSliderW = 30, kSliderTop = 30, kSliderH = 112;
+// The knob is a circle as wide as the fader (30 px): at 100 % it sticks out 15 px above the track and at 0 % 15 px below it,
+// so the number above and the mute button below keep that much room.
+constexpr int kSliderW = 30, kSliderTop = 44, kSliderH = 96;
 constexpr uint32_t kGuardMs = 700;        // after a touch the PC's value is ignored for a moment (it is still catching up)
 constexpr uint32_t kSendEveryMs = 80;
 
@@ -148,13 +150,13 @@ void buildCol(lv_obj_t* root, int index) {
   lv_obj_set_style_radius(c.slider, 10, LV_PART_INDICATOR);
   lv_obj_set_style_bg_opa(c.slider, LV_OPA_COVER, LV_PART_INDICATOR);
   lv_obj_set_style_bg_opa(c.slider, LV_OPA_COVER, LV_PART_KNOB);
-  lv_obj_set_style_pad_all(c.slider, 3, LV_PART_KNOB);
+  lv_obj_set_style_pad_all(c.slider, 0, LV_PART_KNOB);  // knob = the fader's width, no bigger
   lv_obj_add_event_cb(c.slider, onSlider, LV_EVENT_ALL, reinterpret_cast<void*>(static_cast<intptr_t>(index)));
 
   c.mute = lv_btn_create(c.box);
   lv_obj_remove_style_all(c.mute);
   lv_obj_set_size(c.mute, 44, 30);
-  lv_obj_set_pos(c.mute, (kColW - 44) / 2, kSliderTop + kSliderH + 8);
+  lv_obj_set_pos(c.mute, (kColW - 44) / 2, kSliderTop + kSliderH + 18);
   lv_obj_set_style_bg_opa(c.mute, LV_OPA_COVER, 0);
   lv_obj_set_style_bg_color(c.mute, lv_color_hex(kTrack), 0);
   lv_obj_set_style_bg_color(c.mute, lv_color_hex(kGrey), LV_STATE_PRESSED);
@@ -170,7 +172,7 @@ void buildCol(lv_obj_t* root, int index) {
   lv_obj_set_width(c.name, kColW);
   lv_obj_set_style_text_align(c.name, LV_TEXT_ALIGN_CENTER, 0);
   lv_label_set_long_mode(c.name, LV_LABEL_LONG_DOT);
-  lv_obj_set_pos(c.name, 0, kTileH - 26);
+  lv_obj_set_pos(c.name, 0, kTileH - 22);
   lv_label_set_text(c.name, "");
   paint(c, index);
 }

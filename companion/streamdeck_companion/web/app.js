@@ -545,12 +545,12 @@ function mockMixer(o) {
     const accent = muted ? '#55657A' : color;
     return boxAt(x0 + i * 64, 0, 56, 210, {},
       labelAt(0, 4, 56, 20, muted ? '#7F8FA6' : '#fff', String(vol), { textAlign: 'center' }),
-      boxAt(13, 30, 30, 112, { background: '#2A3A4D', borderRadius: 10 * S + 'px' },
-        boxAt(0, 112 * (1 - vol / 100), 30, 112 * vol / 100, { background: accent, borderRadius: 10 * S + 'px' }),
-        boxAt(3, Math.min(112 - 24, Math.max(0, 112 * (1 - vol / 100) - 4)), 24, 24, { background: accent, borderRadius: '50%', border: '2px solid #101722', boxSizing: 'border-box' })),
-      boxAt(6, 150, 44, 30, { background: '#2A3A4D', borderRadius: 8 * S + 'px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: muted ? '#F04438' : '#fff', fontSize: 16 * S + 'px' },
+      boxAt(13, 44, 30, 96, { background: '#2A3A4D', borderRadius: 10 * S + 'px' },
+        boxAt(0, 96 * (1 - vol / 100), 30, 96 * vol / 100, { background: accent, borderRadius: 10 * S + 'px' }),
+        boxAt(0, 96 * (1 - vol / 100) - 15, 30, 30, { background: accent, borderRadius: '50%', border: '2px solid #101722', boxSizing: 'border-box' })),  // the knob is a circle as wide as the fader
+      boxAt(6, 158, 44, 30, { background: '#2A3A4D', borderRadius: 8 * S + 'px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: muted ? '#F04438' : '#fff', fontSize: 16 * S + 'px' },
         h('span', { class: 'fa' }, glyph(muted ? 'mute' : 'volume_up'))),
-      labelAt(0, 184, 56, 14, '#C5D1E3', name, { textAlign: 'center', textOverflow: 'ellipsis' }));
+      labelAt(0, 188, 56, 14, '#C5D1E3', name, { textAlign: 'center', textOverflow: 'ellipsis' }));
   }));
 }
 
@@ -560,10 +560,10 @@ function mockClock(o) {
   const weather = o.weather && o.place;
   const x0 = weather ? 16 : 62;
   const kids = [
-    labelAt(x0, 4 + yOff, 142, 48, '#fff', o.hour12 ? '2:05' : '14:05', { fontWeight: 600 }),
-    o.hour12 ? labelAt(x0 + 144, 8 + yOff, 40, 18, '#7F8FA6', 'PM') : null,
-    o.seconds ? labelAt(x0 + 144, 28 + yOff, 40, 24, '#7F8FA6', '30') : null,
-    labelAt(x0, 62 + yOff, 190, 18, '#C5D1E3', 'Thu 19 Nov'),
+    // HH:MM, or HH:MM:SS in a slightly smaller font; AM / PM sits on the date's row
+    labelAt(x0, (o.seconds ? 10 : 4) + yOff, 190, o.seconds ? 40 : 48, '#fff', (o.hour12 ? '2:05' : '14:05') + (o.seconds ? ':30' : ''), { fontWeight: 600 }),
+    labelAt(x0, 62 + yOff, 126, 18, '#C5D1E3', 'Thu 19 Nov'),
+    o.hour12 ? labelAt(x0 + 136, 62 + yOff, 50, 18, '#7F8FA6', 'PM', { textAlign: 'right' }) : null,
   ];
   if (weather) {
     const unit = o.units === 'f' ? 'F' : 'C';
