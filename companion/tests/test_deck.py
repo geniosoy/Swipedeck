@@ -91,6 +91,62 @@ class DeckTest(unittest.TestCase):
                 js_defaults[name] = int(value)
         self.assertEqual(js_defaults, default_settings())
 
+    def test_hold_repeat_and_state_keys(self):
+        deck = Deck({"actions": {"vol": {"type": "hotkey", "keys": "volume_up"}}, "desktops": [{"name": "D", "pages": [
+            {"id": "root", "title": "T", "cols": 3, "rows": 1, "keys": [
+                {"label": "Mute", "action": {"type": "hotkey", "keys": "volume_mute"},
+                 "hold": {"type": "lock"}, "state": {"source": "mute", "icon": "mute"}},
+                {"label": "Vol+", "action": {"type": "hotkey", "keys": "volume_up"}, "repeat": True},
+                {"label": "OBS", "id": "vol", "hold": "vol", "state": {"source": "app:OBS64.exe", "label": "Live", "color": "#112233"}},
+            ]}]}]})
+        keys = deck.layout["desktops"][0]["pages"][0]["keys"]
+        self.assertEqual(keys[0], {"label": "Mute", "hold": True, "on": {"icon": "mute", "color": "#B3261E"}})  # red by default
+        self.assertEqual(keys[1], {"label": "Vol+", "repeat": True})
+        self.assertEqual(keys[2]["on"], {"label": "Live", "color": "#112233"})
+        self.assertEqual(deck.hold_action_at(0, 0, 0), {"type": "lock"})
+        self.assertEqual(deck.hold_action_at(0, 0, 2), {"type": "hotkey", "keys": "volume_up"})  # a shared action by id
+        self.assertIsNone(deck.hold_action_at(0, 0, 1))
+        self.assertEqual(deck.action_at(0, 0, 0), {"type": "hotkey", "keys": "volume_mute"})
+        self.assertEqual(deck.key_states, [(0, 0, 0, "mute"), (0, 0, 2, "app:obs64")])
+        text = deck.layout_text()  # the board never sees the actions or where a state comes from
+        for secret in ("volume_mute", "lock", "obs64", "source"):
+            self.assertNotIn(secret, text)
+        self.assertEqual(Deck({"desktops": [{"pages": [{"keys": [{"label": "A", "state": {"source": "app:x"}}]}]}]})
+                         .layout["desktops"][0]["pages"][0]["keys"][0]["on"]["color"], "#2EA043")  # green for a running app
+
+    def test_bad_hold_repeat_and_state(self):
+        def key(**k):
+            return {"desktops": [{"pages": [{"keys": [{"label": "A", "action": {"type": "lock"}, **k}]}]}]}
+
+        for bad in ({"hold": {"type": "lock"}, "repeat": True}, {"repeat": "yes"}, {"hold": {"type": "nope"}}, {"hold": "missing"},
+                    {"state": "mute"}, {"state": {}}, {"state": {"source": "loud"}}, {"state": {"source": "mute", "color": "red"}},
+                    {"state": {"source": "mute", "label": 3}}):
+            with self.assertRaises(DeckError, msg=str(bad)):
+                Deck(key(**bad))
+        deck = Deck({"desktops": [{"pages": [{"id": "r", "keys": [{"label": "F", "folder": "r", "hold": {"type": "lock"},
+                                                                  "repeat": True}]}]}]})
+        self.assertTrue(any("folder ignores" in w for w in deck.warnings))
+        self.assertEqual(deck.layout["desktops"][0]["pages"][0]["keys"][0], {"label": "F", "folder": "r"})
+
+    def test_desktops_that_follow_an_app(self):
+        deck = Deck({"desktops": [
+            {"name": "A", "pages": [{"keys": []}]},
+            {"name": "OBS", "apps": ["OBS64.exe", " obs "], "pages": [{"keys": []}]},
+            {"name": "Music", "kind": "nowplaying", "apps": ["spotify"]},
+            {"name": "Dup", "apps": ["obs"], "pages": [{"keys": []}]}]})
+        self.assertEqual(deck.auto_apps, [(1, {"obs64", "obs"}), (2, {"spotify"}), (3, {"obs"})])
+        self.assertTrue(any("'obs' already belongs to desktop 2" in w for w in deck.warnings))
+        self.assertNotIn("apps", deck.layout_text())  # PC only
+        for bad in ("obs", [3], [""], ["x"] * 11, [".exe"], {"a": 1}):
+            with self.assertRaises(DeckError, msg=str(bad)):
+                Deck({"desktops": [{"apps": bad, "pages": [{"keys": []}]}]})
+
+    def test_sleep_with_pc_is_a_setting(self):
+        self.assertEqual(Deck({"settings": {"sleepWithPc": True}, **simple([])}).settings, {"sleepWithPc": True})
+        self.assertFalse(Deck(simple([])).effective_settings()["sleepWithPc"])
+        with self.assertRaises(DeckError):
+            Deck({"settings": {"sleepWithPc": "yes"}, **simple([])})
+
     def test_start_desktop_beyond_the_last_desktop_warns(self):
         deck = Deck({"settings": {"startDesktop": 3}, **simple([])})
         self.assertTrue(any("startDesktop" in w for w in deck.warnings))

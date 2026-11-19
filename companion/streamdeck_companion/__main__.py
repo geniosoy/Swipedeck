@@ -9,6 +9,12 @@ from .app import Companion
 from .deck import DeckError
 
 
+def running_apps() -> list:
+    from .pcwatch import windowed_apps
+
+    return windowed_apps()
+
+
 def media_sources() -> list:
     from .media import list_media_sources  # imported late: needs the optional winrt packages
 
@@ -23,6 +29,8 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true", help="log actions instead of running them")
     ap.add_argument("--no-media", action="store_true", help="do not read the Windows media session (Now playing)")
     ap.add_argument("--no-stats", action="store_true", help="do not collect PC statistics (stats screen)")
+    ap.add_argument("--no-watch", action="store_true",
+                    help="do not look at the active app, mute state or screen lock (desktops by app, state keys, sleep with the PC)")
     ap.add_argument("--no-editor", action="store_true", help="do not start the web editor")
     ap.add_argument("--editor-port", type=int, default=8765, help="port of the web editor (default 8765)")
     ap.add_argument("--open-editor", action="store_true", help="open the web editor in the browser at startup")
@@ -33,7 +41,7 @@ def main() -> int:
                         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s", datefmt="%H:%M:%S")
     try:
         app = Companion(args.deck, port=args.port, executor=Executor(dry_run=args.dry_run), media=not args.no_media,
-                        stats_enabled=not args.no_stats)
+                        stats_enabled=not args.no_stats, pc_enabled=not args.no_watch)
     except (DeckError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
@@ -46,7 +54,7 @@ def main() -> int:
 
         try:
             editor = EditorServer(args.deck, port=args.editor_port, status_fn=lambda: dict(app.status),
-                                  media_sources_fn=media_sources, command_fn=app.submit)
+                                  media_sources_fn=media_sources, command_fn=app.submit, running_apps_fn=running_apps)
             logging.getLogger("companion").info("web editor: %s", editor.start())
             if args.open_editor:
                 import webbrowser

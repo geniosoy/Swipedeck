@@ -447,3 +447,183 @@ class AppTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FakePc:
+    """A PcWatcher stand-in: `current` is what the PC is doing right now (tests change it between loop iterations)."""
+
+    def __init__(self, current=None):
+        from streamdeck_companion.pcwatch import PcState
+
+        self.current = current or PcState()
+        self.wants = None
+        self.configured = 0
+
+    def configure(self, **wants):
+        self.wants = wants
+        self.configured += 1
+
+    def state(self):
+        return self.current
+
+
+class PcFeaturesTest(unittest.TestCase):
+    def deck_file(self, data):
+        import json, shutil, tempfile
+
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        path = tmp / "deck.json"
+        path.write_text(json.dumps(data), encoding="utf-8")
+        return path
+
+    def run_session(self, data, pc, steps, desktop=0, enabled=True):
+        """Runs a session; steps[i](app, board) is called at the i-th idle moment of the board (then the session stops)."""
+        path = self.deck_file(data)
+        board = FakeBoard(desktop=desktop)
+        rec = Recorder()
+        app = Companion(path, executor=rec, open_board_fn=lambda port: board, clock=Clock(), pc=pc, pc_enabled=enabled)
+        idle = {"n": 0}
+
+        def on_idle():
+            n = idle["n"]
+            idle["n"] += 1
+            if n < len(steps):
+                steps[n](app, board)
+            else:
+                app.stop()
+
+        board.on_idle = on_idle
+        app.session(board)
+        return app, board, rec
+
+    @staticmethod
+    def keys_deck(settings=None, **desktop2):
+        return {"settings": settings or {}, "desktops": [
+            {"name": "Main", "pages": [{"id": "r", "title": "M", "cols": 3, "rows": 1, "keys": [
+                {"label": "Mute", "action": {"type": "hotkey", "keys": "volume_mute"}, "hold": {"type": "lock"},
+                 "state": {"source": "mute"}},
+                {"label": "Vol", "action": {"type": "hotkey", "keys": "volume_up"}, "repeat": True},
+                {"label": "OBS", "action": {"type": "lock"}, "state": {"source": "app:obs64"}}]}]},
+            {"name": "OBS", "apps": ["obs64.exe"], "pages": [{"id": "r", "title": "O", "keys": []}], **desktop2}]}
+
+    def sent(self, board, kind):
+        return [m for m in board.out if m["type"] == kind]
+
+    def test_the_desktop_of_the_app_in_front_is_shown_once_per_change(self):
+        from streamdeck_companion.pcwatch import PcState
+
+        pc = FakePc(PcState(foreground="chrome"))
+        steps = [lambda a, b: setattr(pc, "current", PcState(foreground="obs64")),
+                 lambda a, b: None,   # still in front: no second message
+                 lambda a, b: setattr(pc, "current", PcState(foreground="chrome")),   # no rule for it: stay where we are
+                 lambda a, b: setattr(pc, "current", PcState(foreground="obs64")),
+                 lambda a, b: None]
+        app, board, _ = self.run_session(self.keys_deck(), pc, steps)
+        self.assertEqual(self.sent(board, "focus"), [{"type": "focus", "desktop": 1}])  # the 2nd time it already was there
+        self.assertTrue(pc.wants["foreground"])
+
+    def test_it_switches_again_after_you_swiped_away(self):
+        from streamdeck_companion.pcwatch import PcState
+
+        pc = FakePc(PcState(foreground="obs64"))
+        steps = [lambda a, b: None,
+                 lambda a, b: b.inbox.append({"type": "desktop", "index": 0}),     # you swiped back to the first desktop
+                 lambda a, b: setattr(pc, "current", PcState(foreground="chrome")),
+                 lambda a, b: setattr(pc, "current", PcState(foreground="obs64")),  # and came back to OBS later
+                 lambda a, b: None]
+        _, board, _ = self.run_session(self.keys_deck(), pc, steps)
+        self.assertEqual(len(self.sent(board, "focus")), 2)
+
+    def test_key_states_follow_the_pc_and_are_sent_only_when_they_change(self):
+        from streamdeck_companion.pcwatch import PcState
+
+        pc = FakePc(PcState(mute=False, running=frozenset()))
+        steps = [lambda a, b: None,   # the first reading: nothing muted, nothing running
+                 lambda a, b: setattr(pc, "current", PcState(mute=True, running=frozenset())),
+                 lambda a, b: None,
+                 lambda a, b: setattr(pc, "current", PcState(mute=True, running=frozenset({"obs64"}))),
+                 lambda a, b: setattr(pc, "current", PcState(mute=False, running=frozenset({"obs64"}))),
+                 lambda a, b: None]
+        _, board, _ = self.run_session(self.keys_deck(), pc, steps)
+        self.assertEqual([m["on"] for m in self.sent(board, "keystate")], [[], ["0/0/0"], ["0/0/0", "0/0/2"], ["0/0/2"]])
+        self.assertEqual((pc.wants["mute"], pc.wants["apps"]), (True, frozenset({"obs64"})))
+
+    def test_a_new_layout_makes_the_board_forget_which_keys_are_on(self):
+        import json, os
+        from streamdeck_companion.pcwatch import PcState
+
+        pc = FakePc(PcState(mute=True))
+        data = self.keys_deck()
+
+        def change_deck(app, board):
+            app.deck_path.write_text(json.dumps({**data, "desktops": [dict(data["desktops"][0], name="Renamed"), data["desktops"][1]]}),
+                                     encoding="utf-8")
+            os.utime(app.deck_path, (app._deck_mtime + 5, app._deck_mtime + 5))
+
+        app, board, _ = self.run_session(data, pc, [lambda a, b: None, change_deck, lambda a, b: None, lambda a, b: None])
+        self.assertEqual([m["on"] for m in self.sent(board, "keystate")], [["0/0/0"], ["0/0/0"]])  # sent again after the reload
+        types = [m["type"] for m in board.out]
+        self.assertGreater(len(types) - 1 - types[::-1].index("keystate"), len(types) - 1 - types[::-1].index("layout"))
+
+    def test_a_new_connection_resets_what_the_board_is_told(self):
+        from streamdeck_companion.pcwatch import PcState
+
+        pc = FakePc(PcState(mute=True))
+        path = self.deck_file(self.keys_deck())
+        first = FakeBoard()
+        app = Companion(path, executor=Recorder(), open_board_fn=lambda p: first, clock=Clock(), pc=pc)
+        first.on_idle = app.stop
+        app.session(first)
+        second = FakeBoard()
+        second.on_idle = app.stop
+        app._stop = False
+        app.session(second)
+        self.assertEqual(len(self.sent(first, "keystate")), 1)
+        self.assertEqual(len(self.sent(second, "keystate")), 1)  # the board may have been reset: it is told again
+
+    def test_lock_state_is_sent_only_when_the_setting_is_on(self):
+        from streamdeck_companion.pcwatch import PcState
+
+        pc = FakePc(PcState(locked=False))
+        steps = [lambda a, b: None, lambda a, b: setattr(pc, "current", PcState(locked=True)), lambda a, b: None,
+                 lambda a, b: setattr(pc, "current", PcState(locked=False)), lambda a, b: None]
+        _, board, _ = self.run_session(self.keys_deck({"sleepWithPc": True}), pc, steps)
+        self.assertEqual([m["state"] for m in self.sent(board, "pc")], ["active", "locked", "active"])
+        self.assertTrue(pc.wants["lock"])
+        pc2 = FakePc(PcState(locked=True))
+        _, board2, _ = self.run_session(self.keys_deck(), pc2, [lambda a, b: None, lambda a, b: None])
+        self.assertEqual(self.sent(board2, "pc"), [])
+        self.assertFalse(pc2.wants["lock"])
+
+    def test_holding_a_key_runs_its_hold_action(self):
+        pc = FakePc()
+        press = {"type": "press", "desktop": 0, "page": 0, "key": 0, "id": ""}
+        steps = [lambda a, b: b.inbox.append(dict(press)),
+                 lambda a, b: b.inbox.append(dict(press, hold=True)),
+                 lambda a, b: b.inbox.append(dict(press, key=1, repeat=True)),   # a repeat key: the same press, again and again
+                 lambda a, b: b.inbox.append(dict(press, key=1, repeat=True)),
+                 lambda a, b: b.inbox.append(dict(press, key=1, hold=True)),     # no hold action on that key: nothing runs
+                 lambda a, b: None]
+        _, _, rec = self.run_session(self.keys_deck(), pc, steps)
+        self.assertEqual(rec.ran, [("0/0/0", {"type": "hotkey", "keys": "volume_mute"}), ("0/0/0 hold", {"type": "lock"}),
+                                   ("0/0/1", {"type": "hotkey", "keys": "volume_up"}), ("0/0/1", {"type": "hotkey", "keys": "volume_up"})])
+
+    def test_the_off_switch_and_decks_that_need_nothing(self):
+        from streamdeck_companion.pcwatch import PcState
+
+        pc = FakePc(PcState(foreground="obs64", mute=True))
+        _, board, _ = self.run_session(self.keys_deck(), pc, [lambda a, b: None, lambda a, b: None], enabled=False)
+        self.assertEqual([m for m in board.out if m["type"] in ("focus", "keystate", "pc")], [])
+        self.assertEqual(pc.configured, 0)
+        plain = {"desktops": [{"name": "A", "pages": [{"keys": [{"label": "X", "action": {"type": "lock"}}]}]}]}
+        from unittest import mock
+
+        # a deck that uses none of it never even creates a watcher
+        with mock.patch("streamdeck_companion.pcwatch.PcWatcher", side_effect=AssertionError("a watcher was created")):
+            _, board2, _ = self.run_session(plain, None, [lambda a, b: None, lambda a, b: None])
+        self.assertEqual([m for m in board2.out if m["type"] in ("focus", "keystate", "pc")], [])
+        # ...and when a watcher already exists it is told that nothing is wanted any more
+        pc3 = FakePc(PcState(foreground="obs64", mute=True))
+        self.run_session(plain, pc3, [lambda a, b: None, lambda a, b: None])
+        self.assertFalse(any(pc3.wants.values()))

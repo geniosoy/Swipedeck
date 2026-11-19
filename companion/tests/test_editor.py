@@ -99,6 +99,28 @@ class EditorServerTest(unittest.TestCase):
         self.assertEqual(self.server.board_sound({"name": "tap"}), (200, {"ok": True, "sent": False}))  # no command function
         down._httpd.server_close()
 
+    def test_running_apps_endpoint(self):
+        self.assertEqual(self.call("GET", "/api/running-apps")[0], 501)  # this server has no such function
+        ok = EditorServer(self.deck_path, port=0, running_apps_fn=lambda: ["chrome", "code"])
+        ok.start()
+        self.addCleanup(ok.stop)
+        conn = http.client.HTTPConnection("127.0.0.1", ok.port, timeout=5)
+        conn.request("GET", "/api/running-apps", headers={"Host": f"127.0.0.1:{ok.port}"})
+        r = conn.getresponse()
+        self.assertEqual((r.status, json.loads(r.read())), (200, {"apps": ["chrome", "code"]}))
+        conn.close()
+
+        def boom():
+            raise RuntimeError("nope")
+
+        bad = EditorServer(self.deck_path, port=0, running_apps_fn=boom)
+        bad.start()
+        self.addCleanup(bad.stop)
+        conn = http.client.HTTPConnection("127.0.0.1", bad.port, timeout=5)
+        conn.request("GET", "/api/running-apps", headers={"Host": f"127.0.0.1:{bad.port}"})
+        self.assertEqual(conn.getresponse().status, 501)  # a failing lookup is an error message, not a crash
+        conn.close()
+
     def test_media_sources_endpoint(self):
         self.assertEqual(self.call("GET", "/api/media-sources")[0], 501)  # this server has no source function
         ok = EditorServer(self.deck_path, port=0, media_sources_fn=lambda: [{"id": "Chrome", "playing": True}])

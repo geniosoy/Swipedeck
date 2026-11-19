@@ -103,9 +103,10 @@ def validate_preset_key(key) -> None:
 class EditorServer:
     def __init__(self, deck_path: str | Path, host: str = "127.0.0.1", port: int = 8765,
                  status_fn: Callable[[], dict] | None = None, media_sources_fn: Callable[[], list] | None = None,
-                 command_fn: Callable[[dict], bool] | None = None):
+                 command_fn: Callable[[dict], bool] | None = None, running_apps_fn: Callable[[], list] | None = None):
         self.deck_path = Path(deck_path)
         self._command_fn = command_fn  # Companion.submit: sends a live command to the board
+        self._running_apps_fn = running_apps_fn  # names of the programs with a window open (for the desktop "apps" field)
         self._media_sources_fn = media_sources_fn
         self.presets_user_path = self.deck_path.with_name("presets.user.json")
         self.token = secrets.token_urlsafe(24)
@@ -215,6 +216,13 @@ class EditorServer:
                     return self._json(200, server._status_fn())
                 if path == "/api/media-sources":
                     return self._media_sources()
+                if path == "/api/running-apps":
+                    if server._running_apps_fn is None:
+                        return self._json(501, {"error": "listing running programs is not available here"})
+                    try:
+                        return self._json(200, {"apps": server._running_apps_fn()})
+                    except Exception as e:
+                        return self._json(501, {"error": f"could not list the programs: {e}"})
                 return self._static(path)
 
             def _media_sources(self):

@@ -13,6 +13,7 @@ from .deck import Deck, DeckError
 from .link import open_board
 from .appicon import APP_ICON_PX, appicon_message
 from .nowplaying import COVER_PX_DEFAULT, NowPlayingSync, cover_messages
+from .pcwatch import key_states_on, match_desktop
 from .protocol import crc_hex, layout_messages
 
 log = logging.getLogger("companion")
@@ -26,7 +27,8 @@ ACK_TIMEOUT = 5.0
 class Companion:
     def __init__(self, deck_path: str | Path, port: str | None = None, executor: Executor | None = None,
                  open_board_fn: Callable = open_board, clock: Callable[[], float] = time.monotonic,
-                 reader=None, media: bool = True, stats=None, stats_enabled: bool = True):
+                 reader=None, media: bool = True, stats=None, stats_enabled: bool = True,
+                 pc=None, pc_enabled: bool = True):
         self.deck_path = Path(deck_path)
         self.port = port
         self.executor = executor or Executor()
@@ -42,6 +44,13 @@ class Companion:
         self._stats = stats            # StatsReader-like: set_active(), latest()
         self._stats_enabled = stats_enabled
         self._stats_sent = 0           # sequence number of the last sample sent to the board
+        self._pc = pc                  # PcWatcher-like: configure(), state(); None = created when first needed
+        self._pc_enabled = pc_enabled  # False (--no-watch): never look at the active app, mute state or lock
+        self._pc_wants_sent: dict | None = None
+        self._last_fg: str | None = None       # the program that was in front at the last reading
+        self._fg_seen = False
+        self._locked_sent: bool | None = None  # the lock state the board was told
+        self._keys_sent: list | None = None    # which keys the board was told are "on" (None = unknown)
         self._active_desktop = 0       # which desktop the board is showing
         self._shown_kind = "keys"      # kind of that desktop: keys | nowplaying | stats
         # What the web editor shows in its status line (read from another thread; plain values only).
@@ -145,6 +154,8 @@ class Companion:
         self._push_settings(board)
         board_crc = self._sync_layout(board, hello.get("layoutCrc", ""))
         nps = NowPlayingSync()  # a new connection starts from scratch: the board may have lost its state
+        self._keys_sent, self._locked_sent = None, None  # ...and may still show keys as "on" from a former session
+        self._fg_seen = False
 
         last_rx = last_ping = self._clock()
         ping_id = 0
@@ -163,11 +174,13 @@ class Companion:
                     last_ping = now
                 self._run_commands(board)
                 self._update_live(board, nps, now)
+                self._pump_pc(board)
                 if self._deck_changed() and self.load_deck():
                     self._push_settings(board)
                     new_crc = self._sync_layout(board, board_crc)
                     if new_crc != board_crc:  # the board rebuilt its screens: the Now playing one is empty again
                         nps.board_reset()
+                        self._keys_sent = []   # ...and no key is "on" any more
                     board_crc = new_crc
         finally:
             self._switch_live(self._shown_kind, "keys", nps)  # the link is gone: stop all background work
@@ -228,6 +241,56 @@ class Companion:
                 return msg
             self.handle(msg)  # key presses etc. that arrive meanwhile are not lost
         raise ConnectionError(f"timeout waiting for {sorted(types)}")
+
+    # -- the PC itself: active app, key states, lock ---------------------------------------------------
+
+    def _pc_wants(self) -> dict:
+        d = self.deck
+        sources = [s for _, _, _, s in d.key_states] if d else []
+        return {"foreground": bool(d and d.auto_apps), "lock": bool(d and d.settings.get("sleepWithPc")),
+                "mute": "mute" in sources, "mic": "mic_mute" in sources,
+                "apps": frozenset(s[4:] for s in sources if s.startswith("app:"))}
+
+    def _pc_watcher(self):
+        if not self._pc_enabled:
+            return None
+        if self._pc is None:
+            from .pcwatch import PcWatcher
+
+            self._pc = PcWatcher()
+            self._pc.start()
+        return self._pc
+
+    def _pump_pc(self, board) -> None:
+        """Looks at the PC only for what the deck uses: brings the desktop of the active app to the front, tells the board
+        which keys are "on" (muted, running ...) and whether the PC is locked."""
+        wants = self._pc_wants()
+        if not any(wants.values()) and self._pc is None:
+            return
+        watcher = self._pc_watcher()
+        if watcher is None:
+            return
+        if wants != self._pc_wants_sent:
+            watcher.configure(**wants)
+            self._pc_wants_sent = wants
+        st = watcher.state()
+        if st is None:
+            return
+        if wants["foreground"] and (not self._fg_seen or st.foreground != self._last_fg):
+            self._fg_seen, self._last_fg = True, st.foreground
+            target = match_desktop(self.deck.auto_apps, st.foreground)  # a switch only when the app in front changes
+            if target is not None and target != self._active_desktop:
+                log.info("%s is in front: showing desktop %d", st.foreground, target + 1)
+                board.send({"type": "focus", "desktop": target})
+                self._active_desktop = target
+        if wants["lock"] and st.locked != self._locked_sent:
+            self._locked_sent = st.locked
+            board.send({"type": "pc", "state": "locked" if st.locked else "active"})
+        if self.deck.key_states:
+            on = key_states_on(self.deck.key_states, st)
+            if on != self._keys_sent:
+                board.send({"type": "keystate", "on": on})
+                self._keys_sent = on
 
     # -- live screens (now playing, stats): work only while their desktop is visible ----------------
 
@@ -357,11 +420,14 @@ class Companion:
         kind = msg.get("type")
         if kind == "press":
             d, p, k = msg.get("desktop"), msg.get("page"), msg.get("key")
-            action = self.deck.action_at(d, p, k) if self.deck else None
+            hold = bool(msg.get("hold"))  # the key was held (it has a separate action for that)
+            action = None
+            if self.deck:
+                action = self.deck.hold_action_at(d, p, k) if hold else self.deck.action_at(d, p, k)
             if action is None:
-                log.info("key %s/%s/%s (%s) has no action", d, p, k, msg.get("id", ""))
+                log.info("key %s/%s/%s (%s) has no %saction", d, p, k, msg.get("id", ""), "hold " if hold else "")
                 return
-            self.executor.run_async(action, f"{d}/{p}/{k}")
+            self.executor.run_async(action, f"{d}/{p}/{k}" + (" hold" if hold else ""))
         elif kind == "media":
             self._media_command(str(msg.get("cmd", "")))
         elif kind == "seek":

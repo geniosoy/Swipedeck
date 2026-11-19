@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .actions import validate_action
 from .nowplaying import normalize_filter
+from .pcwatch import check_state_source, normalize_app
 
 # Icon names the firmware knows (kIcons in src/ui.cpp; tests/test_icons.py keeps both in sync).
 ICONS = {
@@ -40,6 +41,7 @@ SETTINGS_SPEC = {
     "keyGap": ("int", 6, (2, 12)),
     "swipe": ("swipe", "normal", None),        # how far / hard a swipe must be to pass to another desktop
     "wrap": ("bool", False, None),             # endless scrolling: swiping past the last desktop wraps to the first
+    "sleepWithPc": ("bool", False, None),      # screen off while the PC is locked, asleep or not talking to the board
 }
 
 
@@ -89,6 +91,12 @@ class Deck:
         self.np_filter: dict = {"allow": [], "block": []}
         self.np_app_icon = False     # show the icon of the playing app (the companion draws and sends it)
         self._actions: dict[tuple[int, int, int], dict] = {}
+        self._holds: dict[tuple[int, int, int], dict] = {}      # the action of a key when it is held
+        # Desktops that come to the front when one of their programs is the active window: [(desktop index, {names})].
+        # Like the actions, this stays on the PC.
+        self.auto_apps: list[tuple[int, set]] = []
+        # Keys whose look follows a state of the PC: [(desktop, page, key, source)] (see pcwatch.check_state_source)
+        self.key_states: list[tuple[int, int, int, str]] = []
         self.layout = self._build(data)
 
     @classmethod
@@ -109,6 +117,9 @@ class Deck:
 
     def action_at(self, desktop: int, page: int, key: int) -> dict | None:
         return self._actions.get((desktop, page, key))
+
+    def hold_action_at(self, desktop: int, page: int, key: int) -> dict | None:
+        return self._holds.get((desktop, page, key))
 
     # -- internals ---------------------------------------------------------------------------
 
@@ -139,6 +150,7 @@ class Deck:
             kind = d.get("kind", "keys")
             if kind not in ("keys", "nowplaying", "stats"):
                 raise DeckError(f"{where}: kind must be 'keys', 'nowplaying' or 'stats'")
+            self._auto_apps(d.get("apps"), di, where)
             if kind in ("nowplaying", "stats"):
                 if getattr(self, f"has_{kind}"):
                     raise DeckError(f"{where}: only one '{kind}' desktop is supported")
@@ -170,6 +182,47 @@ class Deck:
                                   "rows": rows, "keys": out_keys})
             out_desktops.append({"name": name, "pages": out_pages})
         return {"desktops": out_desktops}
+
+    def _auto_apps(self, apps, di: int, where: str) -> None:
+        """`apps` of a desktop: programs that bring this desktop to the front when their window is the active one."""
+        if apps is None:
+            return
+        if not (isinstance(apps, list) and len(apps) <= 10
+                and all(isinstance(a, str) and 0 < len(normalize_app(a)) and len(a) <= 60 for a in apps)):
+            raise DeckError(f"{where}.apps must be a list of up to 10 program names, like [\"obs64.exe\", \"code\"]")
+        names = {normalize_app(a) for a in apps}
+        taken = {n: i for i, ns in self.auto_apps for n in ns}
+        for n in sorted(names & set(taken)):
+            self.warnings.append(f"{where}.apps: '{n}' already belongs to desktop {taken[n] + 1}, which wins")
+        if names:
+            self.auto_apps.append((di, names))
+
+    def _state(self, state, di: int, pi: int, ki: int, where: str) -> dict:
+        """A key's `state`: {"source": ..., "color"?, "icon"?, "label"?}. Returns the look the board shows while the
+        source is on (a color is always filled in) and remembers the source on the PC."""
+        if not isinstance(state, dict):
+            raise DeckError(f"{where}.state must be an object")
+        for extra in sorted(set(state) - {"source", "color", "icon", "label"}):
+            self.warnings.append(f"{where}.state: unknown field '{extra}' ignored")
+        try:
+            source = check_state_source(state.get("source"))
+        except ValueError as e:
+            raise DeckError(f"{where}.state: {e}") from None
+        look = {}
+        if "color" in state:
+            if not (isinstance(state["color"], str) and COLOR_RE.match(state["color"])):
+                raise DeckError(f"{where}.state: color must look like #RRGGBB")
+            look["color"] = state["color"]
+        for field in ("icon", "label"):
+            if field in state:
+                if not isinstance(state[field], str):
+                    raise DeckError(f"{where}.state: '{field}' must be a string")
+                look[field] = state[field]
+        if look.get("icon") and look["icon"] not in ICONS:
+            self.warnings.append(f"{where}.state: unknown icon '{look['icon']}' (shows a warning symbol)")
+        look.setdefault("color", "#2EA043" if source.startswith("app:") else "#B3261E")  # green: running, red: muted
+        self.key_states.append((di, pi, ki, source))
+        return look
 
     def _live_options(self, kind: str, opts, where: str) -> dict:
         """Validates a live screen's options. Returns what the board needs; the player filter stays on the PC."""
@@ -245,6 +298,8 @@ class Deck:
             if folder not in page_ids:
                 raise DeckError(f"{where}: folder '{folder}' is not a page id of this desktop")
             out["folder"] = folder
+            if any(k.get(f) not in (None, False) for f in ("hold", "repeat", "state")):
+                self.warnings.append(f"{where}: a folder ignores 'hold', 'repeat' and 'state'")
             return out
         action = k.get("action")
         if action is None and out.get("id") in shared:
@@ -254,4 +309,21 @@ class Deck:
             self._actions[(di, pi, ki)] = action
         else:
             self.warnings.append(f"{where}: '{out.get('label', '?')}' has no action")
+        repeat, hold = k.get("repeat", False), k.get("hold")
+        if not isinstance(repeat, bool):
+            raise DeckError(f"{where}: 'repeat' must be true or false")
+        if hold is not None and repeat:
+            raise DeckError(f"{where}: a key can have 'hold' or 'repeat', not both")
+        if hold is not None:  # a second action, run when the key is held
+            if isinstance(hold, str):
+                if hold not in shared:
+                    raise DeckError(f"{where}.hold: there is no shared action {hold!r}")
+                hold = shared[hold]
+            self._check_action(hold, f"{where}.hold")
+            self._holds[(di, pi, ki)] = hold
+            out["hold"] = True
+        if repeat:
+            out["repeat"] = True  # holding the key presses it again and again (volume keys)
+        if k.get("state") is not None:
+            out["on"] = self._state(k["state"], di, pi, ki, where)
         return out
