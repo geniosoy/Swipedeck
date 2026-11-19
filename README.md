@@ -2,9 +2,7 @@
 
 # Swipedeck (Streamdeck for the ES3C28P)
 
-A touch macro deck with a "Now playing" screen and a PC stats screen, for the Hosyond/LCDWiki 2.8" ESP32-S3 board
-(ES3C28P). The board shows the screens and sends touches; a small Python program on the PC (the **companion**) runs
-the actions and feeds the live screens over the USB-C cable.
+A (vibecoded) touch macro deck with a "Now playing" screen and a PC stats screen, for the Hosyond/LCDWiki 2.8" ESP32-S3 board (ES3C28P).
 
 <table align="center">
   <tr>
@@ -14,19 +12,19 @@ the actions and feeds the live screens over the USB-C cable.
     <td align="center"><img src="docs/images/screen-stats.png" width="230" alt="The PC stats screen"><br><sub>PC stats</sub></td>
   </tr>
 </table>
-<p align="center"><sub>The screens of the board (320 x 240), as the editor previews them: swipe left and right to move between desktops,
-tap a folder key to open a page. These are the editor's previews, not photos of the board.</sub></p>
-
-Board facts and traps: `../ES3C28P_BOARD_NOTES.md`. Firmware: Arduino + PlatformIO + LVGL 8.3.6 (v0.11.0).
+<p align="center"><sub>Swipe left and right to move between desktops,
+tap a folder key to open a page.</sub></p>
 
 ## How it fits together
+
 <p align="center"><img src="docs/architecture.svg" alt="The board talks to the companion on the PC over USB-C; the companion runs actions on Windows, reads the media session and PC stats, and serves the editor in your browser" width="900"></p>
 
 The board holds the screens, the touch handling, the sounds and a copy of the layout. Everything that needs the PC (key
 actions, the media session, PC stats) happens in the companion, which also serves the editor. Nothing leaves your PC:
-the editor only listens on `127.0.0.1`.
+the editor only listens on `127.0.0.1`. Firmware: Arduino + PlatformIO + LVGL 8.3.6 (v0.11.0).
 
 ## The layout editor
+
 Layouts are edited in a web page, not by hand: drag keys, pick icons and colours, add ready-made desktops and button
 presets, and see the board's screen as you type.
 
@@ -40,6 +38,7 @@ presets, and see the board's screen as you type.
 </table>
 
 ## What it does
+
 * **Desktops** you swipe between. A *keys* desktop holds **pages** of keys; a folder key opens a page, a back button
   returns. A fixed top bar shows the title, the back button and dots for the current desktop.
 * **Key actions** on the PC: hotkeys (also media/volume keys), typed text, open file/URL/app, run a program, lock the PC,
@@ -55,10 +54,12 @@ presets, and see the board's screen as you type.
 * The board stores the last layout and the settings, so it still works without the PC (key presses just do nothing).
 
 ## Running it
+
 **PC side:** double-click **`Streamdeck.bat`**. On the first run it creates the Python environment
 (`companion\.venv`) and installs the requirements, then starts the companion; afterwards it just starts. Arguments are
 passed through: `--dry-run` (log actions, do not run them), `--no-media`, `--no-stats`, `--port COM3`, `--deck FILE`,
 `--check` (validate the deck file and exit), `-v` (debug log).
+
 * **`Streamdeck-background.vbs`** starts it without a window (log: `companion\companion.log`). A shortcut to it in the
   Startup folder (Win+R, `shell:startup`) starts the companion with Windows.
 * **`Streamdeck-Editor.bat`** opens the deck editor in your browser (starting the companion in the background first if
@@ -67,14 +68,18 @@ passed through: `--dry-run` (log actions, do not run them), `--no-media`, `--no-
   It reconnects by itself after a replug or reflash.
 
 **Board:** the firmware is flashed with PlatformIO:
+
 ```
 %USERPROFILE%\.platformio\penv\Scripts\pio.exe run -t upload --upload-port COM3
 ```
+
 If the board does not accept the upload: hold BOOT, tap RESET, release BOOT, upload, tap RESET once.
 
 ## The deck editor (web)
+
 The companion serves a layout editor at **http://127.0.0.1:8765/** (`Streamdeck-Editor.bat` opens it). Saving writes
 `companion/deck.json`, and the companion pushes the new layout to the board a moment later.
+
 * **Live preview** of the board's screen, drawn with the same geometry and the same icon glyphs as the firmware.
   Click a key to edit it, drag keys to swap them, undo/redo (Ctrl+Z / Ctrl+Y), copy/paste keys (Ctrl+C / Ctrl+V),
   Delete clears a key, arrow keys move the selection, Ctrl+S saves.
@@ -112,9 +117,11 @@ The companion serves a layout editor at **http://127.0.0.1:8765/** (`Streamdeck-
   read nor write your deck). `--no-editor` turns it off, `--editor-port N` moves it.
 
 ## Configuring by hand: `companion/deck.json`
+
 The editor edits this file; you can also edit it directly (changes are picked up while the companion runs). The companion strips the actions, sends the layout to the board, and reloads when the file
 is saved (the board's layout, settings and screens update without a restart). The comments in this example are only
 for explanation: the real file is plain JSON.
+
 ```jsonc
 {
   "settings": { "volume": 70, "sounds": true, "brightness": 255 },
@@ -136,6 +143,7 @@ for explanation: the real file is plain JSON.
   ]
 }
 ```
+
 * Up to 8 desktops, 16 pages per desktop, 6 x 5 keys per page. The first page of a desktop is its root.
 * Actions: `hotkey` (`"ctrl+shift+s"`, `"volume_up"`, `"f13"` ...), `text` (a newline presses Enter), `open`,
   `run` (list, or string with `"shell": true`), `lock`, `multi` (steps, with `{"wait": seconds}`). Shared actions can
@@ -150,12 +158,14 @@ for explanation: the real file is plain JSON.
   message); the board never receives the Now playing player filter.
 
 ## Live screens run on demand
+
 The Now playing and PC stats screens only cost the PC something while they are on screen. The board tells the
 companion which desktop is showing; the media-session reader and the stats sampler run only then, stay completely idle
 otherwise, and start from a clean state when you come back (the full state is sent again). On the board, LVGL does not
 draw off-screen objects, so nothing needs switching there.
 
 ## Now playing
+
 * **Which player:** Windows can have several media players at once (Chrome, Spotify, TIDAL ...). The `filter` option picks
   among them with two lists of names: a player is shown unless it matches the `block` list, and, when the `allow` list is
   not empty, only if it matches that. Names are matched by a part of the name Windows gives the player (case-insensitive:
@@ -184,6 +194,7 @@ draw off-screen objects, so nothing needs switching there.
   may use.
 
 ## PC stats
+
 Three styles, chosen with the `style` option, and `items` sets which items are shown and in which order (each item once):
 **gauges** (round gauges for the first three percentage items, bars for the rest, the network as a line), **bars** (one
 row per item) and **tiles** (two columns of tiles with a big number). Items: `cpu`, `gpu`, `ram`, `vram`, `disk`, `net`.
@@ -193,11 +204,13 @@ to elevated programs or sensor software such as LibreHardwareMonitor), so it sho
 read shows as n/a. AMD / Intel GPUs are not read.
 
 ## Known limits
+
 * The board fonts are plain ASCII: the companion strips accents (é becomes e) and shows other scripts as `?`. Accented
   fonts need a font generated with `lv_font_conv` (an npm tool); not done yet.
 * USB serial is shared: only one program at a time can use the board's port.
 
 ## Link protocol
+
 JSON lines over the USB serial port; the full table is in `src/link.h`. PC to board: `hello`, `ping`, chunked `layout`,
 `settings`, `focus`, `reset-layout`, `np` (media state), `cover` / `cover-clear`, `appicon` / `appicon-clear`, `stats`.
 Board to PC: `hello` (firmware, screen size, layout CRC, cover and icon sizes, visible desktop), `pong`,
@@ -206,6 +219,7 @@ Board to PC: `hello` (firmware, screen size, layout CRC, cover and icon sizes, v
 `ping`, `beep`, `info`, `reboot`, `vol N`, `amp 0|1`, `desktop N`, `back`.
 
 ## Layout of the project
+
 ```
 Streamdeck.bat, Streamdeck-background.vbs, Stop-Streamdeck.bat   launchers for the PC side
 platformio.ini, include/, src/                                  firmware (ui.cpp, nowplaying.cpp, stats.cpp, link.cpp, audio.cpp ...)
@@ -218,30 +232,32 @@ Streamdeck-Editor.bat                                           opens the editor
 companion/                                                      the Python companion: deck.json, streamdeck_companion/ (incl.
                                                                 editor.py and web/ = the editor), tests/
 ```
+
 Tests: `companion\.venv\Scripts\python -m unittest discover -s tests` (from `companion`; companion, protocol and editor
 server incl. its security checks) and `node --test companion/tests/js/model.test.mjs` (the editor's logic). A full browser
 test of the editor, which drives it in headless Edge/Chrome against a copy of the deck, is `tools/e2e_editor.py`
 (needs `pip install websocket-client`; `--shots DIR` saves screenshots).
 
 ## Settings
+
 The `settings` object of `deck.json` (all keys optional; a missing one is its default). They go to the board when the
 companion connects and when the deck is saved, and the board stores them. Wrong values are an error when the deck loads.
 
-| Key | Values | Default | |
-|---|---|---|---|
-| `volume` | 0..100 | 70 | |
-| `sounds` | true / false | true | the tick when a key is pressed |
-| `navSounds` | true / false | true | the chirps for opening a folder and Back |
-| `soundTheme` | `classic`, `soft`, `click`, `chirp` | `classic` | the four sounds are synthesised on the board (no audio files) |
-| `brightness` | 5..255 | 255 | |
-| `dimAfter` | seconds, 0..3600 | 0 (never) | dims the backlight (to one eighth of `brightness`) after no touch |
-| `sleepAfter` | seconds, 0..3600 | 0 (never) | switches the backlight off after no touch |
-| `flip` | true / false | false | the screen upside down, touch included (for a case mounted the other way up) |
-| `startDesktop` | 0..7 | 0 | desktop shown at boot and after a layout loads (the first one if the number does not exist) |
-| `keyRadius` | 0..24 | 12 | corner roundness of the keys, px |
-| `keyGap` | 2..12 | 6 | space between keys, px |
-| `swipe` | `short`, `normal`, `long` | `normal` | how far or hard a swipe has to be to pass to another desktop: with `short` a quick flick is enough, with `long` a deliberate drag (also the swipe that wraps around; needs firmware 0.11.0) |
-| `wrap` | true / false | false | endless scrolling: swiping right on the first desktop goes to the last one, swiping left on the last goes to the first (needs firmware 0.10.0) |
+| Key              | Values                                      | Default     |                                                                                                                                                                                                 |
+| ---------------- | ------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `volume`       | 0..100                                      | 70          |                                                                                                                                                                                                 |
+| `sounds`       | true / false                                | true        | the tick when a key is pressed                                                                                                                                                                  |
+| `navSounds`    | true / false                                | true        | the chirps for opening a folder and Back                                                                                                                                                        |
+| `soundTheme`   | `classic`, `soft`, `click`, `chirp` | `classic` | the four sounds are synthesised on the board (no audio files)                                                                                                                                   |
+| `brightness`   | 5..255                                      | 255         |                                                                                                                                                                                                 |
+| `dimAfter`     | seconds, 0..3600                            | 0 (never)   | dims the backlight (to one eighth of `brightness`) after no touch                                                                                                                             |
+| `sleepAfter`   | seconds, 0..3600                            | 0 (never)   | switches the backlight off after no touch                                                                                                                                                       |
+| `flip`         | true / false                                | false       | the screen upside down, touch included (for a case mounted the other way up)                                                                                                                    |
+| `startDesktop` | 0..7                                        | 0           | desktop shown at boot and after a layout loads (the first one if the number does not exist)                                                                                                     |
+| `keyRadius`    | 0..24                                       | 12          | corner roundness of the keys, px                                                                                                                                                                |
+| `keyGap`       | 2..12                                       | 6           | space between keys, px                                                                                                                                                                          |
+| `swipe`        | `short`, `normal`, `long`             | `normal`  | how far or hard a swipe has to be to pass to another desktop: with `short` a quick flick is enough, with `long` a deliberate drag (also the swipe that wraps around; needs firmware 0.11.0) |
+| `wrap`         | true / false                                | false       | endless scrolling: swiping right on the first desktop goes to the last one, swiping left on the last goes to the first (needs firmware 0.10.0)                                                  |
 
 * **Waking the screen:** the touch that wakes a dimmed or sleeping screen is swallowed: it does not press anything, and
   neither does a swipe started with it. Sounds played by the Test buttons also wake the screen.
@@ -251,6 +267,7 @@ companion connects and when the deck is saved, and the board stores them. Wrong 
   accents); a different or accented font needs a generated font file, which is the open "accented fonts" item below.
 
 ## Milestones
+
 1. Bring-up (display, touch, sound, serial) - done
 2. Firmware UI (swipeable desktops, folders, back, key sounds) - done
 3. Serial protocol and PC companion (actions, layout sync, stored layout and settings) - done
@@ -260,6 +277,7 @@ companion connects and when the deck is saved, and the board stores them. Wrong 
 7. Open: accented fonts (needs generated font files), a settings screen on the board itself
 
 ## Third-party code
+
 `lib/TFT_eSPI` (patched, from the vendor package), `lib/FT6336`, `lib/ES8311` (Espressif, Apache-2.0, patched to use
 `Wire`). Python: pyserial, Pillow, psutil, nvidia-ml-py, winrt (pywinrt) packages. The editor draws icons with the Font
 Awesome Free font that LVGL ships (`web/fonts/fa.woff`; icons CC BY 4.0, font SIL OFL 1.1,
