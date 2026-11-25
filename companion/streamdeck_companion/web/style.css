@@ -143,7 +143,10 @@ textarea { min-height: 70px; resize: vertical; font-family: Consolas, monospace;
 .pcard .del { position: absolute; top: -6px; right: -4px; display: none; }
 .pcard:hover .del { display: block; }
 
-#toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: #1d2a3c; color: #fff; padding: 9px 18px; border-radius: 10px; border: 1px solid var(--line); box-shadow: 0 6px 24px rgba(0,0,0,.4); z-index: 10; max-width: 80vw; }
+#toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 10; width: max-content; max-width: 80vw; }
+#toast[hidden] { display: none; }
+.toastItem { display: flex; align-items: center; gap: 14px; background: #1d2a3c; color: #fff; padding: 9px 18px; border-radius: 10px; border: 1px solid var(--line); box-shadow: 0 6px 24px rgba(0,0,0,.4); }
+.toastItem.withUndo { padding-right: 9px; }
 @media (max-width: 1250px) { main { grid-template-columns: 220px minmax(680px, 1fr) 320px; } }
 
 /* desktop list: drag to reorder, add menu */

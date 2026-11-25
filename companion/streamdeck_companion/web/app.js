@@ -42,7 +42,7 @@ const state = {
 };
 const history = new M.History();
 let lastCoalesce = { key: null, t: 0 };
-let toastTimer = null;
+const TOAST_MS = 5000, UNDO_TOAST_MS = 10000;
 let nextEditorId = 1;
 
 const deckText = () => JSON.stringify(state.deck);
@@ -96,6 +96,7 @@ function clampSel() {
 // ("coalesce") share one undo step. `rerender: 'live'` keeps the inspector (and so the focused input) untouched.
 function commit(fn, { coalesce = null, rerender = 'all' } = {}) {
   const now = Date.now();
+  dropDeckUndo();
   if (!(coalesce && lastCoalesce.key === coalesce && now - lastCoalesce.t < 1500)) history.push(deckText());
   lastCoalesce = { key: coalesce, t: now };
   fn(state.deck);
@@ -105,7 +106,14 @@ function commit(fn, { coalesce = null, rerender = 'all' } = {}) {
   else renderLive();
 }
 
+// After an undo or a redo, the next edit is a step of its own again (even in the same field, right away).
+function newUndoStep() {
+  lastCoalesce = { key: null, t: 0 };
+  dropDeckUndo();
+}
+
 function restore(text) {
+  newUndoStep();
   state.deck = JSON.parse(text);
   clampSel();
   renderAll();
@@ -166,12 +174,25 @@ async function api(method, path, body) {
   return data;
 }
 
-function toast(text) {
-  const el = $('#toast');
-  el.textContent = text;
-  el.hidden = false;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.hidden = true; }, 3500);
+// A short message at the bottom. With `undo` it has an Undo button and stays longer. `deck: true` means that button undoes
+// the last change to the deck: it goes away when the deck changes again, so it can never undo something else.
+function toast(text, { undo: back = null, deck = false } = {}) {
+  const box = $('#toast');
+  const item = h('div', { class: 'toastItem ' + (back ? 'withUndo' : 'plain') + (deck ? ' deckUndo' : '') }, h('span', {}, text));
+  let timer = null;
+  const close = () => { clearTimeout(timer); item.remove(); box.hidden = !box.children.length; };
+  if (back) item.append(h('button', { class: 'small', onclick: () => { close(); back(); } }, 'Undo'));
+  else box.querySelectorAll('.toastItem.plain').forEach((old) => old.remove());
+  box.append(item);
+  while (box.children.length > 4) box.firstChild.remove();
+  box.hidden = false;
+  timer = setTimeout(close, back ? UNDO_TOAST_MS : TOAST_MS);
+}
+
+function dropDeckUndo() {
+  const box = $('#toast');
+  box.querySelectorAll('.toastItem.deckUndo').forEach((item) => item.remove());
+  box.hidden = !box.children.length;
 }
 
 function banner(text, kind = 'error') {
@@ -203,8 +224,11 @@ async function save() {
 
 async function revert() {
   if (isDirty() && !confirm('Discard all unsaved changes?')) return;
+  const discarded = deckText();
   const shown = lastPreviewed;
   await loadDeck();
+  history.push(discarded); // Undo brings the changes back
+  newUndoStep();
   if (shown !== lastPreviewed) { // the board was showing previewed settings: put the saved ones back
     const saved = lastPreviewed;
     lastPreviewed = shown;
@@ -212,13 +236,12 @@ async function revert() {
     lastPreviewed = saved;
   }
   renderAll();
+  toast('Changes discarded', { undo, deck: true });
 }
 
 async function loadDeck() {
   state.deck = normalize(await api('GET', '/api/deck'));
   state.savedText = deckText();
-  history.past = [];
-  history.future = [];
   clampSel();
   lastPreviewed = JSON.stringify(M.resolveSettings(state.deck)); // what the board holds after loading (or discarding changes)
 }
@@ -348,8 +371,10 @@ function moveDesktop(from, to) {
   commit((d) => { M.moveInList(d.desktops, from, to); state.sel = { d: to, p: 0, k: null }; });
 }
 function deleteDesktop(i) {
-  if (!confirm(`Delete the desktop "${state.deck.desktops[i].name}" and everything on it?`)) return;
+  const { name } = state.deck.desktops[i];
+  if (!confirm(`Delete the desktop "${name}" and everything on it?`)) return;
   commit((d) => { M.removeDesktop(d, i); });
+  toast(`Deleted "${name}"`, { undo, deck: true });
 }
 function addDesktopOfKind(kind) {
   commit((d) => { state.addMenu = false; const i = M.addDesktop(d, kind); if (i !== null) state.sel = { d: i, p: 0, k: null }; });
@@ -365,7 +390,9 @@ function deletePage(di, pi) {
   const refs = M.foldersTo(d, d.pages[pi].id);
   const msg = `Delete the page "${d.pages[pi].title}"?` + (refs ? ` ${refs} folder key(s) pointing to it will become empty.` : '');
   if (!confirm(msg)) return;
+  const title = d.pages[pi].title || d.pages[pi].id;
   commit((deck) => { M.removePage(deck.desktops[di], pi); if (state.sel.d === di) state.sel.p = 0; state.sel.k = null; });
+  toast(`Deleted page "${title}"` + (refs ? `, emptied ${refs} folder key${refs > 1 ? 's' : ''}` : ''), { undo, deck: true });
 }
 
 // ---- the board screen preview ------------------------------------------------------------------------
@@ -622,6 +649,7 @@ function renderPageControls() {
     const lost = M.resizeLoss(pg, c, r);
     if (lost && !confirm(`${lost} key(s) no longer fit and will be removed. Continue?`)) return;
     commit(() => { M.resizePage(page(), c, r); });
+    if (lost) toast(`${lost} key${lost > 1 ? 's' : ''} removed`, { undo, deck: true });
   };
   const stepper = (label, value, set) => h('span', { class: 'stepper' }, label,
     h('button', { class: 'small', onclick: () => set(value - 1) }, '\u2212'), h('b', {}, value), h('button', { class: 'small', onclick: () => set(value + 1) }, '+'));
@@ -1271,11 +1299,15 @@ function putPreset(slot, presetKey) {
   if (!isKeys()) return;
   const nk = M.clone(presetKey);
   if (nk.folder === 'new' && desk().pages.length >= M.LIMITS.pages) { toast('This desktop already has the maximum number of pages'); return; }
+  const old = page().keys[slot];
   commit(() => {
     if (nk.folder === 'new') nk.folder = desk().pages[M.addPage(desk(), nk.label || 'Folder')].id;
     page().keys[slot] = nk;
     state.sel.k = slot;
   });
+  if (old && !M.isEmptyKey(old) && JSON.stringify(old) !== JSON.stringify(nk)) {
+    toast(old.label ? `Replaced "${old.label}"` : 'Key replaced', { undo, deck: true });
+  }
 }
 
 function applyPreset(p) {
@@ -1308,6 +1340,17 @@ async function saveUserPresets(list) {
     banner('Could not save presets: ' + e.message);
     return false;
   }
+}
+
+// Presets are saved as soon as they change (they are not part of the deck's undo history), so deleting one has its own undo.
+async function deletePreset(index) {
+  const gone = state.presets.user[index];
+  if (!(await saveUserPresets(state.presets.user.filter((_, i) => i !== index)))) return;
+  toast(`Deleted preset "${gone.name}"`, { undo: () => {
+    const list = [...state.presets.user];
+    list.splice(index, 0, gone);
+    saveUserPresets(list);
+  } });
 }
 
 function saveAsPreset() {
@@ -1343,7 +1386,7 @@ function renderPresets() {
   for (const p of shown) {
     const card = h('div', { class: 'pcard', draggable: true, title: p.key.folder ? 'A folder with a new page' : M.describeAction(p.key.action), onclick: () => applyPreset(p) },
       miniKey(p.key), h('div', { class: 'nm' }, p.name),
-      p.user ? h('button', { class: 'small danger del', title: 'Delete this preset', onclick: (e) => { e.stopPropagation(); saveUserPresets(state.presets.user.filter((_, i) => i !== p.idx)); } }, '\u2715') : null);
+      p.user ? h('button', { class: 'small danger del', title: 'Delete this preset', onclick: (e) => { e.stopPropagation(); deletePreset(p.idx); } }, '\u2715') : null);
     card.addEventListener('dragstart', (e) => { e.dataTransfer.setData('application/x-sd-preset', String(all.indexOf(p))); e.dataTransfer.effectAllowed = 'copy'; });
     grid.append(card);
   }

@@ -126,6 +126,11 @@ window.dragApp = (from, to) => {
   to.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
 };
 window.lookCheck = (text) => [...$$('#liveConfig .check')].find((l) => l.textContent.includes(text)).querySelector('input');
+window.toasts = () => $$('#toast .toastItem span').map((s) => s.textContent);
+window.toastUndo = () => $$('#toast .toastItem.withUndo button').pop().click();
+window.pageRow = (id) => $$('.pagerow').find((r) => r.querySelector('.id').textContent === id);
+window.rowStep = (which, sign) => btn(sign, document.querySelectorAll('.stepper')[which]).click();
+window.labelInput = () => document.querySelector('#inspector input[maxlength="10"]');
 window.press = (key, opts = {}) => document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...opts }));
 window.setInput = (el, value) => { el.value = value; el.dispatchEvent(new Event('input', { bubbles: true })); };
 window.addApps = (id, text) => { const el = document.querySelector('#' + id); el.focus(); el.value = text; el.dispatchEvent(new Event('change', { bubbles: true })); };
@@ -260,6 +265,49 @@ def main() -> int:
         check("adding a row adds 4 slots", cdp.js("$$('.key').length") == 16)
         cdp.js("press('z', { ctrlKey: true })")
         check("undo restores the grid", cdp.js("$$('.key').length") == 12)
+
+        print("undo")
+        cdp.js("$$('.desk')[3].querySelector('button.danger').click()")
+        check("deleting a desktop says so and offers Undo", cdp.js("names()") == ["Main", "Playing", "PC", "Stream"] and cdp.js("toasts()") == ['Deleted "Work"']
+              and cdp.js("!!document.querySelector('#toast .withUndo button')"), str(cdp.js("toasts()")))
+        time.sleep(6)
+        check("...and the offer is still there after 6 seconds", cdp.js("!!document.querySelector('#toast .withUndo button')"))
+        cdp.js("toastUndo()")
+        check("Undo brings the desktop back, with its pages", cdp.js("names()") == ["Main", "Playing", "PC", "Work", "Stream"] and cdp.js("!!pageRow('git')"))
+        check("...and the toast is gone", cdp.js("document.querySelector('#toast').hidden"))
+        keys_before = cdp.js("$$('.key').map((k) => k.textContent)")
+        pages_before = cdp.js("$$('.pagerow').length")
+        cdp.js("pageRow('media').querySelector('button.danger').click()")
+        check("deleting a page says what it emptied", cdp.js("$$('.pagerow').length") == pages_before - 1 and "folder key" in cdp.js("toasts()[0]"), str(cdp.js("toasts()")))
+        cdp.js("toastUndo()")
+        check("Undo brings back the page and the folder keys", cdp.js("$$('.pagerow').length") == pages_before and cdp.js("$$('.key').map((k) => k.textContent)") == keys_before)
+        cdp.js("rowStep(2, '\u2212')")
+        check("shrinking the grid says how many keys went", cdp.js("$$('.key').length") == 8 and "removed" in cdp.js("toasts()[0]"), str(cdp.js("toasts()")))
+        cdp.js("toastUndo()")
+        check("Undo brings the grid and its keys back", cdp.js("$$('.key').map((k) => k.textContent)") == keys_before)
+        cdp.js("keyAt(0).click()")
+        cdp.js("card('Paste').click()")
+        check("a preset placed on a used key offers Undo", cdp.js("keyLabel(0)") == "Paste" and cdp.js("toasts()") == ['Replaced "Mute"'], str(cdp.js("toasts()")))
+        cdp.js("toastUndo()")
+        check("Undo brings the replaced key back", cdp.js("keyLabel(0)") == "Mute")
+        pages_before = cdp.js("$$('.pagerow').length")
+        cdp.js("card('Folder').click()")
+        cdp.js("toastUndo()")
+        check("...and for the Folder preset also removes the page it made", cdp.js("keyLabel(0)") == "Mute" and cdp.js("$$('.pagerow').length") == pages_before)
+        cdp.js("drag(card('Paste'), keyAt(0))")
+        check("...also when the preset is dragged onto it", cdp.js("toasts()") == ['Replaced "Mute"'])
+        cdp.js("setInput(labelInput(), 'Other')")
+        check("the Undo offer goes away once the deck changes again", cdp.js("!document.querySelector('#toast .deckUndo')"))
+        cdp.js("press('z', { ctrlKey: true })")
+        cdp.js("setInput(labelInput(), 'Again')")  # the same field, right after an undo
+        cdp.js("press('z', { ctrlKey: true })")
+        check("an edit made right after an undo can be undone too", cdp.js("keyLabel(0)") == "Paste", cdp.js("keyLabel(0)"))
+        cdp.js("press('z', { ctrlKey: true })")
+        check("...and so can the preset before it", cdp.js("keyLabel(0)") == "Mute")
+        cdp.js("btn('Revert').click()")
+        check("discarding returns to the saved deck and offers Undo", cdp.wait("keyLabel(8) === '' && keyLabel(9) === '' && toasts().includes('Changes discarded')"), str(cdp.js("toasts()")))
+        cdp.js("toastUndo()")
+        check("Undo brings the discarded changes back", cdp.js("keyLabel(8)") == "Paste" and cdp.js("keyLabel(9)") == "Copy" and cdp.js("!btn('Save').disabled"))
 
         print("other desktops, multi-step action")
         cdp.js("$$('.pagerow').find((r) => r.querySelector('.id').textContent === 'git').click()")
@@ -661,9 +709,9 @@ def main() -> int:
         if shots:
             cdp.shot(shots / "16_clock.png")
         cdp.js("$$('.deskrow')[0].click()")  # back to a keys desktop for the steps that follow
-        cdp.js("btn('Save').click()")
-        check("Save succeeds, and does not promise an update with no board", cdp.wait("!document.querySelector('#toast').hidden && document.querySelector('#toast').textContent === 'Saved. The board updates when it reconnects.'"),
-              cdp.js("document.querySelector('#toast').textContent"))
+        cdp.js("document.querySelector('#toast').replaceChildren(); btn('Save').click()")  # (no toast left over from before)
+        check("Save succeeds, and does not promise an update with no board", cdp.wait("toasts().includes('Saved. The board updates when it reconnects.')"),
+              str(cdp.js("toasts()")))
         check("...and the button reads Saved again", cdp.js("btn('Saved') && btn('Saved').disabled"))
         saved = json.loads(deck_path.read_text(encoding="utf-8"))
         check("the file has the new key", any(k.get("label") == "Mute" for k in saved["desktops"][0]["pages"][0]["keys"][8:]))
@@ -713,6 +761,12 @@ def main() -> int:
         cdp.js("btn('Save as preset').click()")
         check("saving a key as a preset", cdp.wait("!!btn('My presets')"))
         check("the preset file was written", (work / "presets.user.json").exists() and "My test preset" in (work / "presets.user.json").read_text(encoding="utf-8"))
+        cdp.js("card('My test preset').querySelector('.del').click()")
+        check("deleting a preset offers Undo", cdp.wait("!card('My test preset') && toasts().includes('Deleted preset \\\"My test preset\\\"')")
+              and "My test preset" not in (work / "presets.user.json").read_text(encoding="utf-8"), str(cdp.js("toasts()")))
+        cdp.js("toastUndo()")
+        check("Undo brings the preset back, on screen and in the file", cdp.wait("!!card('My test preset')")
+              and "My test preset" in (work / "presets.user.json").read_text(encoding="utf-8"))
 
         print("reload")
         open_editor()
