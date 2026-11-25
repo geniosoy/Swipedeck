@@ -223,7 +223,7 @@ async function save() {
 }
 
 async function revert() {
-  if (isDirty() && !confirm('Discard all unsaved changes?')) return;
+  if (!isDirty()) return;
   const discarded = deckText();
   const shown = lastPreviewed;
   await loadDeck();
@@ -372,7 +372,6 @@ function moveDesktop(from, to) {
 }
 function deleteDesktop(i) {
   const { name } = state.deck.desktops[i];
-  if (!confirm(`Delete the desktop "${name}" and everything on it?`)) return;
   commit((d) => { M.removeDesktop(d, i); });
   toast(`Deleted "${name}"`, { undo, deck: true });
 }
@@ -388,8 +387,6 @@ function addPageTo(di) {
 function deletePage(di, pi) {
   const d = state.deck.desktops[di];
   const refs = M.foldersTo(d, d.pages[pi].id);
-  const msg = `Delete the page "${d.pages[pi].title}"?` + (refs ? ` ${refs} folder key(s) pointing to it will become empty.` : '');
-  if (!confirm(msg)) return;
   const title = d.pages[pi].title || d.pages[pi].id;
   commit((deck) => { M.removePage(deck.desktops[di], pi); if (state.sel.d === di) state.sel.p = 0; state.sel.k = null; });
   toast(`Deleted page "${title}"` + (refs ? `, emptied ${refs} folder key${refs > 1 ? 's' : ''}` : ''), { undo, deck: true });
@@ -647,7 +644,6 @@ function renderPageControls() {
     r = Math.min(Math.max(r, 1), M.LIMITS.rows);
     if (c === pg.cols && r === pg.rows) return;
     const lost = M.resizeLoss(pg, c, r);
-    if (lost && !confirm(`${lost} key(s) no longer fit and will be removed. Continue?`)) return;
     commit(() => { M.resizePage(page(), c, r); });
     if (lost) toast(`${lost} key${lost > 1 ? 's' : ''} removed`, { undo, deck: true });
   };

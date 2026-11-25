@@ -85,7 +85,8 @@ def free_port() -> int:
 
 
 HELPERS = """
-window.confirm = () => true;
+window.confirms = [];
+window.confirm = (message) => { confirms.push(message); return true; };
 window.prompt = () => 'My test preset';
 window.$$ = (s) => [...document.querySelectorAll(s)];
 window.keyAt = (i) => document.querySelector('.key[data-i="' + i + '"]');
@@ -308,6 +309,7 @@ def main() -> int:
         check("discarding returns to the saved deck and offers Undo", cdp.wait("keyLabel(8) === '' && keyLabel(9) === '' && toasts().includes('Changes discarded')"), str(cdp.js("toasts()")))
         cdp.js("toastUndo()")
         check("Undo brings the discarded changes back", cdp.js("keyLabel(8)") == "Paste" and cdp.js("keyLabel(9)") == "Copy" and cdp.js("!btn('Save').disabled"))
+        check("deleting, shrinking and discarding ask nothing: Undo covers them", cdp.js("confirms.length") == 0, str(cdp.js("confirms")))
 
         print("other desktops, multi-step action")
         cdp.js("$$('.pagerow').find((r) => r.querySelector('.id').textContent === 'git').click()")
@@ -372,7 +374,7 @@ def main() -> int:
             cdp.shot(shots / "6_template_coding.png")
         for _ in range(3):
             cdp.js("$$('.desk')[5].querySelector('button.danger').click()")
-        check("the added desktops can be deleted again", cdp.js("names()") == base)
+        check("the added desktops can be deleted again, without a dialog", cdp.js("names()") == base and cdp.js("confirms.length") == 0)
         cdp.js("btn('+ Add desktop').click()")
         cdp.js("menuItem('Keys desktop').click()")
         check("a blank keys desktop", cdp.js("$$('.desk').length") == 6 and cdp.js("$$('.key.empty').length") == 12)
