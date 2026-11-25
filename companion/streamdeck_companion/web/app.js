@@ -192,7 +192,7 @@ async function save() {
     state.sizeNote = `${(res.layoutBytes / 1024).toFixed(1)} KB`;
     if (res.warnings && res.warnings.length) banner('Saved, with warnings:\n' + res.warnings.join('\n'), 'warn');
     else banner(null);
-    toast('Saved. The board updates in a moment.');
+    toast(res.board ? 'Saved' : 'Saved. The board updates when it reconnects.');
   } catch (e) {
     banner('Not saved: ' + e.message);
   } finally {
@@ -647,6 +647,33 @@ function textInput(value, onInput, attrs = {}) {
 
 function liveEdit(fn, id) { commit(fn, { coalesce: id, rerender: 'live' }); }
 
+// App names, picked one at a time: each becomes a chip and the box suggests apps for the next one. (A browser matches a
+// <datalist> against the box's whole value, so one comma-separated box stops suggesting after the first name.)
+function appsField(id, apps, max, placeholder, onChange) {
+  const input = apps.length < max ? h('input', { type: 'text', id, class: 'appadd', list: 'runningApps',
+    placeholder: apps.length ? 'Add another' : placeholder, onfocus: loadRunningApps }) : null;
+  const apply = (next, refocus) => {
+    onChange(next);
+    const again = refocus && document.getElementById(id);
+    if (again) again.focus();
+  };
+  const add = () => {
+    const typed = M.parseApps(input.value);
+    const refocus = document.activeElement === input; // not when the change came from leaving the box
+    input.value = '';
+    const next = [...new Set([...apps, ...typed])].slice(0, max);
+    if (next.length !== apps.length) apply(next, refocus);
+  };
+  if (input) {
+    input.addEventListener('change', add);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); add(); } });
+  }
+  return h('div', { class: 'appsfield', dataset: { apps: id } },
+    apps.length ? h('div', { class: 'appchips' }, apps.map((a) => h('span', { class: 'appchip' }, a,
+      h('button', { class: 'x', title: `Remove ${a}`, onclick: () => apply(apps.filter((x) => x !== a), false) }, '\u2715')))) : null,
+    input);
+}
+
 function startCapture(button, p, onChange) {
   button.textContent = 'Press the key\u2026';
   const done = () => { document.removeEventListener('keydown', handler, true); state.capturing = false; button.textContent = 'Press a key\u2026'; };
@@ -869,11 +896,10 @@ function renderInspector() {
   const cards = [];
   cards.push(h('div', { class: 'card' }, h('h4', {}, 'Desktop'),
     field('Name', textInput(d.name, (v) => liveEdit(() => { desk().name = v; }, 'dname'), { maxLength: 24 })),
-    field('Show this desktop when these programs are in front', textInput(M.joinApps(d.apps), (v) => liveEdit(() => {
-      const apps = M.parseApps(v);
+    field('Show this desktop when these programs are in front', appsField('deskApps', d.apps || [], 10, 'e.g. obs64', (apps) => commit(() => {
       if (apps.length) desk().apps = apps; else delete desk().apps;
-    }, 'dapps'), { placeholder: 'obs64, code', list: 'runningApps', id: 'deskApps', onfocus: loadRunningApps }),
-    'Program names as in Task Manager, without .exe, separated by commas. The desktop comes to the front when one of them becomes the active window; it is checked only when the active program changes, so you can still swipe away.'),
+    })),
+    'Program names as in Task Manager\u2019s Details tab, without .exe. The desktop comes to the front when one of them becomes the active window; it is checked only when the active program changes, so you can still swipe away.'),
     h('div', { class: 'hint' }, kind === 'keys' ? 'A desktop holds pages of keys; swipe between desktops on the board.' :
       kind === 'nowplaying' ? 'The Now playing screen shows the Windows media session: cover, title, progress bar and controls. Choose the players and the look below the preview.' :
         kind === 'mixer' ? 'The volume mixer: the master volume and up to four programs as faders you drag on the board. Choose which programs come first below the preview.' :
@@ -948,7 +974,7 @@ function stateSection(k) {
   if (kind === 'none') return box;
   if (kind === 'app') {
     box.append(field('Program', textInput(M.stateApp(k), (v) => liveEdit(() => { key().state.source = `app:${M.normalizeApp(v) || 'obs64'}`; }, 'stateapp'),
-      { placeholder: 'obs64', list: 'runningApps', id: 'stateApp', onfocus: loadRunningApps }), 'Name as in Task Manager, without .exe.'));
+      { placeholder: 'obs64', list: 'runningApps', id: 'stateApp', onfocus: loadRunningApps }), 'Name as in Task Manager\u2019s Details tab, without .exe.'));
   }
   const look = M.stateLook(k);
   const icons = Object.keys(state.icons).sort();
@@ -1180,12 +1206,11 @@ function statsConfig(d) {
 
 function mixerConfig(d) {
   const o = M.liveOptions(d);
-  const apps = textInput(M.joinApps(o.apps), (v) => liveEdit(() => {
-    const list = M.parseApps(v).slice(0, 4);
+  const apps = appsField('mixerApps', o.apps, 4, 'e.g. spotify', (list) => commit(() => {
     if (list.length) M.setOptions(d, { apps: list }); else if (d.options) delete d.options.apps;
-  }, 'mixapps'), { placeholder: 'spotify, discord', list: 'runningApps', id: 'mixerApps', onfocus: loadRunningApps });
+  }));
   return [h('div', { class: 'card' }, h('h4', {}, 'Programs'),
-    field('Always show these first', apps, 'Program names as in Task Manager, without .exe, separated by commas (up to four). The other faders are the programs that are making sound, then the rest in alphabetical order.'),
+    field('Always show these first', apps, 'Program names as in Task Manager\u2019s Details tab, without .exe (up to four). The other faders are the programs that are making sound, then the rest in alphabetical order.'),
     h('div', { class: 'hint' }, 'A fader is shown for a program only while Windows has an audio session for it (it has played sound). The mixer reads and changes volumes only while this screen is showing.'))];
 }
 
@@ -1495,7 +1520,12 @@ function onKeyDown(e) {
   const tag = (e.target.tagName || '').toLowerCase();
   const typing = tag === 'input' && !['checkbox', 'range', 'color'].includes(e.target.type) || tag === 'textarea' || tag === 'select';
   const mod = e.ctrlKey || e.metaKey;
-  if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); save(); return; }
+  if (mod && e.key.toLowerCase() === 's') {
+    e.preventDefault();
+    if (e.target.classList && e.target.classList.contains('appadd')) e.target.blur(); // adds the name being typed
+    save();
+    return;
+  }
   if (typing) return;
   if (state.view !== 'deck') { // the general settings page has no keys to edit, but undo / redo still apply
     if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }

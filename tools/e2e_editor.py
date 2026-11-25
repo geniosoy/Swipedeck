@@ -128,6 +128,8 @@ window.dragApp = (from, to) => {
 window.lookCheck = (text) => [...$$('#liveConfig .check')].find((l) => l.textContent.includes(text)).querySelector('input');
 window.press = (key, opts = {}) => document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...opts }));
 window.setInput = (el, value) => { el.value = value; el.dispatchEvent(new Event('input', { bubbles: true })); };
+window.addApps = (id, text) => { const el = document.querySelector('#' + id); el.focus(); el.value = text; el.dispatchEvent(new Event('change', { bubbles: true })); };
+window.appChips = (id) => $$('[data-apps="' + id + '"] .appchip').map((c) => c.firstChild.textContent);
 window.setSelect = (el, value) => { el.value = value; el.dispatchEvent(new Event('change', { bubbles: true })); };
 window.settingCheck = (text) => [...$$('#settingsPage .check')].find((l) => l.textContent.includes(text)).querySelector('input');
 window.drag = (from, to) => {
@@ -466,10 +468,29 @@ def main() -> int:
         cdp.js("$$('.deskrow')[0].click()")
         cdp.js("document.querySelector('#deskApps').dispatchEvent(new Event('focus'))")
         check("the programs field offers the programs that are open", cdp.wait("document.querySelectorAll('#runningApps option').length === 2"))
-        cdp.js("setInput(document.querySelector('#deskApps'), 'OBS64.exe, Code, obs64')")
+        cdp.js("addApps('deskApps', 'OBS64.exe')")
+        check("a picked app becomes a chip, the box empties and keeps the focus", cdp.js("appChips('deskApps')") == ["obs64"]
+              and cdp.js("document.querySelector('#deskApps').value === '' && document.activeElement.id === 'deskApps'"))
+        cdp.js("addApps('deskApps', 'Code, obs64')")
         cdp.js("$$('.deskrow')[1].click()")
         cdp.js("$$('.deskrow')[0].click()")
-        check("the programs of a desktop are kept, cleaned up (no .exe, no repeats)", cdp.js("document.querySelector('#deskApps').value") == "obs64, code")
+        check("the apps of a desktop are kept, cleaned up (no .exe, no repeats)", cdp.js("appChips('deskApps')") == ["obs64", "code"])
+        cdp.js("addApps('deskApps', 'chrome')")
+        cdp.js("document.querySelector('[data-apps=deskApps] .appchip:last-child .x').click()")
+        check("a chip can be removed", cdp.js("appChips('deskApps')") == ["obs64", "code"])
+        cdp.js("document.querySelector('#deskApps').focus()")  # from here, real typing (browsers only fire "change" for that)
+        cdp.call("Input.insertText", text="steam")
+        for kind in ("keyDown", "keyUp"):
+            cdp.call("Input.dispatchKeyEvent", type=kind, key="Enter", code="Enter", windowsVirtualKeyCode=13)
+        check("typing a name and Enter adds it once", cdp.js("appChips('deskApps')") == ["obs64", "code", "steam"], str(cdp.js("appChips('deskApps')")))
+        cdp.js("document.querySelector('#deskApps').focus()")
+        cdp.call("Input.insertText", text="discord")
+        cdp.call("Input.dispatchKeyEvent", type="keyDown", key="s", code="KeyS", modifiers=2, windowsVirtualKeyCode=83)
+        check("Ctrl+S saves a name that is still in the box", cdp.wait("btn('Saved') && btn('Saved').disabled")
+              and json.loads(deck_path.read_text(encoding="utf-8"))["desktops"][0].get("apps") == ["obs64", "code", "steam", "discord"],
+              str(json.loads(deck_path.read_text(encoding="utf-8"))["desktops"][0].get("apps")))
+        for _ in range(2):
+            cdp.js("document.querySelector('[data-apps=deskApps] .appchip:last-child .x').click()")
 
         print("http and obs actions")
         cdp.js("window.actionSelect = () => [...document.querySelectorAll('#inspector select')].find((s) => [...s.options].some((o) => o.textContent === 'Send an HTTP request'))")
@@ -611,7 +632,8 @@ def main() -> int:
         cdp.js("btn('+ Add desktop').click()")
         check("the mixer cannot be added twice", cdp.js("[...document.querySelectorAll('.addmenu .item')].find((b) => b.textContent.includes('Volume mixer')).disabled"))
         cdp.js("press('Escape')")
-        cdp.js("setInput(document.querySelector('#mixerApps'), 'Discord.exe, steam')")
+        cdp.js("addApps('mixerApps', 'Discord.exe')")
+        cdp.js("addApps('mixerApps', 'steam')")
         check("pinned programs lead the preview", cdp.js("document.querySelector('.mock[data-kind=mixer] > div:nth-child(2)').textContent.includes('Discord')"))
         if shots:
             cdp.shot(shots / "15_mixer.png")
@@ -640,7 +662,8 @@ def main() -> int:
             cdp.shot(shots / "16_clock.png")
         cdp.js("$$('.deskrow')[0].click()")  # back to a keys desktop for the steps that follow
         cdp.js("btn('Save').click()")
-        check("Save succeeds", cdp.wait("document.querySelector('#toast') && !document.querySelector('#toast').hidden && document.querySelector('#toast').textContent.startsWith('Saved')"))
+        check("Save succeeds, and does not promise an update with no board", cdp.wait("!document.querySelector('#toast').hidden && document.querySelector('#toast').textContent === 'Saved. The board updates when it reconnects.'"),
+              cdp.js("document.querySelector('#toast').textContent"))
         check("...and the button reads Saved again", cdp.js("btn('Saved') && btn('Saved').disabled"))
         saved = json.loads(deck_path.read_text(encoding="utf-8"))
         check("the file has the new key", any(k.get("label") == "Mute" for k in saved["desktops"][0]["pages"][0]["keys"][8:]))

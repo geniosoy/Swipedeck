@@ -316,7 +316,8 @@ class EditorServer:
         with self._write_lock:
             atomic_write(self.deck_path, format_deck(data), backup=True)
         log.info("deck saved from the editor (%d bytes of layout)", size)
-        return 200, {"ok": True, "warnings": warnings, "layoutBytes": size}
+        return 200, {"ok": True, "warnings": warnings, "layoutBytes": size,
+                     "board": bool(self._status_fn().get("connected"))}  # whether a board is there to show it
 
     def board_settings(self, data) -> tuple[int, dict]:
         """Live preview: the board applies these settings now but does not store them (saving the deck does)."""

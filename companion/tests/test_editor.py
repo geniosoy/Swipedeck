@@ -64,6 +64,13 @@ class EditorServerTest(unittest.TestCase):
         for path in ("/app.js", "/model.js", "/style.css", "/icons.json", "/presets.json", "/templates.json", "/apps.json", "/fonts/fa.woff", "/favicon.svg", "/favicon.ico"):
             self.assertEqual(self.call("GET", path)[0], 200, path)
 
+    def test_saving_says_whether_a_board_is_there(self):
+        deck = self.json("GET", "/api/deck")[1]
+        self.assertIs(self.json("PUT", "/api/deck", deck)[1]["board"], True)
+        alone = EditorServer(self.deck_path, port=0)  # no companion status: no board
+        self.addCleanup(alone._httpd.server_close)
+        self.assertIs(alone.save_deck(deck)[1]["board"], False)
+
     def test_board_settings_and_sound_endpoints(self):
         sent = []
         srv = EditorServer(self.deck_path, port=0, command_fn=lambda c: sent.append(c) or True)
