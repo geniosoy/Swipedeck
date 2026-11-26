@@ -94,6 +94,8 @@ def main() -> int:
         print("desktops:", cdp.js("names()"))  # (names only: the icon glyphs cannot be printed to every console)
 
         print("screens")
+        # tall enough for the board to be drawn at its full 2x in the screen pictures
+        cdp.call("Emulation.setDeviceMetricsOverride", width=WIDTH, height=1100, deviceScaleFactor=1, mobile=False)
         desktop(0)
         screen_shot("screen-keys.png")
         # a folder page: the second page of the first desktop (the tree lists pages under the desktop)
@@ -108,6 +110,7 @@ def main() -> int:
         screen_shot("screen-stats.png")
 
         print("editor views")
+        cdp.call("Emulation.setDeviceMetricsOverride", width=WIDTH, height=HEIGHT, deviceScaleFactor=1, mobile=False)
         cdp.js("document.querySelector('#shotStyle').textContent = '.key.sel{outline:none !important} .key:hover{filter:none !important}'")
         desktop(0)
         cdp.js("keyAt(1).click()")  # select a key so the inspector shows
@@ -124,6 +127,7 @@ def main() -> int:
 
         # the two newer screens are added last, so the dots in the pictures above are not changed by them
         print("mixer and clock")
+        cdp.call("Emulation.setDeviceMetricsOverride", width=WIDTH, height=1100, deviceScaleFactor=1, mobile=False)
         cdp.js("btn('Desktops').click()")
         for name in ("Volume mixer", "Clock"):
             cdp.js("btn('+ Add desktop').click()")

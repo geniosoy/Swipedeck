@@ -101,14 +101,17 @@ If the board does not accept the upload: hold BOOT, tap RESET, release BOOT, upl
 The companion serves a layout editor at **http://127.0.0.1:8765/** (`Streamdeck-Editor.bat` opens it). Saving writes
 `companion/deck.json`, and the companion pushes the new layout to the board a moment later.
 
+* **Layout:** desktops on the left (with a picture of each), the board in the middle with its pages as tabs, a tray of
+  presets under it, and on the right a panel that switches between the selected **Key** and the **Desktop**. It follows
+  Windows' light or dark theme and stacks on narrow windows.
 * **Live preview** of the board's screen, drawn with the same geometry and the same icon glyphs as the firmware.
-  Click a key to edit it, drag keys to swap them.
+  Click a key to edit it, drag keys to swap them, drag a preset from the tray onto a key.
 * **Keyboard:** Ctrl+Z undoes, Ctrl+Y or Ctrl+Shift+Z redoes, Ctrl+S saves. With a key selected: Ctrl+C / Ctrl+V copy and
   paste it, Delete or Backspace clears it, the arrow keys move the selection. Esc closes the Add desktop menu and cancels
   recording a hotkey.
 * **Undo instead of questions:** deleting a desktop, a page or a saved preset, shrinking the grid, replacing a key with a
   preset and discarding changes happen at once, and a message at the bottom offers **Undo** for 10 seconds.
-* **Per key:** label, icon (all 51 board icons), color, and either an action, a folder (opens another page, or creates one)
+* **Per key:** label, icon (a short row, or **All icons** for all 51 board icons), color, and either an action, a folder (opens another page, or creates one)
   or nothing. Actions have forms: a hotkey builder (modifier tick boxes plus a key box, with a **Record** button;
   the Windows key cannot be captured by a browser, so it is a tick box), typed text, open, run, lock, and multi-step
   sequences with waits.
@@ -122,10 +125,10 @@ The companion serves a layout editor at **http://127.0.0.1:8765/** (`Streamdeck-
   desktops** you can add and then tweak: Discord, Coding (VS Code, with Git and Debug pages), OBS & streaming (F13-F24
   hotkeys to bind in OBS, with a Scenes page), Music, Windows, Browser, Editing and Gaming. They live in
   `companion/streamdeck_companion/web/templates.json`; add your own entries there (the tests validate every one).
-* **Live screen settings:** Now playing and PC stats have no keys, so the presets area gives way to their settings
-  (below the preview, which follows every option):
+* **Live screen settings:** live desktops have no keys, so there is no preset tray: their settings fill the right panel
+  and the preview follows every option:
   * *Now playing*: two player lists that are always visible, **Only these** and **Blocked**
-    (empty = no restriction), next to a searchable library of players: the ones running right now (detected on their own),
+    (empty = no restriction), above a searchable library of players: the ones running right now (detected on their own),
     and common music apps, browsers and video players with their logos (a letter badge where there is no logo; names of
     your own get a placeholder icon). Click **Only this** or **Block** on a player, or drag it into a list; a player is on one
     list at a time. Below: tint the background with the cover colors, show the album line, show the icon of the app that is
@@ -140,6 +143,9 @@ The companion serves a layout editor at **http://127.0.0.1:8765/** (`Streamdeck-
 * **Safety:** the editor can write actions that run on your PC, so the server listens on 127.0.0.1 only, accepts only its
   own Host name, and writes need a random token that exists only in the editor page (other websites you visit can neither
   read nor write your deck). `--no-editor` turns it off, `--editor-port N` moves it.
+
+The editor's typeface, Hanken Grotesk, is bundled under the SIL Open Font License
+(`companion/streamdeck_companion/web/fonts/HankenGrotesk-OFL.txt`); the design is described in `DESIGN.md`.
 
 ## Configuring by hand: `companion/deck.json`
 
@@ -273,7 +279,7 @@ test of the editor, which drives it in headless Edge/Chrome against a copy of th
 
 ## Volume mixer and clock screens
 
-Both are added from **+ Add desktop > Live** and configured below their preview in the editor (one of each per
+Both are added from **+ Add desktop > Live** and configured in the editor's right panel (one of each per
 deck). Like Now playing and PC stats they only work while their desktop is showing.
 
 ```jsonc

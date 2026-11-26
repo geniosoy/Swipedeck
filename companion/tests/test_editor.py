@@ -61,7 +61,8 @@ class EditorServerTest(unittest.TestCase):
         self.assertGreater(len(presets["builtin"]), 5)
         self.assertEqual(presets["user"], [])
         self.assertEqual(self.json("GET", "/api/status"), (200, {"connected": True}))
-        for path in ("/app.js", "/model.js", "/style.css", "/icons.json", "/presets.json", "/templates.json", "/apps.json", "/fonts/fa.woff", "/favicon.svg", "/favicon.ico", "/logo.svg"):
+        for path in ("/app.js", "/model.js", "/style.css", "/icons.json", "/presets.json", "/templates.json", "/apps.json", "/fonts/fa.woff", "/favicon.svg", "/favicon.ico", "/logo.svg",
+                     "/fonts/hanken-latin.woff2", "/fonts/hanken-latin-ext.woff2"):
             self.assertEqual(self.call("GET", path)[0], 200, path)
         # the header's logo is a copy of the project's: the two must not drift apart
         project_logo = Path(__file__).resolve().parents[2] / "assets" / "logo.svg"
