@@ -285,7 +285,7 @@ async function refreshStatus() {
 // ---- top bar -----------------------------------------------------------------------------------------
 
 // Made once and put back on every redraw (the top bar is redrawn every few seconds), so the logo is not loaded again.
-const BRAND = h('span', { class: 'brand' }, h('img', { src: '/logo.svg', alt: '', width: 32, height: 32 }), 'Swipedeck');
+const BRAND = h('span', { class: 'brand' }, h('img', { src: '/logo.svg', alt: '', width: 44, height: 44 }), 'Swipedeck');
 
 function renderTopbar() {
   const st = state.status;

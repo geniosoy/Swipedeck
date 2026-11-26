@@ -152,7 +152,7 @@ A name with a small pencil turns into a box where it stands: the key's name at t
 page name on the board preview. Enter or leaving keeps it, Escape takes it back. There are no separate name fields.
 
 ### Key head
-A picture of the key and its name. No key number, page name or kind: the section below says Action or Folder, and an empty
+A picture of the key (no colored ring: the ring on the board already marks it) and its name. No key number, page name or kind: the section below says Action or Folder, and an empty
 key offers to add either one.
 
 ### Dragging to reorder
