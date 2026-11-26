@@ -20,7 +20,9 @@ TEXT, BINARY, CLOSE, PING, PONG, CONTINUATION = 0x1, 0x2, 0x8, 0x9, 0xA, 0x0
 
 
 class WebSocketError(ConnectionError):
-    pass
+    def __init__(self, message: str, code: int | None = None):
+        super().__init__(message)
+        self.code = code  # the status code of the server's close frame, when it sent one
 
 
 def accept_key(key: str) -> str:
@@ -120,7 +122,8 @@ class WebSocket:
                 continue
             elif opcode == CLOSE:
                 self.close()
-                raise WebSocketError("the server closed the connection")
+                code = struct.unpack(">H", payload[:2])[0] if len(payload) >= 2 else None
+                raise WebSocketError("the server closed the connection", code)
             elif opcode in (TEXT, BINARY) and not started:
                 message, started = payload, True
                 if opcode == BINARY:

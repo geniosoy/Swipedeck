@@ -96,6 +96,8 @@ h3:first-child { margin-top: 0; }
 
 #pageControls { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin-top: 12px; color: var(--muted); }
 .stepper { display: inline-flex; align-items: center; gap: 6px; }
+.stepper .boardtext { display: inline-block; }
+.row .boardtext { flex: 1; min-width: 90px; }
 .stepper b { color: var(--text); min-width: 1.4em; text-align: center; }
 
 /* inspector */

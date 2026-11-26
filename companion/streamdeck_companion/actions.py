@@ -46,7 +46,7 @@ def expand_env(value, env=None):
     if isinstance(value, str):
         def sub(m):
             if m.group(1) not in env:
-                raise ValueError(f"the environment variable {m.group(1)} is not set")
+                raise ValueError(f"{m.group(1)} isn't set. Set it, then restart Swipedeck.")
             return env[m.group(1)]
 
         return ENV_RE.sub(sub, value)
@@ -78,22 +78,22 @@ def validate_action(action: dict, where: str = "action") -> None:
             raise ValueError(f"{where}: {e}") from None
     elif kind == "text":
         if not isinstance(action.get("text"), str) or not action["text"]:
-            raise ValueError(f"{where}: 'text' must be a non-empty string")
+            raise ValueError(f"{where}: Enter the text to type.")
     elif kind == "open":
         if not isinstance(action.get("target"), str) or not action["target"]:
-            raise ValueError(f"{where}: 'target' must be a non-empty string")
+            raise ValueError(f"{where}: Enter what to open.")
     elif kind == "run":
         cmd = action.get("command")
         ok = (isinstance(cmd, list) and cmd and all(isinstance(c, str) for c in cmd)) or (
             isinstance(cmd, str) and cmd)
         if not ok:
-            raise ValueError(f"{where}: 'command' must be a list of strings or a string")
+            raise ValueError(f"{where}: Enter a command.")
         if isinstance(cmd, str) and not action.get("shell"):
             raise ValueError(f"{where}: a string 'command' needs \"shell\": true (or give a list)")
     elif kind == "http":
         url = action.get("url")
         if not (isinstance(url, str) and re.match(r"^https?://\S+$", url)):
-            raise ValueError(f"{where}: 'url' must start with http:// or https://")
+            raise ValueError(f"{where}: Start the address with http:// or https://")
         if str(action.get("method", "GET")).upper() not in HTTP_METHODS:
             raise ValueError(f"{where}: 'method' must be one of {', '.join(HTTP_METHODS)}")
         headers = action.get("headers", {})

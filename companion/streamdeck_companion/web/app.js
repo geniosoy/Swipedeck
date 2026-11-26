@@ -34,7 +34,7 @@ function h(tag, props, ...children) {
 
 const state = {
   deck: null, savedText: '', sel: { d: 0, p: 0, k: null }, icons: {}, presets: { builtin: [], user: [] },
-  cat: 'all', query: '', status: null, clip: null, saving: false, capturing: false, sizeNote: '',
+  cat: 'all', query: '', status: null, clip: null, saving: false, capturing: false,
   templates: [], addMenu: false, view: 'deck', // 'deck' = the desktop editor, 'settings' = general settings
   runningApps: null, previewOn: false,                    // programs with a window (datalist of the "programs" fields); preview a key's "on" look
   sources: null, sourcesBusy: false, sourcesError: '', sourcesTried: false, // media players running now (Now playing filter)
@@ -148,16 +148,16 @@ async function previewSettings(now = false) {
 }
 
 const previewNoteText = () => (state.previewSent === false || !(state.status && state.status.connected)
-  ? 'The board is not connected: changes will reach it when it is, after you save.'
-  : 'Changes show on the board right away. They are kept when you save.');
+  ? 'Board disconnected. Saved changes apply when it reconnects.'
+  : 'Live on the board. Save to keep.');
 
 async function testSound(name) {
   await previewSettings(true); // the board should play the theme that is chosen here, not the one it had
   try {
     const res = await api('POST', '/api/board/sound', { name });
-    if (!res.sent) toast('The board is not connected.');
+    if (!res.sent) toast('Board disconnected.');
   } catch (e) {
-    toast('Could not play the sound: ' + e.message);
+    toast('Couldn\u2019t play the sound: ' + e.message);
   }
 }
 
@@ -169,7 +169,8 @@ async function api(method, path, body) {
     headers: { 'Content-Type': 'application/json', 'X-Streamdeck-Token': TOKEN },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  const data = await r.json().catch(() => ({}));
+  let data = {};
+  try { data = await r.json(); } catch (e) { if (r.ok) throw new Error(`not valid JSON (${e.message})`); }
   if (!r.ok) throw new Error(data.error || r.statusText);
   return data;
 }
@@ -199,7 +200,7 @@ function banner(text, kind = 'error') {
   const el = $('#banner');
   if (!text) { el.hidden = true; return; }
   el.className = kind === 'warn' ? 'warn' : '';
-  el.replaceChildren(h('span', {}, text), h('button', { class: 'small', onclick: () => { el.hidden = true; } }, 'Close'));
+  el.replaceChildren(h('span', {}, text), h('button', { class: 'small', onclick: () => { el.hidden = true; } }, 'Dismiss'));
   el.hidden = false;
 }
 
@@ -210,12 +211,11 @@ async function save() {
   try {
     const res = await api('PUT', '/api/deck', trimmedDeck());
     state.savedText = deckText();
-    state.sizeNote = `${(res.layoutBytes / 1024).toFixed(1)} KB`;
-    if (res.warnings && res.warnings.length) banner('Saved, with warnings:\n' + res.warnings.join('\n'), 'warn');
+    if (res.warnings && res.warnings.length) banner('Saved, with warnings:\n' + res.warnings.map((w) => M.describeProblem(w, state.deck)).join('\n'), 'warn');
     else banner(null);
     toast(res.board ? 'Saved' : 'Saved. The board updates when it reconnects.');
   } catch (e) {
-    banner('Not saved: ' + e.message);
+    banner('Not saved. ' + M.describeProblem(e.message, state.deck));
   } finally {
     state.saving = false;
     renderTopbar();
@@ -226,7 +226,7 @@ async function revert() {
   if (!isDirty()) return;
   const discarded = deckText();
   const shown = lastPreviewed;
-  await loadDeck();
+  try { await loadDeck(); } catch (e) { banner(loadProblem(e)); return; }
   history.push(discarded); // Undo brings the changes back
   newUndoStep();
   if (shown !== lastPreviewed) { // the board was showing previewed settings: put the saved ones back
@@ -239,8 +239,12 @@ async function revert() {
   toast('Changes discarded', { undo, deck: true });
 }
 
+const loadProblem = (e) => `Couldn\u2019t load the deck: ${e.message}. Reload to try again; the previous save is in deck.json.bak.`;
+
 async function loadDeck() {
-  state.deck = normalize(await api('GET', '/api/deck'));
+  let deck;
+  try { deck = await api('GET', '/api/deck'); } catch (e) { e.deck = true; throw e; }
+  state.deck = normalize(deck);
   state.savedText = deckText();
   clampSel();
   lastPreviewed = JSON.stringify(M.resolveSettings(state.deck)); // what the board holds after loading (or discarding changes)
@@ -259,22 +263,17 @@ async function refreshStatus() {
 
 function renderTopbar() {
   const st = state.status;
-  let pill = h('span', { class: 'pill off' }, 'Companion not reachable');
-  if (st) {
-    pill = st.connected
-      ? h('span', { class: 'pill on' }, `Board connected${st.firmware ? ' \u00B7 fw ' + st.firmware : ''} \u00B7 showing desktop ${st.desktop + 1}`)
-      : h('span', { class: 'pill off' }, 'Board not connected (you can still edit)');
-  }
-  const size = state.deck ? `${(M.layoutBytes(state.deck) / 1024).toFixed(1)} KB layout` : '';
+  let pill = h('span', { class: 'pill off' }, 'Can\u2019t reach Swipedeck. Check it\u2019s running, then reload.');
+  if (st) pill = st.connected ? h('span', { class: 'pill on' }, 'Board connected') : h('span', { class: 'pill off' }, 'Board disconnected');
   $('#topbar').replaceChildren(
-    h('span', { class: 'brand' }, 'Deck editor'),
+    h('span', { class: 'brand' }, 'Swipedeck'),
     h('nav', { class: 'tabs' },
       h('button', { class: 'tab' + (state.view === 'deck' ? ' on' : ''), onclick: () => setView('deck') }, 'Desktops'),
-      h('button', { class: 'tab' + (state.view === 'settings' ? ' on' : ''), onclick: () => setView('settings') }, 'General settings')),
-    pill, h('span', { class: 'pill' }, size), h('span', { class: 'spacer' }),
+      h('button', { class: 'tab' + (state.view === 'settings' ? ' on' : ''), onclick: () => setView('settings') }, 'Settings')),
+    pill, h('span', { class: 'spacer' }),
     h('button', { onclick: undo, disabled: !history.canUndo, title: 'Undo (Ctrl+Z)' }, 'Undo'),
     h('button', { onclick: redo, disabled: !history.canRedo, title: 'Redo (Ctrl+Y)' }, 'Redo'),
-    h('button', { onclick: revert, disabled: !isDirty() }, 'Revert'),
+    h('button', { onclick: revert, disabled: !isDirty() }, 'Discard changes'),
     h('button', { class: 'primary', onclick: save, disabled: !isDirty() || state.saving, title: 'Save (Ctrl+S)' },
       isDirty() ? 'Save' : 'Saved'),
   );
@@ -285,19 +284,18 @@ function renderTopbar() {
 function addMenu() {
   const hasNp = M.hasKind(state.deck, 'nowplaying'), hasStats = M.hasKind(state.deck, 'stats');
   const hasMixer = M.hasKind(state.deck, 'mixer'), hasClock = M.hasKind(state.deck, 'clock');
-  const item = (icon, name, desc, onclick, why = '') => h('button', { class: 'item', disabled: !!why, title: why || desc, onclick },
+  const item = (icon, name, desc, onclick, why = '') => h('button', { class: 'item', disabled: !!why, onclick },
     h('span', { class: 'fa ic' }, glyph(icon)),
-    h('span', { class: 'tx' }, h('span', { class: 'nm' }, name), h('span', { class: 'ds' }, why || desc)));
+    h('span', { class: 'tx' }, h('span', { class: 'nm' }, name), why || desc ? h('span', { class: 'ds' }, why || desc) : null));
   return h('div', { class: 'addmenu' },
-    h('div', { class: 'sec' }, 'Live screens'),
-    item('audio', 'Now playing', 'Cover, title and player controls from the Windows media session', () => addDesktopOfKind('nowplaying'), hasNp ? 'Already added' : ''),
+    item('keyboard', 'Blank', '', () => addDesktopOfKind('keys')),
+    h('div', { class: 'sec' }, 'Live'),
+    item('audio', 'Now playing', 'Song, cover and controls', () => addDesktopOfKind('nowplaying'), hasNp ? 'Already added' : ''),
     item('charge', 'PC stats', 'CPU, GPU, RAM, disk and network', () => addDesktopOfKind('stats'), hasStats ? 'Already added' : ''),
-    item('volume_up', 'Volume mixer', 'Master and per-program volume faders', () => addDesktopOfKind('mixer'), hasMixer ? 'Already added' : ''),
+    item('volume_up', 'Volume mixer', 'Volume per app', () => addDesktopOfKind('mixer'), hasMixer ? 'Already added' : ''),
     item('bell', 'Clock & timer', 'Time, weather and a countdown timer', () => addDesktopOfKind('clock'), hasClock ? 'Already added' : ''),
-    h('div', { class: 'sec' }, 'Ready-made desktops'),
-    state.templates.map((t) => item(t.icon, t.name, t.description, () => addTemplate(t))),
-    h('div', { class: 'sec' }, 'Blank'),
-    item('keyboard', 'Keys desktop', 'An empty page of keys', () => addDesktopOfKind('keys')));
+    h('div', { class: 'sec' }, 'Templates'),
+    state.templates.map((t) => item(t.icon, t.name, t.description, () => addTemplate(t))));
 }
 
 // Desktops can be dragged by their row to reorder; the whole card is the drop target (upper half = before it).
@@ -345,7 +343,7 @@ function renderTree() {
     const row = h('div', { class: 'deskrow', title: 'Drag to reorder', onclick: () => { state.sel = { d: i, p: 0, k: null }; renderAll(); } },
       h('span', { class: 'grip' }, '\u22EE\u22EE'),
       h('span', { class: 'fa' }, glyph(KIND_ICON[kind])),
-      h('span', { class: 'name' }, d.name || '(unnamed)'),
+      h('span', { class: 'name' }, d.name || 'Untitled'),
       h('button', { class: 'small', title: 'Move up', disabled: i === 0, onclick: (e) => { e.stopPropagation(); moveDesktop(i, i - 1); } }, '\u2191'),
       h('button', { class: 'small', title: 'Move down', disabled: i === state.deck.desktops.length - 1, onclick: (e) => { e.stopPropagation(); moveDesktop(i, i + 1); } }, '\u2193'),
       h('button', { class: 'small danger', title: 'Delete desktop', disabled: state.deck.desktops.length <= 1, onclick: (e) => { e.stopPropagation(); deleteDesktop(i); } }, '\u2715'),
@@ -354,8 +352,8 @@ function renderTree() {
     if (kind === 'keys') {
       const pages = h('div', { class: 'pages' });
       d.pages.forEach((p, pi) => {
-        pages.append(h('div', { class: 'pagerow' + (active && pi === state.sel.p ? ' active' : ''), onclick: () => { state.sel = { d: i, p: pi, k: null }; renderAll(); } },
-          h('span', { class: 't' }, p.title || p.id), h('span', { class: 'id' }, p.id),
+        pages.append(h('div', { class: 'pagerow' + (active && pi === state.sel.p ? ' active' : ''), dataset: { page: p.id }, onclick: () => { state.sel = { d: i, p: pi, k: null }; renderAll(); } },
+          h('span', { class: 't' }, M.pageName(d, p)),
           pi > 0 ? h('button', { class: 'small danger', title: 'Delete page', onclick: (e) => { e.stopPropagation(); deletePage(i, pi); } }, '\u2715') : null));
       });
       pages.append(h('button', { class: 'small', disabled: d.pages.length >= M.LIMITS.pages, onclick: () => addPageTo(i) }, '+ Page'));
@@ -371,7 +369,7 @@ function moveDesktop(from, to) {
   commit((d) => { M.moveInList(d.desktops, from, to); state.sel = { d: to, p: 0, k: null }; });
 }
 function deleteDesktop(i) {
-  const { name } = state.deck.desktops[i];
+  const name = state.deck.desktops[i].name || 'Untitled';
   commit((d) => { M.removeDesktop(d, i); });
   toast(`Deleted "${name}"`, { undo, deck: true });
 }
@@ -404,9 +402,9 @@ function keyEl(k, i, geo) {
     class: 'key ' + kind + (state.sel.k === i ? ' sel' : ''),
     draggable: kind !== 'empty',
     dataset: { i },
-    title: kind === 'empty' ? 'Empty slot' : kind === 'folder' ? `Folder \u2192 ${k.folder}` : M.describeAction(k.action)
+    title: kind === 'empty' ? 'Empty key' : kind === 'folder' ? `Folder \u2192 ${(desk().pages.find((p) => p.id === k.folder) || {}).title || k.folder}` : M.describeAction(k.action)
       + (k.repeat ? ' \u00B7 repeats while held' : k.hold ? ` \u00B7 held: ${M.describeAction(k.hold)}` : '')
-      + (M.stateKind(k) !== 'none' ? ' \u00B7 changes look with the PC' : ''),
+      + (M.stateKind(k) !== 'none' ? ' \u00B7 changes look' : ''),
     style: { left: x * S + 'px', top: y * S + 'px', width: geo.keyW * S + 'px', height: geo.keyH * S + 'px',
       borderRadius: (geo.radius ?? M.SETTING_DEFAULTS.keyRadius) * S + 'px',
       background: kind === 'empty' ? '' : (k.color || M.DEFAULT_KEY_COLOR) },
@@ -631,7 +629,7 @@ function renderScreen() {
   screen.append(content);
   const head = h('div', { class: 'stagehead' }, h('b', {}, d.name),
     kind === 'keys' ? `\u203A ${pg.title || pg.id}` : KIND_LABEL[kind],
-    h('span', { class: 'hint' }, kind === 'keys' ? 'Click a key to edit it \u00B7 drag keys to swap \u00B7 drag presets onto a slot' : 'Preview only'));
+    h('span', { class: 'hint' }, kind === 'keys' ? 'Drag keys to swap' : 'Sample data'));
   $('#screenMount').replaceChildren(head, screen);
 }
 
@@ -650,11 +648,10 @@ function renderPageControls() {
   const stepper = (label, value, set) => h('span', { class: 'stepper' }, label,
     h('button', { class: 'small', onclick: () => set(value - 1) }, '\u2212'), h('b', {}, value), h('button', { class: 'small', onclick: () => set(value + 1) }, '+'));
   box.replaceChildren(
-    h('span', { class: 'stepper' }, 'Page title ',
-      h('input', { type: 'text', value: pg.title || '', maxLength: 24, style: { width: '170px' }, oninput: (e) => commit(() => { page().title = e.target.value; }, { coalesce: 'ptitle', rerender: 'live' }) })),
+    h('span', { class: 'stepper' }, 'Page name ',
+      boardText(pg.title || '', (v) => commit(() => { page().title = v; }, { coalesce: 'ptitle', rerender: 'live' }), { maxLength: 24, style: { width: '170px' } })),
     stepper('Columns', pg.cols, (v) => resize(v, pg.rows)),
-    stepper('Rows', pg.rows, (v) => resize(pg.cols, v)),
-    h('span', { class: 'hint' }, `page id: ${pg.id}`));
+    stepper('Rows', pg.rows, (v) => resize(pg.cols, v)));
 }
 
 // ---- inspector ---------------------------------------------------------------------------------------
@@ -670,6 +667,14 @@ function textInput(value, onInput, attrs = {}) {
 }
 
 function liveEdit(fn, id) { commit(fn, { coalesce: id, rerender: 'live' }); }
+
+// A name the board will show: it says so when the text has characters the board's fonts lack.
+function boardText(value, onInput, attrs) {
+  const warning = h('div', { class: 'hint bad accents' }, 'The board can\u2019t show accents or emoji.');
+  warning.hidden = !M.boardCannotShow(value);
+  const input = textInput(value, (v) => { warning.hidden = !M.boardCannotShow(v); onInput(v); }, attrs);
+  return h('div', { class: 'boardtext' }, input, warning);
+}
 
 // App names, picked one at a time: each becomes a chip and the box suggests apps for the next one. (A browser matches a
 // <datalist> against the box's whole value, so one comma-separated box stops suggesting after the first name.)
@@ -699,8 +704,8 @@ function appsField(id, apps, max, placeholder, onChange) {
 }
 
 function startCapture(button, p, onChange) {
-  button.textContent = 'Press the key\u2026';
-  const done = () => { document.removeEventListener('keydown', handler, true); state.capturing = false; button.textContent = 'Press a key\u2026'; };
+  button.textContent = 'Press keys\u2026 (Esc cancels)';
+  const done = () => { document.removeEventListener('keydown', handler, true); state.capturing = false; button.textContent = 'Record'; };
   const handler = (e) => {
     if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return; // wait for the main key
     e.preventDefault();
@@ -708,7 +713,7 @@ function startCapture(button, p, onChange) {
     done();
     if (e.code === 'Escape' && !e.ctrlKey && !e.shiftKey && !e.altKey) return; // Esc alone cancels
     const name = M.keyNameFromCode(e.code);
-    if (!name) { toast('That key is not supported'); return; }
+    if (!name) { toast('Can\u2019t use that key. Try another.'); return; }
     p.ctrl = e.ctrlKey; p.shift = e.shiftKey; p.alt = e.altKey; p.key = name; // the Windows key cannot be captured: tick it
     onChange(M.composeHotkey(p), true);
   };
@@ -719,28 +724,26 @@ function startCapture(button, p, onChange) {
 function hotkeyEditor(action) {
   const id = 'hk' + nextEditorId++;
   const p = M.parseHotkey(action.keys);
-  const result = h('code', {}, action.keys || '(nothing)');
   const change = (keys, structural) => {
-    result.textContent = keys || '(nothing)';
     commit(() => { action.keys = keys; }, { coalesce: id, rerender: structural ? 'all' : 'live' });
   };
   const keyIn = textInput(p.key, (v, el) => { p.key = v; el.classList.toggle('bad', !!v && !M.isValidKey(v)); change(M.composeHotkey(p), false); },
     { list: 'keynames', placeholder: 'e.g. s, f5, enter, volume_up', class: p.key && !M.isValidKey(p.key) ? 'bad' : '' });
-  const cap = h('button', { class: 'small' }, 'Press a key\u2026');
+  const cap = h('button', { class: 'small' }, 'Record');
   cap.addEventListener('click', () => { if (!state.capturing) startCapture(cap, p, change); });
   return h('div', {},
     h('div', { class: 'row mods' }, ['ctrl', 'shift', 'alt', 'win'].map((m) =>
       h('label', {}, h('input', { type: 'checkbox', checked: p[m], onchange: (e) => { p[m] = e.target.checked; change(M.composeHotkey(p), true); } }), m[0].toUpperCase() + m.slice(1)))),
     h('div', { class: 'field sub' }, h('label', {}, 'Key'), h('div', { class: 'row tight' }, keyIn, cap)),
-    h('div', { class: 'hint' }, 'Result: ', result, ' \u00B7 the Windows key cannot be captured, tick Win instead. Esc cancels capturing.'));
+    h('div', { class: 'hint' }, 'Can\u2019t record Win; tick it.'));
 }
 
 // `replace(newAction)` swaps the whole action (type change); field edits mutate `action` in place.
 function actionEditor(action, replace, inMulti = false) {
   const id = 'act' + nextEditorId++;
   const types = inMulti ? ['hotkey', 'text', 'open', 'run', 'lock', 'http', 'obs', 'wait'] : ['hotkey', 'text', 'open', 'run', 'lock', 'http', 'obs', 'multi'];
-  const names = { hotkey: 'Press keys', text: 'Type text', open: 'Open file / URL / app', run: 'Run a program', lock: 'Lock the PC',
-    http: 'Send an HTTP request', obs: 'Control OBS', multi: 'Several steps', wait: 'Wait' };
+  const names = { hotkey: 'Press keys', text: 'Type text', open: 'Open', run: 'Run command', lock: 'Lock the PC',
+    http: 'Send web request', obs: 'Control OBS', multi: 'Several steps', wait: 'Wait' };
   const cur = !action ? 'none' : action.wait !== undefined ? 'wait' : action.type;
   const select = h('select', { onchange: (e) => {
     const t = e.target.value;
@@ -759,19 +762,18 @@ function actionEditor(action, replace, inMulti = false) {
   } else if (cur === 'run') {
     const shell = !!action.shell;
     const input = textInput(Array.isArray(action.command) ? M.joinCommand(action.command) : action.command || '',
-      (v) => edit(() => { action.command = action.shell ? v : M.splitCommand(v); }), { placeholder: 'program and arguments' });
+      (v) => edit(() => { action.command = action.shell ? v : M.splitCommand(v); }), { placeholder: 'app and arguments' });
     body = h('div', {}, field('Command', input),
       h('label', { class: 'row tight' }, h('input', { type: 'checkbox', checked: shell, onchange: (e) => commit(() => {
         if (e.target.checked) { action.command = Array.isArray(action.command) ? M.joinCommand(action.command) : action.command; action.shell = true; }
         else { action.command = M.splitCommand(action.command || ''); delete action.shell; }
-      }) }), 'Run through the shell (needed for commands like "code" or "calc")'));
+      }) }), 'Use command prompt (for commands like "code")'));
   } else if (cur === 'wait') {
     body = field('Seconds', h('input', { type: 'number', min: 0, max: 30, step: 0.1, value: action.wait, oninput: (e) => edit(() => { action.wait = Math.min(30, Math.max(0, +e.target.value || 0)); }) }));
-  } else if (cur === 'lock') body = h('div', { class: 'hint' }, 'Locks the Windows session, like Win+L.');
-  else if (cur === 'http') body = httpEditor(action, edit);
+  } else if (cur === 'http') body = httpEditor(action, edit);
   else if (cur === 'obs') body = obsEditor(action, edit);
   else if (cur === 'multi') body = multiEditor(action);
-  return h('div', {}, field('What it does', select), body);
+  return h('div', {}, field('Action', select), body);
 }
 
 // A box for JSON typed by hand: it saves only what parses, and says so when it does not.
@@ -781,7 +783,7 @@ function jsonBox(value, onValid, rows = 4) {
   area.addEventListener('input', () => {
     const r = M.parseJsonBody(area.value);
     status.className = 'hint' + (r.ok ? '' : ' bad');
-    status.textContent = r.ok ? '' : `Not saved yet: ${r.error}`;
+    status.textContent = r.ok ? '' : r.error;
     if (r.ok) onValid(r.value);
   });
   return h('div', {}, area, status);
@@ -814,9 +816,9 @@ function httpEditor(action, edit) {
     area.addEventListener('input', () => edit(() => { action.body = area.value; }));
     box.append(area);
   }
-  box.append(field('Give up after (seconds)', h('input', { type: 'number', min: 1, max: 30, step: 1, value: action.timeout ?? 5, style: { width: '90px' },
+  box.append(field('Timeout (seconds)', h('input', { type: 'number', min: 1, max: 30, step: 1, value: action.timeout ?? 5, style: { width: '90px' },
     oninput: (e) => edit(() => { const t = Math.min(30, Math.max(1, +e.target.value || 5)); if (t === 5) delete action.timeout; else action.timeout = t; }) })),
-  h('div', { class: 'hint' }, 'Write ${NAME} in the address, a header or the body to use the environment variable NAME at the moment of the request: keep tokens and passwords out of this file.'));
+  h('div', { class: 'hint' }, 'Keep tokens out of the deck file: write ${NAME} to use an environment variable.'));
   return box;
 }
 
@@ -827,7 +829,7 @@ function obsEditor(action, edit) {
     action.request = e.target.value === '__other' ? 'GetVersion' : e.target.value;
   }) }, M.OBS_REQUESTS.map((r) => h('option', { value: r.id, selected: action.request === r.id }, r.label)),
   h('option', { value: '__other', selected: !info }, 'Another request\u2026'));
-  const box = h('div', { id: 'obsEditor' }, field('OBS should', choose));
+  const box = h('div', { id: 'obsEditor' }, field('Do', choose));
   if (info && info.fields) {
     for (const [key, label, example] of info.fields) {
       box.append(field(label, textInput((action.data || {})[key] || '', (v) => edit(() => {
@@ -841,7 +843,7 @@ function obsEditor(action, edit) {
       'Any obs-websocket 5 request, written as in its documentation.'),
     field('Request data (JSON, optional)', jsonBox(action.data, (v) => edit(() => { if (Array.isArray(v) || !Object.keys(v).length) delete action.data; else action.data = v; }), 3)));
   }
-  box.append(h('div', { class: 'hint' }, 'OBS needs its WebSocket server on (Tools > WebSocket Server Settings). Where to connect, and the password, are in General settings.'));
+  box.append(h('div', { class: 'hint' }, 'Set up in Settings > OBS.'));
   return box;
 }
 
@@ -856,7 +858,7 @@ function multiEditor(action) {
       actionEditor(step, (na) => commit(() => { action.steps[i] = na || { type: 'lock' }; }), true)));
   });
   box.append(h('button', { class: 'small', onclick: () => commit(() => action.steps.push({ type: 'hotkey', keys: 'ctrl+c' })) }, '+ Add step'));
-  return h('div', {}, h('div', { class: 'hint' }, 'Steps run one after the other, uninterrupted.'), box);
+  return box;
 }
 
 function folderEditor(k) {
@@ -865,22 +867,24 @@ function folderEditor(k) {
   const select = h('select', { onchange: (e) => {
     const v = e.target.value;
     if (v === '__new__') {
-      if (d.pages.length >= M.LIMITS.pages) { toast('This desktop already has the maximum number of pages'); renderInspector(); return; }
+      if (d.pages.length >= M.LIMITS.pages) { toast('Page limit reached.'); renderInspector(); return; }
       commit(() => { const i = M.addPage(desk(), k.label || 'Folder'); k.folder = desk().pages[i].id; });
     } else commit(() => { k.folder = v; });
   } },
-  others.map(({ p }) => h('option', { value: p.id, selected: p.id === k.folder }, `${p.title || p.id} (${p.id})`)),
+  others.map(({ p }) => h('option', { value: p.id, selected: p.id === k.folder }, M.pageName(d, p))),
   h('option', { value: '__new__' }, '+ New page\u2026'));
   const target = d.pages.findIndex((p) => p.id === k.folder);
-  return h('div', {}, field('Opens page', select),
-    target >= 0 ? h('button', { class: 'small', onclick: () => { state.sel = { d: state.sel.d, p: target, k: null }; renderAll(); } }, 'Edit that page') : h('div', { class: 'hint' }, 'The page this folder pointed to is gone.'));
+  return h('div', {}, field('Page', select),
+    target >= 0 ? h('button', { class: 'small', onclick: () => { state.sel = { d: state.sel.d, p: target, k: null }; renderAll(); } }, 'Open page') : h('div', { class: 'hint' }, 'Page missing. Pick another.'));
 }
+
+const iconName = (n) => (n.charAt(0).toUpperCase() + n.slice(1)).replace(/_/g, ' '); // "volume_down" -> "Volume down"
 
 function iconPicker(k) {
   const names = Object.keys(state.icons).sort();
   const grid = h('div', { class: 'iconGrid' }, h('button', { class: k.icon ? '' : 'on', title: 'No icon', onclick: () => commit(() => { delete page().keys[state.sel.k].icon; }) }, '\u2205'),
-    names.map((n) => h('button', { class: 'fa' + (k.icon === n ? ' on' : ''), title: n, onclick: () => commit(() => { page().keys[state.sel.k].icon = n; }) }, glyph(n))));
-  return field('Icon' + (k.icon ? ` \u00B7 ${k.icon}` : ''), grid);
+    names.map((n) => h('button', { class: 'fa' + (k.icon === n ? ' on' : ''), title: iconName(n), dataset: { icon: n }, onclick: () => commit(() => { page().keys[state.sel.k].icon = n; }) }, glyph(n))));
+  return field('Icon', grid);
 }
 
 function colorPicker(k) {
@@ -893,10 +897,9 @@ function colorPicker(k) {
 
 function setKeyKind(kind) {
   const i = state.sel.k;
-  if (kind === 'folder' && desk().pages.length < 2 && desk().pages.length >= M.LIMITS.pages) { toast('No page available for a folder'); return; }
+  if (kind === 'folder' && desk().pages.length < 2 && desk().pages.length >= M.LIMITS.pages) { toast('Page limit reached.'); return; }
   commit(() => {
     const key = page().keys[i] || {};
-    if (kind === 'empty') { page().keys[i] = {}; return; }
     if (kind === 'action') {
       delete key.folder;
       if (!key.action) key.action = M.defaultAction('hotkey');
@@ -919,30 +922,24 @@ function renderInspector() {
   const kind = M.desktopKind(d);
   const cards = [];
   cards.push(h('div', { class: 'card' }, h('h4', {}, 'Desktop'),
-    field('Name', textInput(d.name, (v) => liveEdit(() => { desk().name = v; }, 'dname'), { maxLength: 24 })),
-    field('Show this desktop when these programs are in front', appsField('deskApps', d.apps || [], 10, 'e.g. obs64', (apps) => commit(() => {
+    field('Name', boardText(d.name, (v) => liveEdit(() => { desk().name = v; }, 'dname'), { maxLength: 24 })),
+    field('Switch here for these apps', appsField('deskApps', d.apps || [], 10, 'e.g. obs64', (apps) => commit(() => {
       if (apps.length) desk().apps = apps; else delete desk().apps;
     })),
-    'Program names as in Task Manager\u2019s Details tab, without .exe. The desktop comes to the front when one of them becomes the active window; it is checked only when the active program changes, so you can still swipe away.'),
-    h('div', { class: 'hint' }, kind === 'keys' ? 'A desktop holds pages of keys; swipe between desktops on the board.' :
-      kind === 'nowplaying' ? 'The Now playing screen shows the Windows media session: cover, title, progress bar and controls. Choose the players and the look below the preview.' :
-        kind === 'mixer' ? 'The volume mixer: the master volume and up to four programs as faders you drag on the board. Choose which programs come first below the preview.' :
-          kind === 'clock' ? 'The clock screen: the time, the weather and a countdown timer that keeps running (and rings) wherever the board is showing. Choose its parts below the preview.' :
-            'The PC stats screen shows CPU, GPU, RAM, VRAM, disk and network. Choose the style, the items and their order below the preview.')));
+    'Names from Task Manager > Details, without .exe.')));
   if (kind !== 'keys') { box.replaceChildren(...cards); return; }
   const k = keyObj();
   if (state.sel.k === null) {
-    cards.push(h('div', { class: 'card' }, h('h4', {}, 'No key selected'),
-      h('div', { class: 'hint' }, 'Click a key on the screen to edit it. Click an empty slot, then a preset, to place it \u2014 or drag a preset onto a slot. Delete clears the selected key, Ctrl+C / Ctrl+V copy and paste it, Ctrl+Z undoes.')));
+    cards.push(h('div', { class: 'card' }, h('div', { class: 'hint' }, 'Click a key to edit it.')));
     box.replaceChildren(...cards);
     return;
   }
   const kk = M.keyKind(k);
-  const seg = h('div', { class: 'seg' }, [['action', 'Action'], ['folder', 'Folder'], ['empty', 'Empty']].map(([v, t]) =>
+  const seg = h('div', { class: 'seg' }, [['action', 'Action'], ['folder', 'Folder']].map(([v, t]) =>
     h('button', { class: kk === v ? 'on' : '', onclick: () => { if (kk !== v) setKeyKind(v); } }, t)));
   const keyCard = h('div', { class: 'card' }, h('h4', {}, `Key ${state.sel.k + 1}`), seg);
   if (kk !== 'empty') {
-    keyCard.append(field('Label', textInput(k.label || '', (v) => liveEdit(() => { const key = page().keys[state.sel.k]; if (v) key.label = v; else delete key.label; }, 'label'), { maxLength: 10, placeholder: 'short text' }), 'Up to about 10 characters fit.'),
+    keyCard.append(field('Label', boardText(k.label || '', (v) => liveEdit(() => { const key = page().keys[state.sel.k]; if (v) key.label = v; else delete key.label; }, 'label'), { maxLength: 10 })),
       iconPicker(k), colorPicker(k));
     if (kk === 'folder') keyCard.append(folderEditor(k));
     else {
@@ -950,13 +947,13 @@ function renderInspector() {
         holdSection(k), stateSection(k));
     }
   } else {
-    keyCard.append(h('div', { class: 'hint' }, 'This slot is empty. Pick a type above, or click a preset below.'));
+    keyCard.append(h('div', { class: 'hint' }, 'Pick Action, Folder or a preset.'));
   }
   keyCard.append(h('div', { class: 'row', style: { marginTop: '10px' } },
-    h('button', { class: 'small', disabled: kk === 'empty', onclick: copyKey }, 'Copy'),
-    h('button', { class: 'small', disabled: !state.clip, onclick: pasteKey }, 'Paste'),
-    h('button', { class: 'small danger', disabled: kk === 'empty', onclick: clearKey }, 'Clear'),
-    h('button', { class: 'small', disabled: kk !== 'action', onclick: saveAsPreset, title: kk === 'folder' ? 'Folders cannot be presets' : '' }, 'Save as preset')));
+    h('button', { class: 'small', disabled: kk === 'empty', onclick: copyKey, title: 'Copy (Ctrl+C)' }, 'Copy'),
+    h('button', { class: 'small', disabled: !state.clip, onclick: pasteKey, title: 'Paste (Ctrl+V)' }, 'Paste'),
+    h('button', { class: 'small danger', disabled: kk === 'empty', onclick: clearKey, title: 'Clear (Delete)' }, 'Clear'),
+    kk === 'action' ? h('button', { class: 'small', onclick: saveAsPreset }, 'Save as preset') : null));
   cards.push(keyCard);
   box.replaceChildren(...cards);
 }
@@ -977,11 +974,9 @@ async function loadRunningApps() {
 
 function holdSection(k) {
   const mode = M.holdMode(k);
-  const select = h('select', { id: 'holdMode', onchange: (e) => commit(() => M.setHoldMode(page().keys[state.sel.k], e.target.value)) },
+  const select = h('select', { id: 'holdMode', 'aria-label': 'When the key is held', onchange: (e) => commit(() => M.setHoldMode(page().keys[state.sel.k], e.target.value)) },
     M.HOLD_MODES.map(([v, t]) => h('option', { value: v, selected: mode === v }, t)));
-  const box = h('div', { class: 'subsec', id: 'holdSection' }, h('h5', {}, 'When held'),
-    field('Holding the key for about half a second', select,
-      mode === 'repeat' ? 'Good for volume keys: the key is pressed again and again until you let go.' : mode === 'action' ? 'A short tap still does the action above.' : null));
+  const box = h('div', { class: 'subsec', id: 'holdSection' }, h('h5', {}, 'Hold (\u00BD s)'), h('div', { class: 'field' }, select));
   if (mode === 'action') {
     box.append(actionEditor(k.hold, (na) => commit(() => { const key = page().keys[state.sel.k]; if (na) key.hold = na; else delete key.hold; })));
   }
@@ -991,28 +986,27 @@ function holdSection(k) {
 function stateSection(k) {
   const kind = M.stateKind(k);
   const key = () => page().keys[state.sel.k];
-  const select = h('select', { id: 'stateKind', onchange: (e) => commit(() => M.setStateKind(key(), e.target.value)) },
+  const select = h('select', { id: 'stateKind', 'aria-label': 'Change the look when', onchange: (e) => commit(() => M.setStateKind(key(), e.target.value)) },
     M.STATE_SOURCES.map(([v, t]) => h('option', { value: v, selected: kind === v }, t)));
-  const box = h('div', { class: 'subsec', id: 'stateSection' }, h('h5', {}, 'Shows a state'),
-    field('The key changes its look when', select, kind === 'none' ? 'For example a mute key that turns red while the sound is muted.' : null));
+  const box = h('div', { class: 'subsec', id: 'stateSection' }, h('h5', {}, 'Change look when'),
+    h('div', { class: 'field' }, select, kind === 'none' ? h('div', { class: 'hint' }, 'For example a mute key that turns red while the sound is muted.') : null));
   if (kind === 'none') return box;
   if (kind === 'app') {
-    box.append(field('Program', textInput(M.stateApp(k), (v) => liveEdit(() => { key().state.source = `app:${M.normalizeApp(v) || 'obs64'}`; }, 'stateapp'),
-      { placeholder: 'obs64', list: 'runningApps', id: 'stateApp', onfocus: loadRunningApps }), 'Name as in Task Manager\u2019s Details tab, without .exe.'));
+    box.append(field('App', textInput(M.stateApp(k), (v) => liveEdit(() => { key().state.source = `app:${M.normalizeApp(v) || 'obs64'}`; }, 'stateapp'),
+      { placeholder: 'obs64', list: 'runningApps', id: 'stateApp', onfocus: loadRunningApps }), 'Name from Task Manager > Details, without .exe.'));
   }
   const look = M.stateLook(k);
   const icons = Object.keys(state.icons).sort();
-  box.append(field('Look while it is on', h('div', { class: 'row tight' },
+  box.append(field('Look when on', h('div', { class: 'row tight' },
     h('input', { type: 'color', id: 'stateColor', value: look.color.toLowerCase(), title: 'Color while on',
       style: { width: '34px', height: '28px', padding: 0, border: 0, background: 'none' },
       oninput: (e) => liveEdit(() => { key().state.color = e.target.value.toUpperCase(); }, 'statecolor') }),
-    textInput(k.state.label !== undefined ? k.state.label : '', (v) => liveEdit(() => { if (v) key().state.label = v; else delete key().state.label; }, 'statelabel'),
-      { maxLength: 10, placeholder: k.label ? `label: ${k.label}` : 'label', style: { flex: '1', minWidth: '90px' } }),
+    boardText(k.state.label !== undefined ? k.state.label : '', (v) => liveEdit(() => { if (v) key().state.label = v; else delete key().state.label; }, 'statelabel'),
+      { maxLength: 10, placeholder: 'Same label', style: { flex: '1', minWidth: '90px' } }),
     h('select', { id: 'stateIcon', onchange: (e) => commit(() => { if (e.target.value === '') delete key().state.icon; else key().state.icon = e.target.value; }) },
-      h('option', { value: '', selected: k.state.icon === undefined }, 'icon: same'),
-      icons.map((n) => h('option', { value: n, selected: k.state.icon === n }, n)))),
-    'Empty label and "same" icon keep the key\'s own.'));
-  box.append(checkRow('Preview this look on the screen above', !!state.previewOn, (v) => { state.previewOn = v; renderScreen(); }));
+      h('option', { value: '', selected: k.state.icon === undefined }, 'Same icon'),
+      icons.map((n) => h('option', { value: n, selected: k.state.icon === n }, iconName(n)))))));
+  box.append(checkRow('Preview', !!state.previewOn, (v) => { state.previewOn = v; renderScreen(); }));
   return box;
 }
 
@@ -1020,7 +1014,7 @@ function copyKey() { const k = keyObj(); if (k && !M.isEmptyKey(k)) { state.clip
 function pasteKey() {
   if (!state.clip || state.sel.k === null) return;
   const clip = M.clone(state.clip);
-  if (clip.folder && !desk().pages.some((p) => p.id === clip.folder)) { toast('That folder points to a page on another desktop'); return; }
+  if (clip.folder && !desk().pages.some((p) => p.id === clip.folder)) { toast('Can\u2019t paste: that folder\u2019s page isn\u2019t on this desktop.'); return; }
   commit(() => { page().keys[state.sel.k] = clip; });
 }
 function clearKey() { if (state.sel.k !== null) commit(() => { page().keys[state.sel.k] = {}; }); }
@@ -1028,8 +1022,8 @@ function clearKey() { if (state.sel.k !== null) commit(() => { page().keys[state
 // ---- live screen settings ----------------------------------------------------------------------------
 
 const checkRow = (label, checked, onchange) => h('label', { class: 'check' }, h('input', { type: 'checkbox', checked, onchange: (e) => onchange(e.target.checked) }), label);
-const radioRow = (group, label, value, current, onPick, hint) => h('label', { class: 'check' },
-  h('input', { type: 'radio', name: group, checked: current === value, onchange: () => onPick(value) }), h('span', {}, label, hint ? h('span', { class: 'hint' }, ` \u2014 ${hint}`) : null));
+const radioRow = (group, label, value, current, onPick) => h('label', { class: 'check' },
+  h('input', { type: 'radio', name: group, checked: current === value, onchange: () => onPick(value) }), h('span', {}, label));
 
 // A list row that can be dragged to reorder (same drop-position rule as the desktop list).
 function sortableRow(row, index, mime, move) {
@@ -1117,12 +1111,12 @@ function libraryItems() {
   }
   for (const cat of state.catalog.categories) {
     for (const app of state.catalog.apps.filter((a) => a.category === cat.id && !running.has(a.id))) {
-      items.push({ section: cat.name, app, name: app.name, names: app.patterns, sub: 'matches ' + app.patterns.join(', ') });
+      items.push({ section: cat.name, app, name: app.name, names: app.patterns, sub: '' });
     }
   }
   const shown = items.filter((it) => !q || it.name.toLowerCase().includes(q) || it.sub.toLowerCase().includes(q) || it.names.some((n) => n.toLowerCase().includes(q)));
   if (raw && raw.length <= 80 && !items.some((it) => it.name.toLowerCase() === q || it.names.some((n) => n.toLowerCase() === q))) {
-    shown.unshift({ section: 'Custom name', app: null, name: `\u201C${raw}\u201D`, names: [raw], sub: 'a name of your own: matched by this text' });
+    shown.unshift({ section: 'Custom name', app: null, name: `\u201C${raw}\u201D`, names: [raw], sub: 'Add as typed' });
   }
   return shown;
 }
@@ -1130,14 +1124,14 @@ function libraryItems() {
 function fillLibrary(listEl, f, setFilter) {
   const toggle = (item, which, label) => {
     const on = M.inFilterList(f, which, item.names);
-    return h('button', { class: 'small tog' + (on ? ' on' : ''), dataset: { list: which }, title: on ? 'Click to remove from this list' : `Add to the \u201C${label}\u201D list`,
-      onclick: () => setFilter((x) => { if (on) M.removeFilterApps(x, which, item.names); else M.addFilterApps(x, item.names, which); }) }, (on ? '\u2713 ' : '') + (which === 'allow' ? 'Only' : 'Never'));
+    return h('button', { class: 'small tog' + (on ? ' on' : ''), dataset: { list: which }, title: on ? 'Remove' : '',
+      onclick: () => setFilter((x) => { if (on) M.removeFilterApps(x, which, item.names); else M.addFilterApps(x, item.names, which); }) }, (on ? '\u2713 ' : '') + label);
   };
   const rows = [];
   let section = null;
   for (const item of libraryItems()) {
     if (item.section !== section) { section = item.section; rows.push(h('div', { class: 'libsec' }, section)); }
-    rows.push(appRow({ app: item.app, title: item.name, sub: item.sub, tag: item.tag, drag: { names: item.names }, buttons: [toggle(item, 'allow', 'Only show these players'), toggle(item, 'block', 'Never show these players')] }));
+    rows.push(appRow({ app: item.app, title: item.name, sub: item.sub, tag: item.tag, drag: { names: item.names }, buttons: [toggle(item, 'allow', 'Only this'), toggle(item, 'block', 'Block')] }));
   }
   if (!rows.length) rows.push(h('div', { class: 'hint' }, 'No players match.'));
   listEl.replaceChildren(...rows);
@@ -1146,7 +1140,7 @@ function fillLibrary(listEl, f, setFilter) {
 function listCard(which, title, empty, f, setFilter) {
   const entries = M.filterEntries(f[which], state.catalog);
   const card = h('div', { class: 'card applist', dataset: { list: which } }, h('h4', {}, title, h('span', { class: 'count' }, entries.length ? String(entries.length) : '')),
-    entries.length ? entries.map((e) => appRow({ app: e.app, title: e.app ? e.app.name : e.names[0], sub: e.app ? 'matches ' + e.names.join(', ') : 'custom name', drag: { names: e.names },
+    entries.length ? entries.map((e) => appRow({ app: e.app, title: e.app ? e.app.name : e.names[0], sub: e.app ? '' : 'Custom', drag: { names: e.names },
       buttons: [h('button', { class: 'small x', title: 'Remove', onclick: () => setFilter((x) => { M.removeFilterApps(x, which, e.names); }) }, '\u2715')] }))
       : h('div', { class: 'hint emptylist' }, empty));
   card.addEventListener('dragover', (e) => { if ([...e.dataTransfer.types].includes(DRAG_APP)) { e.preventDefault(); card.classList.add('dragover'); } });
@@ -1170,30 +1164,28 @@ function nowPlayingConfig(d) {
   if (!state.sourcesTried) { state.sourcesTried = true; setTimeout(detectPlayers, 0); } // look at what is running, once
 
   const libList = h('div', { class: 'liblist' });
-  const search = h('input', { type: 'text', id: 'appSearch', placeholder: 'Search players, or type a name of your own\u2026', value: state.appSearch, maxLength: 80,
+  const search = h('input', { type: 'text', id: 'appSearch', placeholder: 'Search or add a name', value: state.appSearch, maxLength: 80,
     oninput: (e) => { state.appSearch = e.target.value; fillLibrary(libList, f, setFilter); } });
   fillLibrary(libList, f, setFilter);
   const libraryCard = h('div', { class: 'card library' },
-    h('div', { class: 'libhead' }, h('h4', {}, 'Players'), h('button', { class: 'small', disabled: state.sourcesBusy, onclick: detectPlayers, title: 'Look again at which players Windows has right now' }, state.sourcesBusy ? 'Looking\u2026' : 'Refresh running players')),
-    h('div', { class: 'hint' }, 'Click Only or Never on a player, or drag it into a list. Names are matched by part, ignoring case.'),
+    h('div', { class: 'libhead' }, h('h4', {}, 'Players'), h('button', { class: 'small', disabled: state.sourcesBusy, onclick: detectPlayers }, state.sourcesBusy ? 'Looking\u2026' : 'Refresh')),
+    h('div', { class: 'hint' }, 'A name matches any player containing it, ignoring case.'),
     search,
-    state.sourcesError ? h('div', { class: 'hint bad' }, 'Could not list the running players: ' + state.sourcesError) : null,
+    state.sourcesError ? h('div', { class: 'hint bad' }, `Can\u2019t list players: ${state.sourcesError}. Try Refresh.`) : null,
     libList);
 
   const look = h('div', { class: 'card' }, h('h4', {}, 'Look'),
-    checkRow('Tint the background with the cover colors', o.tint, (v) => setOpt({ tint: v })),
-    checkRow('Show the album line', o.album, (v) => setOpt({ album: v })),
-    checkRow('Show the icon of the app that is playing', o.appIcon, (v) => setOpt({ appIcon: v })),
-    h('div', { class: 'hint', style: { marginLeft: '24px' } }, 'A small icon next to the time: the app\u2019s own icon from Windows when it has one, otherwise its logo or a letter. Off by default.'),
+    checkRow('Background from cover colors', o.tint, (v) => setOpt({ tint: v })),
+    checkRow('Album', o.album, (v) => setOpt({ album: v })),
+    checkRow('App icon', o.appIcon, (v) => setOpt({ appIcon: v })),
     h('div', { class: 'lab', style: { marginTop: '8px' } }, 'Controls'),
-    radioRow('npctl', 'Full', 'full', o.controls, (v) => setOpt({ controls: v }), 'shuffle, previous, play/pause, next, repeat'),
-    radioRow('npctl', 'Basic', 'basic', o.controls, (v) => setOpt({ controls: v }), 'previous, play/pause, next'));
+    radioRow('npctl', 'Full', 'full', o.controls, (v) => setOpt({ controls: v })),
+    radioRow('npctl', 'Basic', 'basic', o.controls, (v) => setOpt({ controls: v })));
 
   return [h('div', { class: 'npgrid' }, libraryCard,
     h('div', { class: 'npright' },
-      h('div', { class: 'hint', id: 'filterSummary' }, M.describeFilter(f)),
-      listCard('allow', 'Only show these players', 'Empty: any player can be shown.', f, setFilter),
-      listCard('block', 'Never show these players', 'Empty: no player is blocked.', f, setFilter),
+      listCard('allow', 'Only these', 'Any player', f, setFilter),
+      listCard('block', 'Blocked', 'None', f, setFilter),
       look))];
 }
 
@@ -1207,12 +1199,12 @@ function statsConfig(d) {
 
   const style = h('div', { class: 'card' }, h('h4', {}, 'Style'),
     M.STAT_STYLES.map((s) => h('button', { class: 'option' + (o.style === s.id ? ' on' : ''), dataset: { style: s.id }, onclick: () => setOpt({ style: s.id }) },
-      h('b', {}, s.name), h('span', { class: 'ds' }, s.desc))));
+      h('b', {}, s.name))));
   const rows = [];
   enabled.forEach((id, i) => {
     const row = h('div', { class: 'srow', dataset: { item: id } }, h('span', { class: 'grip', title: 'Drag to reorder' }, '\u22EE\u22EE'),
       h('input', { type: 'checkbox', checked: true, disabled: enabled.length <= 1, title: enabled.length <= 1 ? 'At least one item must stay' : 'Hide', onchange: (e) => toggle(id, e.target.checked) }),
-      h('span', { class: 'nm' }, info(id).name), h('span', { class: 'ds' }, info(id).desc),
+      h('span', { class: 'nm' }, info(id).name), h('span', { class: 'spacer' }),
       h('button', { class: 'small', disabled: i === 0, title: 'Move up', onclick: () => move(i, i - 1) }, '\u2191'),
       h('button', { class: 'small', disabled: i === enabled.length - 1, title: 'Move down', onclick: () => move(i, i + 1) }, '\u2193'));
     sortableRow(row, i, 'application/x-sd-statitem', move);
@@ -1221,10 +1213,10 @@ function statsConfig(d) {
   for (const id of disabled) {
     rows.push(h('div', { class: 'srow off', dataset: { item: id } }, h('span', { class: 'grip' }, ''),
       h('input', { type: 'checkbox', checked: false, title: 'Show', onchange: (e) => toggle(id, e.target.checked) }),
-      h('span', { class: 'nm' }, info(id).name), h('span', { class: 'ds' }, info(id).desc)));
+      h('span', { class: 'nm' }, info(id).name)));
   }
-  const items = h('div', { class: 'card' }, h('h4', {}, 'What to show'), h('div', { class: 'hint', style: { marginBottom: '6px' } }, 'Tick what you want and drag to set the order.'), rows,
-    h('div', { class: 'hint' }, 'GPU and VRAM need an NVIDIA graphics card. CPU temperature is not available on Windows without extra software.'));
+  const items = h('div', { class: 'card' }, h('h4', {}, 'What to show'), rows,
+    h('div', { class: 'hint' }, 'GPU and VRAM need an NVIDIA card. CPU temperature isn\u2019t shown.'));
   return [style, items];
 }
 
@@ -1233,30 +1225,29 @@ function mixerConfig(d) {
   const apps = appsField('mixerApps', o.apps, 4, 'e.g. spotify', (list) => commit(() => {
     if (list.length) M.setOptions(d, { apps: list }); else if (d.options) delete d.options.apps;
   }));
-  return [h('div', { class: 'card' }, h('h4', {}, 'Programs'),
-    field('Always show these first', apps, 'Program names as in Task Manager\u2019s Details tab, without .exe (up to four). The other faders are the programs that are making sound, then the rest in alphabetical order.'),
-    h('div', { class: 'hint' }, 'A fader is shown for a program only while Windows has an audio session for it (it has played sound). The mixer reads and changes volumes only while this screen is showing.'))];
+  return [h('div', { class: 'card' }, h('h4', {}, 'Apps'),
+    field('Show first', apps, 'Up to 4. An app appears once it has played sound.'))];
 }
 
 function clockConfig(d) {
   const o = M.liveOptions(d);
   const setOpt = (patch) => commit(() => { M.setOptions(d, patch); });
-  const parts = h('div', { class: 'card' }, h('h4', {}, 'Parts'),
-    checkRow('12-hour clock (AM / PM)', o.hour12, (v) => setOpt({ hour12: v })),
-    checkRow('Show seconds', o.seconds, (v) => setOpt({ seconds: v })),
-    checkRow('Countdown timer (1, 5, 10 and 25 minute presets)', o.timer, (v) => setOpt({ timer: v })),
-    checkRow('Weather', o.weather, (v) => setOpt({ weather: v })),
-    h('div', { class: 'hint' }, 'The timer runs on the board: it keeps counting when you swipe to another desktop, and when it ends the board rings (even with key sounds off), wakes the screen and shows this desktop.'));
+  const parts = h('div', { class: 'card' }, h('h4', {}, 'Show'),
+    checkRow('12-hour', o.hour12, (v) => setOpt({ hour12: v })),
+    checkRow('Seconds', o.seconds, (v) => setOpt({ seconds: v })),
+    checkRow('Timer', o.timer, (v) => setOpt({ timer: v })),
+    checkRow('Weather', o.weather, (v) => commit(() => { M.setOptions(d, { weather: v }); })),
+    h('div', { class: 'hint' }, 'The timer keeps running on other desktops. It rings even with key sounds off.'));
   const results = h('div', { class: 'placeResults', id: 'placeResults' });
   const message = h('div', { class: 'hint', id: 'placeMessage' });
-  const query = h('input', { type: 'text', id: 'placeQuery', placeholder: 'A city, like Oslo', maxLength: 80, style: { flex: '1' } });
+  const query = h('input', { type: 'text', id: 'placeQuery', placeholder: 'e.g. Oslo', maxLength: 80, style: { flex: '1' } });
   const search = async () => {
     message.className = 'hint';
     message.textContent = 'Searching\u2026';
     results.replaceChildren();
     try {
       const found = (await api('GET', '/api/places?q=' + encodeURIComponent(query.value.trim()))).places;
-      message.textContent = found.length ? 'Click the one you mean:' : 'No place found.';
+      message.textContent = found.length ? '' : 'No match. Try a nearby city.';
       results.replaceChildren(...found.map((p) => h('button', { class: 'small', dataset: { place: p.name }, onclick: () => setOpt({ place: { name: p.name, lat: p.lat, lon: p.lon } }) }, M.foundPlaceText(p))));
     } catch (e) {
       message.className = 'hint bad';
@@ -1265,14 +1256,14 @@ function clockConfig(d) {
   };
   query.addEventListener('keydown', (e) => { if (e.key === 'Enter') search(); });
   const weather = h('div', { class: 'card' }, h('h4', {}, 'Weather'),
-    o.place ? h('div', { class: 'place', id: 'chosenPlace' }, h('span', { class: 'nm' }, M.placeText(o.place)), h('button', { class: 'small', onclick: () => commit(() => { delete d.options.place; }) }, 'Clear'))
-      : h('div', { class: 'hint', id: 'chosenPlace' }, 'No place chosen: the weather is not shown.'),
-    field('Find a place', h('div', { class: 'row' }, query, h('button', { class: 'small', id: 'placeSearch', onclick: search }, 'Find'))),
+    o.place ? h('div', { class: 'place', id: 'chosenPlace' }, h('span', { class: 'nm' }, M.placeText(o.place)), h('button', { class: 'small', onclick: () => commit(() => { delete d.options.place; }) }, 'Remove'))
+      : h('div', { class: 'hint', id: 'chosenPlace' }, 'Pick a city to show weather.'),
+    field('City', h('div', { class: 'row' }, query, h('button', { class: 'small', id: 'placeSearch', onclick: search }, 'Search'))),
     message, results,
     field('Units', h('select', { id: 'weatherUnits', onchange: (e) => setOpt({ units: e.target.value }) },
       [['c', 'Celsius (\u00B0C)'], ['f', 'Fahrenheit (\u00B0F)']].map(([v, t]) => h('option', { value: v, selected: o.units === v }, t)))),
-    h('div', { class: 'hint' }, 'Weather comes from Open-Meteo (open-meteo.com), free and without an account. While this screen is showing, the chosen place\u2019s coordinates are sent there every 15 minutes, and what you type in "Find a place" when you search. Nothing else is sent. Start the companion with --no-weather to never send anything.'));
-  return [parts, weather];
+    h('div', { class: 'hint', id: 'weatherPrivacy' }, 'Weather comes from Open-Meteo. It receives what you search for here, and the city\u2019s coordinates about every 15 minutes while the clock is on the board\u2019s screen. To turn weather off, untick Weather above.'));
+  return o.weather ? [parts, weather] : [parts];
 }
 
 function renderLiveConfig() {
@@ -1294,7 +1285,7 @@ function flatPresets() {
 function putPreset(slot, presetKey) {
   if (!isKeys()) return;
   const nk = M.clone(presetKey);
-  if (nk.folder === 'new' && desk().pages.length >= M.LIMITS.pages) { toast('This desktop already has the maximum number of pages'); return; }
+  if (nk.folder === 'new' && desk().pages.length >= M.LIMITS.pages) { toast('Page limit reached.'); return; }
   const old = page().keys[slot];
   commit(() => {
     if (nk.folder === 'new') nk.folder = desk().pages[M.addPage(desk(), nk.label || 'Folder')].id;
@@ -1311,7 +1302,7 @@ function applyPreset(p) {
   let slot = state.sel.k;
   if (slot === null) {
     slot = M.firstEmptySlot(page());
-    if (slot === null) { toast('This page has no empty slot. Select a key to replace it, or enlarge the grid.'); return; }
+    if (slot === null) { toast(page().rows < M.LIMITS.rows ? 'Page full. Select a key to replace, or add a row.' : 'Page full. Select a key to replace.'); return; }
   }
   putPreset(slot, p.key);
 }
@@ -1321,9 +1312,9 @@ function fillWithCategory(cat) {
   const items = flatPresets().filter((p) => p.cat === cat && !M.isEmptyKey(p.key) && p.key.folder !== 'new');
   const free = page().keys.map((k, i) => (M.isEmptyKey(k) ? i : -1)).filter((i) => i >= 0);
   const n = Math.min(items.length, free.length);
-  if (!n) { toast('No empty slots on this page'); return; }
+  if (!n) { toast('Page full.'); return; }
   commit(() => { for (let j = 0; j < n; j++) page().keys[free[j]] = M.clone(items[j].key); });
-  toast(`Placed ${n} of ${items.length} presets` + (n < items.length ? ' (the page is full)' : ''));
+  toast(n < items.length ? `Added ${n} of ${items.length}. Page full.` : `Added ${n}.`);
 }
 
 async function saveUserPresets(list) {
@@ -1333,7 +1324,7 @@ async function saveUserPresets(list) {
     renderPresets();
     return true;
   } catch (e) {
-    banner('Could not save presets: ' + e.message);
+    banner('Couldn\u2019t save presets: ' + e.message);
     return false;
   }
 }
@@ -1355,7 +1346,7 @@ function saveAsPreset() {
   const name = prompt('Name for this preset:', k.label || 'My key');
   if (!name || !name.trim()) return;
   const key = M.clone(k);
-  saveUserPresets([...state.presets.user, { name: name.trim().slice(0, 40), key }]).then((ok) => ok && toast('Preset saved'));
+  saveUserPresets([...state.presets.user, { name: name.trim().slice(0, 40), key }]).then((ok) => ok && toast('Added to My presets'));
 }
 
 function miniKey(key) {
@@ -1374,7 +1365,7 @@ function renderPresets() {
   const all = flatPresets();
   const cats = [{ id: 'all', name: 'All' }];
   if (state.presets.user.length) cats.push({ id: 'user', name: 'My presets' });
-  for (const c of state.presets.builtin) cats.push({ id: c.id, name: c.name });
+  for (const c of state.presets.builtin) cats.push({ id: c.id, name: c.name, note: c.note });
   const q = state.query.trim().toLowerCase();
   const shown = all.filter((p) => (state.cat === 'all' || p.cat === state.cat) &&
     (!q || p.name.toLowerCase().includes(q) || (p.key.label || '').toLowerCase().includes(q) || M.describeAction(p.key.action).toLowerCase().includes(q)));
@@ -1389,12 +1380,12 @@ function renderPresets() {
   if (!shown.length) grid.append(h('div', { class: 'hint' }, 'No presets match.'));
   const canFill = isKeys() && state.cat !== 'all' && state.cat !== 'layout';
   $('#presets').replaceChildren(
-    h('h3', {}, 'Button presets'),
+    h('h3', {}, 'Presets'),
     h('div', { class: 'phead' },
       h('input', { type: 'text', placeholder: 'Search presets\u2026', value: state.query, oninput: (e) => { state.query = e.target.value; renderPresetGrid(grid, e.target); } }),
-      h('button', { class: 'small', disabled: !canFill, title: 'Put every preset of the selected category into the empty slots of this page', onclick: () => fillWithCategory(state.cat) }, 'Add category to page'),
-      h('span', { class: 'hint' }, 'Click a preset to place it in the selected (or first empty) slot, or drag it onto a slot.')),
-    h('div', { class: 'chips' }, cats.map((c) => h('button', { class: 'chip' + (state.cat === c.id ? ' on' : ''), onclick: () => { state.cat = c.id; renderPresets(); } }, c.name))),
+      canFill ? h('button', { class: 'small', onclick: () => fillWithCategory(state.cat) }, 'Add all') : null,
+      h('span', { class: 'hint' }, 'Click or drag to add.')),
+    h('div', { class: 'chips' }, cats.map((c) => h('button', { class: 'chip' + (state.cat === c.id ? ' on' : ''), title: c.note || '', onclick: () => { state.cat = c.id; renderPresets(); } }, c.name))),
     grid);
 }
 
@@ -1419,19 +1410,28 @@ function renderSettingsPage() {
     commit((d) => { d.settings = d.settings || {}; d.settings[name] = value; }, { coalesce: 'setting-' + name, rerender });
     previewSettings();
   };
-  const slider = (id, label, min, max, value, name, unit = '') => {
-    const out = h('b', {}, value + unit);
+  // `show` only formats the number next to the label: the value stored is always the slider's own.
+  const slider = (id, label, min, max, value, name, show = (v) => v) => {
+    const out = h('b', {}, show(value));
     return h('div', { class: 'field' }, h('label', {}, label + ' ', out),
-      h('input', { type: 'range', id, min, max, value, oninput: (e) => { out.textContent = e.target.value + unit; setting(name, +e.target.value, 'sample'); } }));
+      h('input', { type: 'range', id, min, max, value, oninput: (e) => { out.textContent = show(+e.target.value); setting(name, +e.target.value, 'sample'); } }));
   };
-  const choice = (id, label, options, value, name, hint) => h('div', { class: 'field' }, h('label', {}, label),
-    h('select', { id, onchange: (e) => setting(name, +e.target.value, 'all') },
-      options.map(([v, t]) => h('option', { value: v, selected: v === value }, t))),
+  const choice = (id, label, options, value, name, { hint, off = () => false, pick = (v) => setting(name, v, 'all') } = {}) => h('div', { class: 'field' }, h('label', {}, label),
+    h('select', { id, onchange: (e) => pick(+e.target.value) },
+      options.map(([v, t]) => h('option', { value: v, selected: v === value, disabled: v !== value && off(v) }, t))),
     hint ? h('div', { class: 'hint' }, hint) : null);
+  // Dimming only means something before the screen turns off: such times cannot be picked, and choosing a screen-off time
+  // that comes first sets dimming to Never (what the board would do anyway).
+  const dimsTooLate = (dim, sleep) => !!(dim && sleep && dim >= sleep);
+  const pickSleep = (sleep) => {
+    const clash = dimsTooLate(s.dimAfter, sleep);
+    commit((d) => { d.settings = d.settings || {}; d.settings.sleepAfter = sleep; if (clash) d.settings.dimAfter = 0; });
+    previewSettings();
+    if (clash) toast('Dimming turned off: the screen turns off first', { undo, deck: true });
+  };
   const st = state.status;
   const info = (label, value) => h('div', { class: 'inforow' }, h('span', { class: 'lab' }, label), h('span', {}, value));
-  const desktops = state.deck.desktops.map((d, i) => [i, `${i + 1}. ${d.name || 'Desktop'}`]);
-  const dimClash = s.dimAfter && s.sleepAfter && s.sleepAfter <= s.dimAfter;
+  const desktops = state.deck.desktops.map((d, i) => [i, `${i + 1}. ${d.name || 'Untitled'}`]);
 
   // a small sample of the key look (same math as the board); the look sliders redraw only this
   const sample = h('div', { class: 'lookSample', id: 'lookSample', style: { width: M.SCREEN.w * 0.75 + 'px', height: (M.SCREEN.h - M.SCREEN.header) * 0.75 + 'px' } });
@@ -1449,50 +1449,43 @@ function renderSettingsPage() {
   drawSample();
 
   $('#settingsPage').replaceChildren(h('div', { class: 'settingsWrap' },
-    h('h2', {}, 'General settings'),
+    h('h2', {}, 'Settings'),
     h('p', { class: 'hint', id: 'previewNote' }, previewNoteText()),
     h('div', { class: 'cards' },
       h('div', { class: 'card' }, h('h4', {}, 'Sound'),
-        checkRow('Key sounds (a tick when you press a key)', s.sounds, (v) => setting('sounds', v, 'all')),
+        checkRow('Key sounds', s.sounds, (v) => setting('sounds', v, 'all')),
         checkRow('Folder and Back sounds', s.navSounds, (v) => setting('navSounds', v, 'all')),
-        h('div', { class: 'field' }, h('label', {}, 'Sound'),
-          h('div', { class: 'seg', id: 'themeSeg' }, M.SOUND_THEMES.map(([v, t, hint]) =>
-            h('button', { class: s.soundTheme === v ? 'on' : '', title: hint, dataset: { theme: v }, onclick: () => setting('soundTheme', v, 'all') }, t))),
-          h('div', { class: 'hint' }, M.SOUND_THEMES.find(([v]) => v === s.soundTheme)[2])),
-        h('div', { class: 'field' }, h('label', {}, 'Try it on the board'),
+        h('div', { class: 'field' }, h('label', {}, 'Style'),
+          h('div', { class: 'seg', id: 'themeSeg' }, M.SOUND_THEMES.map(([v, t]) =>
+            h('button', { class: s.soundTheme === v ? 'on' : '', dataset: { theme: v }, onclick: () => setting('soundTheme', v, 'all') }, t)))),
+        h('div', { class: 'field' }, h('label', {}, 'Play on board'),
           h('div', { class: 'row tight', id: 'testRow' },
             [['tap', 'Key'], ['nav', 'Folder'], ['back', 'Back'], ['error', 'Error']].map(([n, t]) =>
               h('button', { class: 'small', dataset: { sound: n }, disabled: !s.sounds, onclick: () => testSound(n) }, t)))),
         slider('setVolume', 'Volume', 0, 100, s.volume, 'volume')),
       h('div', { class: 'card' }, h('h4', {}, 'Screen'),
-        slider('setBrightness', 'Brightness', 5, 255, s.brightness, 'brightness'),
-        h('div', { class: 'hint' }, 'The lowest value is 5 out of 255: very dim, but not off.'),
-        choice('setDim', 'Dim after no touch for', DIM_CHOICES, s.dimAfter, 'dimAfter'),
-        choice('setSleep', 'Turn the screen off after no touch for', SLEEP_CHOICES, s.sleepAfter, 'sleepAfter',
-          'The first touch only wakes the screen; it does not press a key.'),
-        dimClash ? h('div', { class: 'hint bad', id: 'dimClash' }, 'The screen turns off before it would dim, so dimming is skipped.') : null,
-        checkRow('Flip the screen upside down (for a case mounted the other way up)', s.flip, (v) => setting('flip', v, 'all')),
-        checkRow('Turn the screen off while the PC is locked, asleep or not talking to the board', s.sleepWithPc, (v) => setting('sleepWithPc', v, 'all')),
-        h('div', { class: 'hint' }, 'A touch lights it for 30 seconds. When the PC unlocks or the companion comes back it turns on by itself.')),
+        slider('setBrightness', 'Brightness', 5, 255, s.brightness, 'brightness', (v) => `${Math.round(v / 2.55)}%`),
+        choice('setDim', 'Dim when idle', DIM_CHOICES, s.dimAfter, 'dimAfter', { off: (v) => dimsTooLate(v, s.sleepAfter) }),
+        choice('setSleep', 'Screen off when idle', SLEEP_CHOICES, s.sleepAfter, 'sleepAfter', { hint: 'First touch only wakes it.', pick: pickSleep }),
+        dimsTooLate(s.dimAfter, s.sleepAfter) ? h('div', { class: 'hint bad', id: 'dimClash' }, 'Never dims: the screen turns off first.') : null, // (a hand-edited deck)
+        checkRow('Rotate screen 180\u00B0', s.flip, (v) => setting('flip', v, 'all')),
+        checkRow('Screen off when PC locks or sleeps', s.sleepWithPc, (v) => setting('sleepWithPc', v, 'all')),
+        h('div', { class: 'hint' }, 'Touch lights it for 30 s.')),
       h('div', { class: 'card' }, h('h4', {}, 'Desktops'),
-        h('div', { class: 'field' }, h('label', {}, 'Swipe needed to change desktop'),
+        h('div', { class: 'field' }, h('label', {}, 'Swipe distance'),
           h('select', { id: 'setSwipe', onchange: (e) => setting('swipe', e.target.value, 'all') },
-            M.SWIPE_LENGTHS.map(([v, t]) => h('option', { value: v, selected: v === s.swipe }, t))),
-          h('div', { class: 'hint' }, 'Also decides how far you swipe on the first or last desktop to go round.')),
-        checkRow('Endless scrolling (swipe right on the first desktop to reach the last one, and the other way round)', s.wrap, (v) => setting('wrap', v, 'all')),
-        choice('setStart', 'Open on desktop', desktops, Math.min(s.startDesktop, desktops.length - 1), 'startDesktop',
-          'Shown when the board starts and after a new layout arrives.')),
-      h('div', { class: 'card' }, h('h4', {}, 'Key look'),
+            M.SWIPE_LENGTHS.map(([v, t]) => h('option', { value: v, selected: v === s.swipe }, t)))),
+        checkRow('Loop desktops', s.wrap, (v) => setting('wrap', v, 'all')),
+        choice('setStart', 'Start on', desktops, Math.min(s.startDesktop, desktops.length - 1), 'startDesktop',
+          { hint: 'The board also returns here when a save changes what it shows.' })),
+      h('div', { class: 'card' }, h('h4', {}, 'Keys'),
         sample,
-        slider('setRadius', 'Corner roundness', 0, 24, s.keyRadius, 'keyRadius', ' px'),
-        slider('setGap', 'Space between keys', 2, 12, s.keyGap, 'keyGap', ' px')),
+        slider('setRadius', 'Corners', 0, 24, s.keyRadius, 'keyRadius', (v) => `${v} px`),
+        slider('setGap', 'Spacing', 2, 12, s.keyGap, 'keyGap', (v) => `${v} px`)),
       obsCard(),
       h('div', { class: 'card' }, h('h4', {}, 'This deck'),
-        info('Desktops', String(state.deck.desktops.length)),
-        info('Layout sent to the board', `${(M.layoutBytes(state.deck) / 1024).toFixed(1)} KB`),
-        info('Board', st ? (st.connected ? `connected on ${st.port || '?'}, firmware ${st.firmware || '?'}` : 'not connected') : 'companion not reachable'),
-        h('div', { class: 'hint', style: { marginTop: '8px' } }, 'Every save keeps the previous deck as deck.json.bak next to deck.json.'),
-        h('div', { class: 'hint', style: { marginTop: '8px' } }, 'The key font is fixed for now: the board only has a built-in font without accents.'))),
+        info('Board', st ? (st.connected ? `connected on ${st.port || '?'}, firmware ${st.firmware || '?'}` : 'disconnected') : 'can\u2019t reach Swipedeck'),
+        h('div', { class: 'hint', style: { marginTop: '8px' } }, 'Previous save: deck.json.bak'))),
   ));
 }
 
@@ -1510,19 +1503,19 @@ function obsCard() {
     try {
       const r = await api('POST', '/api/obs/test', { obs: state.deck.obs || {} });
       result.className = 'hint' + (r.ok ? ' good' : ' bad');
-      result.textContent = r.ok ? `Connected: OBS ${r.obs || '?'}, obs-websocket ${r.websocket || '?'}` : r.error;
+      result.textContent = r.ok ? `Connected to OBS ${r.obs || ''}`.trim() : r.error;
     } catch (e) {
       result.className = 'hint bad';
       result.textContent = e.message;
     }
   };
   return h('div', { class: 'card', id: 'obsCard' }, h('h4', {}, 'OBS'),
-    h('div', { class: 'hint' }, 'For the "Control OBS" action. In OBS: Tools > WebSocket Server Settings > Enable WebSocket server.'),
+    h('div', { class: 'hint' }, 'In OBS: Tools > WebSocket Server Settings > Enable WebSocket server.'),
     field('Address', textInput(obs.host || '', (v) => set('host', v.trim()), { placeholder: '127.0.0.1', id: 'obsHost' })),
     field('Port', h('input', { type: 'number', id: 'obsPort', min: 1, max: 65535, placeholder: '4455', value: obs.port ?? '', style: { width: '110px' },
       oninput: (e) => { const n = Math.round(+e.target.value); if (e.target.value === '') set('port', ''); else if (n >= 1 && n <= 65535) set('port', n); } })),
     field('Password', textInput(obs.password || '', (v) => set('password', v), { placeholder: 'none, or ${OBS_PASSWORD}', id: 'obsPassword' }),
-      'Saved in deck.json as you type it. To keep it out of the file write ${OBS_PASSWORD} here and set that environment variable on this PC.'),
+      'Saved as plain text. To avoid that, write ${OBS_PASSWORD} and set that variable on this PC.'),
     h('div', { class: 'row' }, h('button', { class: 'small', id: 'obsTest', onclick: test }, 'Test connection'), result));
 }
 
@@ -1602,7 +1595,7 @@ async function start() {
     state.presets = { builtin: presets.builtin, user: presets.user };
     renderAll();
   } catch (e) {
-    banner('Could not load the deck: ' + e.message);
+    banner(e.deck ? loadProblem(e) : `Couldn\u2019t open the editor: ${e.message}. Reload to try again.`);
     return;
   }
   document.addEventListener('keydown', onKeyDown);

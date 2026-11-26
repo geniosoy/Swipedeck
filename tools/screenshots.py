@@ -44,7 +44,7 @@ def main() -> int:
     shutil.copyfile(ROOT / "companion" / "tests" / "fixtures" / "deck.json", deck_path)
     players = [{"id": "Chrome", "title": "A video", "artist": "A channel", "playing": True, "current": True},
                {"id": "Spotify.exe", "title": "", "artist": "", "playing": False, "current": False}]
-    server = EditorServer(deck_path, port=0, status_fn=lambda: {"connected": True, "port": "COM3", "firmware": "0.12.0",
+    server = EditorServer(deck_path, port=0, status_fn=lambda: {"connected": True, "port": "COM3", "firmware": "0.13.0",
                                                                 "desktop": 0, "kind": "keys"},
                           media_sources_fn=lambda: players, command_fn=lambda c: True,
                           places_fn=lambda q: [{"name": "London", "region": "England", "country": "United Kingdom", "lat": 51.5074, "lon": -0.1278}])
@@ -91,8 +91,7 @@ def main() -> int:
             cdp.js(f"$$('.deskrow')[{i}].click()")
             time.sleep(0.3)
 
-        names = cdp.js("$$('.deskrow .nm, .deskrow .name, .deskrow').map((e) => e.textContent.trim())")
-        print("desktops:", names[:8])
+        print("desktops:", cdp.js("names()"))  # (names only: the icon glyphs cannot be printed to every console)
 
         print("screens")
         desktop(0)
@@ -118,7 +117,7 @@ def main() -> int:
         time.sleep(0.5)
         page_shot("editor-nowplaying.png")
         desktop(0)
-        cdp.js("btn('General settings').click()")
+        cdp.js("btn('Settings').click()")
         time.sleep(0.5)
         cdp.js("window.scrollTo(0, 0)")
         page_shot("settings.png")
@@ -134,7 +133,7 @@ def main() -> int:
                 cdp.js("document.querySelector('#placeQuery').value = 'London'; document.querySelector('#placeSearch').click()")
                 cdp.wait("document.querySelectorAll('#placeResults button').length > 0")
                 cdp.js("document.querySelector('#placeResults button').click()")
-                cdp.js("[...document.querySelectorAll('#liveConfig .check')].find((l) => l.textContent.includes('seconds')).querySelector('input').click()")
+                cdp.js("[...document.querySelectorAll('#liveConfig .check')].find((l) => l.textContent.includes('Seconds')).querySelector('input').click()")
                 time.sleep(0.3)
             screen_shot("screen-mixer.png" if name == "Volume mixer" else "screen-clock.png")
     finally:

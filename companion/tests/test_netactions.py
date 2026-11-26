@@ -315,10 +315,10 @@ class ObsTest(unittest.TestCase):
         fake = self.fake(password="right")
         with self.assertRaises(ObsError) as ctx:
             obs_request({"port": fake.port, "password": "wrong"}, "ToggleRecord")
-        self.assertIn("password", str(ctx.exception))
+        self.assertIn("Wrong OBS password", str(ctx.exception))  # said only for obs-websocket's own close code
         with self.assertRaises(ObsError) as ctx:
             obs_request({"port": fake.port}, "ToggleRecord")
-        self.assertIn("asks for a password", str(ctx.exception))
+        self.assertIn("needs a password", str(ctx.exception))
         self.assertEqual(fake.requests, [])  # nothing was sent to a server that did not let us in
 
     def test_a_refused_request_says_why(self):
@@ -334,7 +334,7 @@ class ObsTest(unittest.TestCase):
         free.close()
         with self.assertRaises(ObsError) as ctx:
             obs_request({"port": port}, "ToggleRecord", timeout=1)
-        self.assertIn("is OBS running", str(ctx.exception))
+        self.assertIn("Can't connect to OBS", str(ctx.exception))
 
     def test_a_server_that_is_not_obs(self):
         srv = WsServer(lambda conn: conn.handshake())  # accepts, but without the obswebsocket.json sub-protocol

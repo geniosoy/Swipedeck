@@ -187,7 +187,7 @@ class Deck:
             kind = d.get("kind", "keys")
             if kind not in ("keys",) + LIVE_KINDS:
                 raise DeckError(f"{where}: kind must be 'keys', 'nowplaying', 'stats', 'mixer' or 'clock'")
-            self._auto_apps(d.get("apps"), di, where)
+            self._auto_apps(d.get("apps"), di, where, desktops)
             if kind in LIVE_KINDS:
                 if getattr(self, f"has_{kind}"):
                     raise DeckError(f"{where}: only one '{kind}' desktop is supported")
@@ -220,7 +220,7 @@ class Deck:
             out_desktops.append({"name": name, "pages": out_pages})
         return {"desktops": out_desktops}
 
-    def _auto_apps(self, apps, di: int, where: str) -> None:
+    def _auto_apps(self, apps, di: int, where: str, desktops: list) -> None:
         """`apps` of a desktop: programs that bring this desktop to the front when their window is the active one."""
         if apps is None:
             return
@@ -230,7 +230,8 @@ class Deck:
         names = {normalize_app(a) for a in apps}
         taken = {n: i for i, ns in self.auto_apps for n in ns}
         for n in sorted(names & set(taken)):
-            self.warnings.append(f"{where}.apps: '{n}' already belongs to desktop {taken[n] + 1}, which wins")
+            winner = desktops[taken[n]].get("name", f"Desktop {taken[n] + 1}")
+            self.warnings.append(f'{where}.apps: "{n}" already switches to "{winner}".')
         if names:
             self.auto_apps.append((di, names))
 
@@ -381,7 +382,7 @@ class Deck:
             self._check_action(action, f"{where}.action")
             self._actions[(di, pi, ki)] = action
         else:
-            self.warnings.append(f"{where}: '{out.get('label', '?')}' has no action")
+            self.warnings.append(f"{where}: '{out.get('label', '?')}' does nothing. Pick an action.")
         repeat, hold = k.get("repeat", False), k.get("hold")
         if not isinstance(repeat, bool):
             raise DeckError(f"{where}: 'repeat' must be true or false")

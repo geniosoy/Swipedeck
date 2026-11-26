@@ -15,6 +15,7 @@ import uuid
 from .wsclient import WebSocket, WebSocketError
 
 SUBPROTOCOL = "obswebsocket.json"
+AUTH_FAILED = 4009  # obs-websocket's close code for a wrong password
 RPC_VERSION = 1
 OBS_DEFAULTS = {"host": "127.0.0.1", "port": 4455, "password": ""}
 
@@ -39,13 +40,15 @@ def obs_request(config: dict, request: str, data: dict | None = None, timeout: f
             auth = hello.get("authentication")
             if auth:
                 if not cfg["password"]:
-                    raise ObsError("OBS asks for a password: set obs.password in deck.json (General settings)")
+                    raise ObsError("OBS needs a password. Add it in Settings > OBS.")
                 identify["authentication"] = auth_string(cfg["password"], auth["salt"], auth["challenge"])
             ws.send_text(json.dumps({"op": 1, "d": identify}))
             try:
                 _recv(ws, 2)
-            except WebSocketError:  # OBS closes the connection when the password is wrong
-                raise ObsError("OBS closed the connection while identifying: is the password right?") from None
+            except WebSocketError as e:
+                if e.code == AUTH_FAILED:
+                    raise ObsError("Wrong OBS password. Check it in OBS > Tools > WebSocket Server Settings.") from None
+                raise ObsError(f"OBS didn't accept the sign-in: {e}") from None
             request_id = uuid.uuid4().hex
             body = {"requestType": request, "requestId": request_id}
             if data:
@@ -63,7 +66,7 @@ def obs_request(config: dict, request: str, data: dict | None = None, timeout: f
     except WebSocketError as e:
         text = str(e)
         if "could not connect" in text or "refused" in text.lower():
-            text += " (is OBS running with the WebSocket server enabled?)"
+            text = f"Can't connect to OBS at {cfg['host']}:{cfg['port']}. Check the address, port and OBS's WebSocket server setting."
         raise ObsError(text) from None
     except (KeyError, TypeError, ValueError) as e:  # a reply that is not what the protocol says
         raise ObsError(f"unexpected answer from OBS: {e!r}") from None

@@ -72,7 +72,7 @@ def search_places(query: str, get=get_json) -> list[dict]:
     """Up to five places matching `query`: [{"name", "region", "country", "lat", "lon"}]."""
     query = str(query).strip()
     if not 2 <= len(query) <= 80:
-        raise ValueError("type at least two letters of the place")
+        raise ValueError("Type at least 2 letters.")
     url = GEOCODE_URL + "?" + urllib.parse.urlencode({"name": query, "count": 5, "language": "en", "format": "json"})
     out = []
     for r in get(url).get("results") or []:

@@ -1,5 +1,6 @@
 """The volume mixer and the clock / timer / weather screens: companion side."""
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -461,6 +462,19 @@ class LoopTest(unittest.TestCase):
         self.assertIn((place, "f"), weather.configured)
         self.assertEqual(self.sent(board, "weather")[0]["place"], "Oslo")
 
+    def test_switching_the_weather_off_stops_it_while_the_clock_is_showing(self):
+        weather = FakeWeather()
+        place = {"name": "Oslo", "lat": 1, "lon": 2}
+
+        def untick(app, board):
+            path = Path(app.deck_path)
+            path.write_text(json.dumps(deck_with({"kind": "clock", "options": {"place": place, "weather": False}})), encoding="utf-8")
+            later = path.stat().st_mtime + 5
+            os.utime(path, (later, later))
+
+        self.run_session([{"kind": "clock", "options": {"place": place}}], [self.go(1), lambda a, b: None, untick, lambda a, b: None], weather=weather)
+        self.assertIsNone(weather.configured[-1][0])  # the feed has no place: it asks for nothing
+
     def test_no_weather_without_a_place_or_with_the_switch_off(self):
         weather = FakeWeather()
         self.run_session([{"kind": "clock"}], [self.go(1), lambda a, b: None], weather=weather)
@@ -488,7 +502,7 @@ class PlacesEndpointTest(unittest.TestCase):
             if query == "boom":
                 raise OSError("offline")
             if len(query) < 2:
-                raise ValueError("type at least two letters of the place")
+                raise ValueError("Type at least 2 letters.")
             return [{"name": query, "region": "", "country": "", "lat": 1.0, "lon": 2.0}]
 
         for fn, query, expect in ((places, "Oslo", 200), (places, "a", 400), (places, "boom", 502), (None, "Oslo", 501)):

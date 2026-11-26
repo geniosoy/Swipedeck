@@ -42,7 +42,7 @@ presets, and see the board's screen as you type.
 <table align="center">
   <tr>
     <td align="center"><img src="docs/images/editor-nowplaying.png" width="440" alt="Setting up the Now playing screen: which players are shown and how it looks"><br><sub>Now playing: choose which players are shown and how it looks</sub></td>
-    <td align="center"><img src="docs/images/settings.png" width="440" alt="General settings: sounds, screen dimming, swipe and key look"><br><sub>General settings: sounds, dimming, swipe, key look</sub></td>
+    <td align="center"><img src="docs/images/settings.png" width="440" alt="Settings: sounds, screen dimming, swipe and key look"><br><sub>Settings: sounds, dimming, swipe, key look</sub></td>
   </tr>
 </table>
 
@@ -102,15 +102,19 @@ The companion serves a layout editor at **http://127.0.0.1:8765/** (`Streamdeck-
 `companion/deck.json`, and the companion pushes the new layout to the board a moment later.
 
 * **Live preview** of the board's screen, drawn with the same geometry and the same icon glyphs as the firmware.
-  Click a key to edit it, drag keys to swap them, undo/redo (Ctrl+Z / Ctrl+Y), copy/paste keys (Ctrl+C / Ctrl+V),
-  Delete clears a key, arrow keys move the selection, Ctrl+S saves.
+  Click a key to edit it, drag keys to swap them.
+* **Keyboard:** Ctrl+Z undoes, Ctrl+Y or Ctrl+Shift+Z redoes, Ctrl+S saves. With a key selected: Ctrl+C / Ctrl+V copy and
+  paste it, Delete or Backspace clears it, the arrow keys move the selection. Esc closes the Add desktop menu and cancels
+  recording a hotkey.
+* **Undo instead of questions:** deleting a desktop, a page or a saved preset, shrinking the grid, replacing a key with a
+  preset and discarding changes happen at once, and a message at the bottom offers **Undo** for 10 seconds.
 * **Per key:** label, icon (all 51 board icons), color, and either an action, a folder (opens another page, or creates one)
-  or nothing. Actions have forms: a hotkey builder (modifier tick boxes plus a key box, with a "press a key" capture;
+  or nothing. Actions have forms: a hotkey builder (modifier tick boxes plus a key box, with a **Record** button;
   the Windows key cannot be captured by a browser, so it is a tick box), typed text, open, run, lock, and multi-step
   sequences with waits.
 * **Structure:** add, rename and delete desktops and pages, reorder desktops by **dragging** them in the list (or with
-  the arrows), and change a page's grid size (keys keep their row and column; you are asked before keys are removed).
-* **General settings** (the second tab at the top), see [Settings](#settings) below: sound theme and which sounds play,
+  the arrows), and change a page's grid size (keys keep their row and column).
+* **Settings** (the second tab at the top), see [Settings](#settings) below: sound theme and which sounds play,
   volume with **Test** buttons that play a sound on the board, brightness, auto-dim and screen-off after no touch,
   flipping the screen, endless scrolling between desktops and how long a swipe has to be, which desktop the board opens on, and how the keys look (corner roundness, spacing). Changes show
   on the board **right away** (a live preview that is not stored) and are kept when you save.
@@ -120,14 +124,14 @@ The companion serves a layout editor at **http://127.0.0.1:8765/** (`Streamdeck-
   `companion/streamdeck_companion/web/templates.json`; add your own entries there (the tests validate every one).
 * **Live screen settings:** Now playing and PC stats have no keys, so the presets area gives way to their settings
   (below the preview, which follows every option):
-  * *Now playing*: two player lists that are always visible, **Only show these players** and **Never show these players**
+  * *Now playing*: two player lists that are always visible, **Only these** and **Blocked**
     (empty = no restriction), next to a searchable library of players: the ones running right now (detected on their own),
     and common music apps, browsers and video players with their logos (a letter badge where there is no logo; names of
-    your own get a placeholder icon). Click **Only** or **Never** on a player, or drag it into a list; a player is on one
+    your own get a placeholder icon). Click **Only this** or **Block** on a player, or drag it into a list; a player is on one
     list at a time. Below: tint the background with the cover colors, show the album line, show the icon of the app that is
     playing (off by default), full or basic controls (previous / play / next).
   * *PC stats*: the style (gauges, bars or tiles) and which items to show and in which order (drag or arrows).
-* **Button presets** (about 90, in 12 categories: audio, media, system, windows, editing, browser, apps, git, streaming,
+* **Presets** (about 90, in 12 categories: audio, media, system, windows, editing, browser, apps, git, streaming,
   text ...): click one to place it in the selected or first empty slot, drag it onto a slot, search them, or fill the
   empty slots with a whole category. "Save as preset" in the key panel keeps your own keys in *My presets*
   (`companion/presets.user.json`).
@@ -269,7 +273,7 @@ test of the editor, which drives it in headless Edge/Chrome against a copy of th
 
 ## Volume mixer and clock screens
 
-Both are added from **+ Add desktop > Live screens** and configured below their preview in the editor (one of each per
+Both are added from **+ Add desktop > Live** and configured below their preview in the editor (one of each per
 deck). Like Now playing and PC stats they only work while their desktop is showing.
 
 ```jsonc
@@ -281,8 +285,8 @@ deck). Like Now playing and PC stats they only work while their desktop is showi
 * **Volume mixer:** the master volume and up to four programs, each a vertical fader you drag with a mute button under
   it. The companion reads and changes Windows' volumes (Core Audio, no extra package) about four times a second while the
   screen shows. A program gets a fader when Windows has an audio session for it (it has played sound): the ones making
-  sound come first, then the rest alphabetically; `apps` pins programs to the front (names as in Task Manager, without
-  `.exe`; at most four). For a moment after you touch a fader the PC's value is ignored, so it does not fight your finger.
+  sound come first, then the rest alphabetically; `apps` pins programs to the front (names as in Task Manager's Details
+  tab, without `.exe`; at most four). For a moment after you touch a fader the PC's value is ignored, so it does not fight your finger.
   `--no-mixer` turns it off.
 * **Clock:** the board has no clock of its own, so the companion tells it the time of day when the screen appears and
   every 30 s and the board counts the seconds in between. `hour12` shows 2:05 PM, `seconds` shows the seconds.
@@ -304,8 +308,8 @@ deck). Like Now playing and PC stats they only work while their desktop is showi
 
 ## HTTP, OBS and Discord actions
 
-Both are chosen in the action list of a key (editor), or written in `deck.json`; the preset list has an "OBS (WebSocket)"
-and a "Web & smart home (HTTP)" group:
+Both are chosen in the action list of a key (editor), or written in `deck.json`; the preset list has an "OBS direct"
+and a "Smart home & web" group:
 
 ```jsonc
 { "type": "http", "method": "POST", "url": "http://homeassistant.local:8123/api/services/light/toggle",
@@ -326,12 +330,12 @@ and a "Web & smart home (HTTP)" group:
 * **`obs`** sends any [obs-websocket 5](https://github.com/obsproject/obs-websocket/blob/master/docs/generated/protocol.md)
   request (`ToggleRecord`, `ToggleStream`, `SetCurrentProgramScene`, `ToggleInputMute` ...) with optional `data`. In OBS
   (28 or newer) turn the server on under Tools > WebSocket Server Settings. The connection is the top-level `obs` object
-  (the default is `127.0.0.1:4455` with no password); **General settings > OBS** edits it and has a **Test connection**
+  (the default is `127.0.0.1:4455` with no password); **Settings > OBS** edits it and has a **Test connection**
   button. Every press opens a connection, sends the request and closes it, so there is nothing to keep alive.
 * Both run without holding up other key presses, and work as steps of a `multi` action.
 * **Discord:** Discord offers no local control that does not first need an application registered with Discord and
-  approved by it, so there is no Discord action. The Discord desktop template and the preset group "Discord (global
-  keybinds)" press `Ctrl+Shift+F13` (mute) and `Ctrl+Shift+F14` (deafen): bind them in Discord (Settings > Keybinds >
+  approved by it, so there is no Discord action. The Discord desktop template and the preset group "Discord"
+  press `Ctrl+Shift+F13` (mute) and `Ctrl+Shift+F14` (deafen): bind them in Discord (Settings > Keybinds >
   Toggle Mute / Toggle Deafen) and they work while Discord is in the background. The template's other keys are Discord's
   default shortcuts, which need Discord in front. (Nothing can show Discord's own mute state on a key.)
 * **How this was tested:** the `http` action against a real local HTTP server, and the OBS client against a stand-in that
@@ -340,7 +344,7 @@ and a "Web & smart home (HTTP)" group:
 
 ## Hold, state and active-app features
 
-All of these are set in the editor (the key inspector, the desktop inspector, General settings) or in `deck.json`:
+All of these are set in the editor (the key inspector, the desktop inspector, Settings) or in `deck.json`:
 
 ```jsonc
 { "label": "Mute", "icon": "mute",
@@ -355,7 +359,7 @@ All of these are set in the editor (the key inspector, the desktop inspector, Ge
   short press. `repeat: true` presses the key again and again while it is held (about every 0.1 s, one tick at the start).
   A key has `hold` or `repeat`, not both; folders have neither.
 * **State keys:** `state.source` is `mute` (the speakers are muted), `mic_mute` (the default microphone is muted) or
-  `app:<program>` (that program is running, names as in Task Manager without `.exe`). While it is true the key shows
+  `app:<program>` (that program is running, names as in Task Manager's Details tab without `.exe`). While it is true the key shows
   `state.color` / `icon` / `label` (each optional; the color defaults to red, or green for a program). The companion
   checks Windows about once a second (Core Audio for the mute state, the process list for programs) and sends the board
   the list of keys that are on; it is sent again after a new layout or connection.

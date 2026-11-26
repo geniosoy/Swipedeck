@@ -39,7 +39,7 @@ class DeckTest(unittest.TestCase):
                   **simple([{"label": "X", "id": "a.b"}, {"label": "Y"}])})
         self.assertEqual(d.action_at(0, 0, 0), {"type": "lock"})
         self.assertIsNone(d.action_at(0, 0, 1))
-        self.assertTrue(any("no action" in w for w in d.warnings))
+        self.assertTrue(any("does nothing" in w for w in d.warnings))
 
     def test_errors(self):
         bad = [
@@ -135,7 +135,7 @@ class DeckTest(unittest.TestCase):
             {"name": "Music", "kind": "nowplaying", "apps": ["spotify"]},
             {"name": "Dup", "apps": ["obs"], "pages": [{"keys": []}]}]})
         self.assertEqual(deck.auto_apps, [(1, {"obs64", "obs"}), (2, {"spotify"}), (3, {"obs"})])
-        self.assertTrue(any("'obs' already belongs to desktop 2" in w for w in deck.warnings))
+        self.assertTrue(any('"obs" already switches to ' in w for w in deck.warnings))
         self.assertNotIn("apps", deck.layout_text())  # PC only
         for bad in ("obs", [3], [""], ["x"] * 11, [".exe"], {"a": 1}):
             with self.assertRaises(DeckError, msg=str(bad)):

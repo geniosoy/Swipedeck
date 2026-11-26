@@ -14,17 +14,8 @@ export const SETTING_DEFAULTS = {
   volume: 70, sounds: true, soundTheme: 'classic', navSounds: true, brightness: 255, dimAfter: 0, sleepAfter: 0,
   flip: false, startDesktop: 0, keyRadius: 12, keyGap: 6, wrap: false, swipe: 'normal', sleepWithPc: false,
 };
-export const SOUND_THEMES = [
-  ['classic', 'Classic', 'A crisp tick; a rising chirp for folders'],
-  ['soft', 'Soft', 'Low and round'],
-  ['click', 'Click', 'Very short, like a mechanical switch'],
-  ['chirp', 'Chirp', 'Bubbly, like an old game'],
-];
-export const SWIPE_LENGTHS = [
-  ['short', 'Short (a quick flick is enough)'],
-  ['normal', 'Normal'],
-  ['long', 'Long (a deliberate drag)'],
-];
+export const SOUND_THEMES = [['classic', 'Classic'], ['soft', 'Soft'], ['click', 'Click'], ['chirp', 'Chirp']];
+export const SWIPE_LENGTHS = [['short', 'Short'], ['normal', 'Normal'], ['long', 'Long']];
 export const resolveSettings = (deck) => ({ ...SETTING_DEFAULTS, ...((deck && deck.settings) || {}) });
 
 // ---- keys ------------------------------------------------------------------------------------------
@@ -318,8 +309,8 @@ export const joinHeaders = (headers) => Object.entries(headers || {}).map(([k, v
 // A JSON body or request data typed into a text box: an object or a list, else why not.
 export function parseJsonBody(text) {
   let value;
-  try { value = JSON.parse(text); } catch (e) { return { ok: false, error: e.message }; }
-  if (value === null || typeof value !== 'object') return { ok: false, error: 'must be an object {...} or a list [...]' };
+  try { value = JSON.parse(text); } catch (e) { return { ok: false, error: `Invalid JSON, not saved: ${e.message}` }; }
+  if (value === null || typeof value !== 'object') return { ok: false, error: 'Not saved: use an object {...} or a list [...]' };
   return { ok: true, value };
 }
 
@@ -343,9 +334,8 @@ export function normalizeApp(name) {
   return n.endsWith('.exe') ? n.slice(0, -4) : n;
 }
 export const parseApps = (text) => [...new Set(String(text || '').split(/[,;\n]+/).map(normalizeApp).filter(Boolean))].slice(0, 10);
-export const joinApps = (apps) => (apps || []).join(', ');
 
-export const HOLD_MODES = [['none', 'Nothing'], ['repeat', 'Repeat the key while it is held'], ['action', 'Do something else']];
+export const HOLD_MODES = [['none', 'Nothing'], ['repeat', 'Repeat'], ['action', 'Another action']];
 export const holdMode = (k) => (k && k.repeat ? 'repeat' : k && k.hold ? 'action' : 'none');
 export function setHoldMode(key, mode) {
   delete key.repeat;
@@ -354,7 +344,7 @@ export function setHoldMode(key, mode) {
   else if (!key.hold) key.hold = defaultAction('hotkey');
 }
 
-export const STATE_SOURCES = [['none', 'Never'], ['mute', 'The speakers are muted'], ['mic_mute', 'The microphone is muted'], ['app', 'A program is running']];
+export const STATE_SOURCES = [['none', 'Never'], ['mute', 'The speakers are muted'], ['mic_mute', 'The microphone is muted'], ['app', 'An app is running']];
 export function stateKind(k) {
   const s = k && k.state && k.state.source;
   if (!s) return 'none';
@@ -452,18 +442,10 @@ export class History {
 // ---- live screens: options ---------------------------------------------------------------------------
 
 export const STAT_ITEMS = [
-  { id: 'cpu', name: 'CPU', desc: 'Load, and temperature when a sensor is available' },
-  { id: 'gpu', name: 'GPU', desc: 'Load, temperature and power (NVIDIA)' },
-  { id: 'ram', name: 'RAM', desc: 'Memory in use' },
-  { id: 'vram', name: 'VRAM', desc: 'Graphics memory (NVIDIA)' },
-  { id: 'disk', name: 'Disk', desc: 'How full the system drive is' },
-  { id: 'net', name: 'Network', desc: 'Download and upload speed' },
+  { id: 'cpu', name: 'CPU' }, { id: 'gpu', name: 'GPU' }, { id: 'ram', name: 'RAM' },
+  { id: 'vram', name: 'VRAM' }, { id: 'disk', name: 'Disk' }, { id: 'net', name: 'Network' },
 ];
-export const STAT_STYLES = [
-  { id: 'gauges', name: 'Gauges', desc: 'Round gauges for the first three, bars for the rest' },
-  { id: 'bars', name: 'Bars', desc: 'One row per item' },
-  { id: 'tiles', name: 'Tiles', desc: 'Big numbers in two columns' },
-];
+export const STAT_STYLES = [{ id: 'gauges', name: 'Gauges' }, { id: 'bars', name: 'Bars' }, { id: 'tiles', name: 'Tiles' }];
 // The options of a live desktop with every default filled in (the file may hold only some of them).
 export function liveOptions(d) {
   const o = d.options || {};
@@ -531,11 +513,31 @@ export function removeFilterApps(filter, which, names) {
 // Is any of these names on the list?
 export const inFilterList = (filter, which, names) => names.some((n) => filter[which].some((x) => sameName(x, n)));
 
-export function describeFilter(f) {
-  if (!f.allow.length && !f.block.length) return 'Any player can be shown.';
-  if (!f.block.length) return 'Only the players under \u201COnly show these\u201D can be shown.';
-  if (!f.allow.length) return 'Any player can be shown, except those under \u201CNever show these\u201D.';
-  return 'Only the players under \u201COnly show these\u201D can be shown, and never those under \u201CNever show these\u201D.';
+// The board's fonts hold plain ASCII, the degree sign and the bullet: accents, emoji and the like do not show.
+export const boardCannotShow = (text) => /[^\x20-\x7E\u00B0\u2022]/.test(String(text || ''));
+
+// A page as the editor names it: its title, plus its id only when another page of the desktop has the same title.
+export function pageName(desktop, p) {
+  const name = p.title || p.id;
+  const twin = desktop.pages.some((q) => q !== p && (q.title || q.id) === name);
+  return twin ? `${name} (${p.id})` : name;
+}
+
+// A message from the companion that starts with a place in the file ("desktops[0].pages[1].keys[2].action: ...") said with
+// the names on screen ("Main \u203A Media \u203A key 3: ..."). Anything else is returned as it is.
+export function describeProblem(message, deck) {
+  const at = /^desktops\[(\d+)\](?:\.pages\[(\d+)\])?(?:\.keys\[(\d+)\])?((?:\.[a-z]+(?:\[\d+\])?)*):\s*/i.exec(message);
+  const d = at && deck.desktops[+at[1]];
+  if (!d) return message;
+  const parts = [d.name || 'Untitled'];
+  const p = at[2] !== undefined && d.pages && d.pages[+at[2]];
+  const inKey = at[3] !== undefined; // a key's page goes without saying when it is the only one, or named like its desktop
+  if (p && !(inKey && (d.pages.length === 1 || pageName(d, p) === d.name))) parts.push(pageName(d, p));
+  if (at[3] !== undefined) {
+    parts.push(`key ${+at[3] + 1}` + (/\.hold\b/.test(at[4]) ? ' (hold)' : ''));
+    for (const step of at[4].matchAll(/steps\[(\d+)\]/g)) parts.push(`step ${+step[1] + 1}`);
+  }
+  return `${parts.join(' \u203A ')}: ${message.slice(at[0].length)}`;
 }
 
 // The catalog app (apps.json) a name belongs to: an exact match of one of its patterns, else a name that contains one

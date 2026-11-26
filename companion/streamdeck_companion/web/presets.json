@@ -2,7 +2,7 @@
  "categories": [
   { "id": "layout", "name": "Layout", "presets": [
    { "name": "Folder", "key": { "label": "Folder", "icon": "directory", "color": "#1F6F5C", "folder": "new" } },
-   { "name": "Empty slot", "key": {} }
+   { "name": "Empty key", "key": {} }
   ] },
   { "id": "audio", "name": "Audio", "presets": [
    { "name": "Mute", "key": { "label": "Mute", "icon": "mute", "color": "#B3261E", "action": { "type": "hotkey", "keys": "volume_mute" } } },
@@ -90,7 +90,7 @@
    { "name": "Interrupt (Ctrl+C)", "key": { "label": "Stop", "icon": "close", "color": "#B3261E", "action": { "type": "hotkey", "keys": "ctrl+c" } } },
    { "name": "Clear screen", "key": { "label": "Clear", "icon": "refresh", "action": { "type": "text", "text": "cls\n" } } }
   ] },
-  { "id": "streaming", "name": "Streaming (F13-F24)", "presets": [
+  { "id": "streaming", "name": "OBS hotkeys", "note": "Set F13–F24 in OBS > Hotkeys", "presets": [
    { "name": "Record", "key": { "label": "Record", "icon": "video", "color": "#B3261E", "action": { "type": "hotkey", "keys": "f13" } } },
    { "name": "Go live", "key": { "label": "Live", "icon": "wifi", "color": "#B3261E", "action": { "type": "hotkey", "keys": "f14" } } },
    { "name": "Mic mute", "key": { "label": "Mic", "icon": "mute", "action": { "type": "hotkey", "keys": "f15" } } },
@@ -100,7 +100,7 @@
    { "name": "Scene 3", "key": { "label": "Scene 3", "icon": "image", "action": { "type": "hotkey", "keys": "f19" } } },
    { "name": "Scene 4", "key": { "label": "Scene 4", "icon": "image", "action": { "type": "hotkey", "keys": "f20" } } }
   ] },
-  { "id": "obs", "name": "OBS (WebSocket)", "presets": [
+  { "id": "obs", "name": "OBS direct", "presets": [
    { "name": "OBS: record", "key": { "label": "Record", "icon": "video", "color": "#B3261E", "action": { "type": "obs", "request": "ToggleRecord" } } },
    { "name": "OBS: pause recording", "key": { "label": "Pause", "icon": "pause", "action": { "type": "obs", "request": "ToggleRecordPause" } } },
    { "name": "OBS: go live", "key": { "label": "Live", "icon": "wifi", "color": "#B3261E", "action": { "type": "obs", "request": "ToggleStream" } } },
@@ -109,13 +109,13 @@
    { "name": "OBS: save replay", "key": { "label": "Replay", "icon": "save", "action": { "type": "obs", "request": "SaveReplayBuffer" } } },
    { "name": "OBS: virtual camera", "key": { "label": "Cam", "icon": "video", "action": { "type": "obs", "request": "ToggleVirtualCam" } } }
   ] },
-  { "id": "http", "name": "Web & smart home (HTTP)", "presets": [
+  { "id": "http", "name": "Smart home & web", "presets": [
    { "name": "Webhook (GET)", "key": { "label": "Hook", "icon": "upload", "action": { "type": "http", "method": "GET", "url": "http://localhost:8080/hook" } } },
    { "name": "Webhook (POST JSON)", "key": { "label": "Post", "icon": "upload", "action": { "type": "http", "method": "POST", "url": "http://localhost:8080/hook", "json": { "pressed": true } } } },
    { "name": "Home Assistant: toggle a light", "key": { "label": "Light", "icon": "eye", "color": "#C77700", "action": { "type": "http", "method": "POST", "url": "http://homeassistant.local:8123/api/services/light/toggle", "headers": { "Authorization": "Bearer ${HA_TOKEN}" }, "json": { "entity_id": "light.living_room" } } } },
    { "name": "Home Assistant: run a script", "key": { "label": "Script", "icon": "play", "action": { "type": "http", "method": "POST", "url": "http://homeassistant.local:8123/api/services/script/turn_on", "headers": { "Authorization": "Bearer ${HA_TOKEN}" }, "json": { "entity_id": "script.goodnight" } } } }
   ] },
-  { "id": "discord", "name": "Discord (global keybinds)", "presets": [
+  { "id": "discord", "name": "Discord", "note": "Set these in Discord > Settings > Keybinds", "presets": [
    { "name": "Discord mute", "key": { "label": "Mute", "icon": "mute", "color": "#B3261E", "action": { "type": "hotkey", "keys": "ctrl+shift+f13" } } },
    { "name": "Discord deafen", "key": { "label": "Deafen", "icon": "eye_off", "color": "#B3261E", "action": { "type": "hotkey", "keys": "ctrl+shift+f14" } } }
   ] },

@@ -134,7 +134,7 @@ class EditorServerTest(unittest.TestCase):
         free.close()
         status, result = self.server.obs_test({"obs": {"port": port}})
         self.assertEqual((status, result["ok"]), (200, False))
-        self.assertIn("is OBS running", result["error"])
+        self.assertIn("Can't connect to OBS", result["error"])
         for bad in ({"obs": "x"}, {"obs": {"port": 0}}, {"obs": {"bogus": 1}}, {"obs": []}):
             self.assertEqual(self.server.obs_test(bad)[0], 400, bad)  # (no settings at all would try the default 127.0.0.1:4455)
         # over HTTP: needs the token like every write

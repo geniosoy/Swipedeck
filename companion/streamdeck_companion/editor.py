@@ -174,7 +174,7 @@ class EditorServer:
                         return False
                     supplied = self.headers.get(TOKEN_HEADER, "").encode("utf-8", "replace")
                     if not secrets.compare_digest(supplied, server.token.encode("utf-8")):
-                        self._json(403, {"error": "missing or wrong token (reload the editor page)"})
+                        self._json(403, {"error": "Request refused. Reload this page."})
                         return False
                 return True
 
@@ -233,7 +233,7 @@ class EditorServer:
             def _places(self, query: str):
                 """Places matching ?q=...: the text typed in the editor goes to the geocoding service of Open-Meteo."""
                 if server._places_fn is None:
-                    return self._json(501, {"error": "searching for places is turned off (--no-weather)"})
+                    return self._json(501, {"error": "City search is off (--no-weather)."})
                 text = dict(p.split("=", 1) for p in query.split("&") if "=" in p).get("q", "")
                 try:
                     return self._json(200, {"places": server._places_fn(unquote(text.replace("+", " ")))})
@@ -241,7 +241,7 @@ class EditorServer:
                     return self._json(400, {"error": str(e)})
                 except Exception as e:  # no network, the service is down
                     log.warning("places: %s", e)
-                    return self._json(502, {"error": "could not reach the place search"})
+                    return self._json(502, {"error": "City search failed. Try again."})
 
             def _media_sources(self):
                 """The media players Windows knows about right now (for the Now playing filter in the editor)."""

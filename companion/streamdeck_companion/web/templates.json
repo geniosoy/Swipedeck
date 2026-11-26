@@ -1,7 +1,7 @@
 {
  "templates": [
   { "id": "discord", "name": "Discord", "icon": "call",
-    "description": "Mute and deafen work in the background once you bind Ctrl+Shift+F13 / F14 in Discord (Settings > Keybinds); the rest are Discord's default shortcuts (Discord in front)",
+    "description": "Set Ctrl+Shift+F13/F14 in Discord > Keybinds for mute and deafen. Other keys need Discord in front",
     "desktop": { "name": "Discord", "pages": [
      { "id": "root", "title": "Discord", "cols": 4, "rows": 3, "keys": [
       { "label": "Mute", "icon": "mute", "color": "#B3261E", "action": { "type": "hotkey", "keys": "ctrl+shift+f13" } },
@@ -55,7 +55,7 @@
      ] }
     ] } },
   { "id": "obs", "name": "OBS & streaming", "icon": "video",
-    "description": "Record, go live, scenes. Uses F13-F24: bind them in OBS (Settings > Hotkeys)",
+    "description": "Record, stream, scenes. Set F13–F24 in OBS > Hotkeys",
     "desktop": { "name": "OBS", "pages": [
      { "id": "root", "title": "OBS", "cols": 4, "rows": 3, "keys": [
       { "label": "Record", "icon": "video", "color": "#B3261E", "action": { "type": "hotkey", "keys": "f13" } },
@@ -78,7 +78,7 @@
      ] }
     ] } },
   { "id": "music", "name": "Music", "icon": "audio",
-    "description": "Transport, volume and Spotify",
+    "description": "Playback, volume, Spotify",
     "desktop": { "name": "Music", "pages": [
      { "id": "root", "title": "Music", "cols": 4, "rows": 2, "keys": [
       { "label": "Prev", "icon": "prev", "action": { "type": "hotkey", "keys": "prev_track" } },

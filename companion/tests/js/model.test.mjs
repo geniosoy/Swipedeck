@@ -238,14 +238,10 @@ test('player filter: the older form is read, lists are exclusive, limits hold', 
   assert.equal(f.allow.length, 30); // the companion accepts at most 30 per list
 });
 
-test('player filter: matching, descriptions', () => {
+test('player filter: matching', () => {
   assert.equal(M.appMatches('SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify', ['spotify']), true);
   assert.equal(M.appMatches('Chrome', ['tidal', '']), false);
   assert.equal(M.appMatches('', ['x']), false);
-  assert.match(M.describeFilter({ allow: [], block: [] }), /Any player can be shown\./);
-  assert.match(M.describeFilter({ allow: ['a'], block: [] }), /Only the players under .Only show these. can be shown\./);
-  assert.match(M.describeFilter({ allow: [], block: ['a'] }), /except those under .Never show these./);
-  assert.match(M.describeFilter({ allow: ['a'], block: ['b'] }), /never those under/);
 });
 
 test('app catalog: every app has an icon source, and names resolve to apps', () => {
@@ -289,8 +285,26 @@ test('program names: compared without case, spaces and .exe; lists are cleaned u
   assert.deepEqual(M.parseApps(''), []);
   assert.deepEqual(M.parseApps(',, ,'), []);
   assert.equal(M.parseApps(Array.from({ length: 20 }, (_, i) => 'app' + i).join(',')).length, 10);
-  assert.equal(M.joinApps(['obs64', 'code']), 'obs64, code');
-  assert.equal(M.joinApps(undefined), '');
+});
+
+test('text the board cannot show is noticed', () => {
+  for (const ok of ['', 'Vol +', '9\u00B0', 'a \u2022 b']) assert.equal(M.boardCannotShow(ok), false, ok);
+  for (const no of ['M\u00FAsica', 'Ni\u00F1o', '\uD83C\uDFB5']) assert.equal(M.boardCannotShow(no), true, no);
+});
+
+test('a page is named by its title, with the id only to tell two apart', () => {
+  const pages = [{ id: 'root', title: 'Main' }, { id: 'a', title: 'Git' }, { id: 'b', title: 'Git' }];
+  assert.deepEqual(pages.map((p) => M.pageName({ pages }, p)), ['Main', 'Git (a)', 'Git (b)']);
+});
+
+test('errors are said with the names on screen', () => {
+  const deck = { desktops: [{ name: 'Main', pages: [{ id: 'root', title: 'Main' }, { id: 'm', title: 'Media' }] }, { name: 'Clock', kind: 'clock' }] };
+  const say = (m) => M.describeProblem(m, deck);
+  assert.equal(say('desktops[0].pages[1].keys[2].action: Enter the text to type.'), 'Main \u203A Media \u203A key 3: Enter the text to type.');
+  assert.equal(say('desktops[0].pages[0].keys[0].hold.steps[1]: Enter a command.'), 'Main \u203A key 1 (hold) \u203A step 2: Enter a command.');
+  assert.equal(say('desktops[1].options.filter: both'), 'Clock: both');
+  assert.equal(say('settings.volume must be an integer'), 'settings.volume must be an integer');
+  assert.equal(say('desktops[7]: gone'), 'desktops[7]: gone');
 });
 
 test('hold and repeat are exclusive, and switching clears the other', () => {

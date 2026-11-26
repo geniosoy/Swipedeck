@@ -86,7 +86,7 @@ class Companion:
         if self._mixer is not None:
             self._mixer.configure(deck.mixer_pins)
         if self._weather is not None:
-            self._weather.configure(deck.clock_place, deck.clock_units)
+            self._weather.configure(deck.clock_place if deck.clock_weather else None, deck.clock_units)
         if self._reader is not None:
             self._reader.set_filter(deck.np_filter)
             self._reader.set_app_icon(deck.np_app_icon, self._icon_px)
