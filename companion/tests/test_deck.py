@@ -1,8 +1,9 @@
 import json
+import re
 import unittest
 from pathlib import Path
 
-from streamdeck_companion.deck import Deck, DeckError
+from streamdeck_companion.deck import SETTINGS_SPEC, Deck, DeckError
 from streamdeck_companion.protocol import crc_hex, fnv1a32, layout_messages
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -41,9 +42,10 @@ class DeckTest(unittest.TestCase):
         self.assertIsNone(d.action_at(0, 0, 1))
         self.assertTrue(any("does nothing" in w for w in d.warnings))
 
-    def test_keys_can_touch(self):
-        d = Deck({"settings": {"keyGap": 0}, **simple([{"label": "X"}])})
-        self.assertEqual(d.effective_settings()["keyGap"], 0)
+    def test_keys_can_touch_each_other_and_the_edges(self):
+        d = Deck({"settings": {"keyGap": 0, "keyPad": 0}, **simple([{"label": "X"}])})
+        self.assertEqual([d.effective_settings()[k] for k in ("keyGap", "keyPad")], [0, 0])
+        self.assertEqual(Deck(simple([])).effective_settings()["keyPad"], 6)
 
     def test_errors(self):
         bad = [
@@ -60,12 +62,12 @@ class DeckTest(unittest.TestCase):
 
     def test_general_settings(self):
         full = {"volume": 40, "sounds": False, "soundTheme": "chirp", "navSounds": False, "brightness": 90,
-                "dimAfter": 30, "sleepAfter": 300, "flip": True, "startDesktop": 0, "keyRadius": 20, "keyGap": 3, "wrap": True, "swipe": "long"}
+                "dimAfter": 30, "sleepAfter": 300, "flip": True, "startDesktop": 0, "keyRadius": 20, "keyGap": 3, "keyPad": 2, "wrap": True, "swipe": "long"}
         self.assertEqual(Deck({"settings": full, **simple([])}).settings, full)
         self.assertEqual(Deck({"settings": {"volume": 5, "bogus": 1}, **simple([])}).settings, {"volume": 5})
         self.assertEqual(Deck(simple([])).settings, {})
         for bad in ({"soundTheme": "loud"}, {"soundTheme": 3}, {"navSounds": 1}, {"flip": "yes"}, {"wrap": 1}, {"swipe": "far"}, {"swipe": 2}, {"dimAfter": -1},
-                    {"sleepAfter": 99999}, {"keyRadius": 25}, {"keyGap": -1}, {"keyGap": 13}, {"keyGap": 2.5}, {"startDesktop": 8},
+                    {"sleepAfter": 99999}, {"keyRadius": 25}, {"keyGap": -1}, {"keyGap": 13}, {"keyGap": 2.5}, {"keyPad": -1}, {"keyPad": 13}, {"startDesktop": 8},
                     {"volume": True}, {"brightness": 4}, {"sounds": 0}):
             with self.assertRaises(DeckError, msg=str(bad)):
                 Deck({"settings": bad, **simple([])})
@@ -240,6 +242,24 @@ class ProtocolTest(unittest.TestCase):
 
     def test_crc_hex_is_utf8_based(self):
         self.assertEqual(crc_hex("é"), f"{fnv1a32('é'.encode('utf-8')):08x}")
+
+
+class FirmwareLimits(unittest.TestCase):
+    """The board limits the key look twice (link.cpp when it arrives, ui.cpp when it draws). Both must allow what the
+    editor allows, or a value is accepted and then silently drawn differently."""
+
+    def test_key_look_limits_match_the_editor(self):
+        src = ROOT.parent / "src"
+        header = (src / "ui.h").read_text(encoding="utf-8")
+        limits = {name: int(v) for name, v in re.findall(r"constexpr int kMaxKey(\w+) = (\d+);", header)}
+        for name in ("Radius", "Gap", "Pad"):
+            self.assertEqual(SETTINGS_SPEC["key" + name][2], (0, limits.get(name)), name)
+        clamp = re.compile(r"(?:settings\.key(Radius|Gap|Pad)|\b(radius|gap|pad)) = constrain\([^;]*, (\w+), (\w+)\);")
+        found = clamp.findall((src / "link.cpp").read_text(encoding="utf-8") + (src / "ui.cpp").read_text(encoding="utf-8"))
+        self.assertEqual(len(found), 6, found)
+        for received, drawn, low, high in found:
+            name = received or drawn.capitalize()
+            self.assertEqual((low, high), ("0", "kMaxKey" + name), name)
 
 
 if __name__ == "__main__":

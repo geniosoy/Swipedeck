@@ -18,7 +18,7 @@
 namespace {
 
 constexpr int kHeaderH = 30;
-constexpr int kPad = 6;  // outer padding of the key grid
+int keyPad = 6;     // padding between the keys and the screen's edges (user setting)
 int keyGap = 6;     // gap between keys (user setting)
 int keyRadius = 12; // corner radius of the keys (user setting)
 bool wrapDesktops = false;  // swiping past the first / last desktop continues on the other end (user setting)
@@ -306,17 +306,25 @@ void buildPage(int d, int p) {
   lv_obj_set_pos(cont, 0, 0);
   lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
 
-  const int keyW = (w - 2 * kPad - (page.cols - 1) * keyGap) / page.cols;
-  const int keyH = (h - 2 * kPad - (page.rows - 1) * keyGap) / page.rows;
-  const lv_font_t* iconFont = keyH >= 86 ? &kIconFont32 : keyH >= 62 ? &kIconFont24 : &kIconFont20;
-  const lv_font_t* textFont = keyH >= 86 ? &lv_font_montserrat_16 : &lv_font_montserrat_14;
+  // The keys fill what is inside the side padding to the pixel: the division's leftover is spread over them, so they
+  // differ by 1 px at most (and with no padding they reach every edge). Same math as geometry() in web/model.js.
+  const int spanW = w - 2 * keyPad + keyGap;  // all columns together, each a key and the gap after it
+  const int spanH = h - 2 * keyPad + keyGap;
+  const int minH = spanH / page.rows - keyGap;  // the smallest key picks the fonts, so a page has one size of them
+  const lv_font_t* iconFont = minH >= 86 ? &kIconFont32 : minH >= 62 ? &kIconFont24 : &kIconFont20;
+  const lv_font_t* textFont = minH >= 86 ? &lv_font_montserrat_16 : &lv_font_montserrat_14;
 
   for (int k = 0; k < page.cols * page.rows; k++) {
     const DeckKey& key = page.keys[k];
     if (key.empty) continue;
+    const int col = k % page.cols, row = k / page.cols;
+    const int x = keyPad + col * spanW / page.cols;
+    const int y = keyPad + row * spanH / page.rows;
+    const int keyW = keyPad + (col + 1) * spanW / page.cols - keyGap - x;
+    const int keyH = keyPad + (row + 1) * spanH / page.rows - keyGap - y;
     lv_obj_t* b = lv_btn_create(cont);
     lv_obj_set_size(b, keyW, keyH);
-    lv_obj_set_pos(b, kPad + (k % page.cols) * (keyW + keyGap), kPad + (k / page.cols) * (keyH + keyGap));
+    lv_obj_set_pos(b, x, y);
     lv_obj_set_style_radius(b, keyRadius, 0);
     lv_obj_set_style_shadow_width(b, 0, 0);
     lv_obj_set_style_border_width(b, 0, 0);
@@ -478,6 +486,19 @@ void uiScrollInfo(int& scrollX, int& tileX, int& tileCount, bool& sliding) {
 
 bool uiSwipe(bool fingerRight) { return startWrap(fingerRight ? LV_DIR_RIGHT : LV_DIR_LEFT, false); }
 
+String uiGridInfo() {
+  if (activeDesktop >= static_cast<int>(uis.size()) || deck.desktops[activeDesktop].kind != DeskKind::Keys) return "not a key desktop";
+  const DesktopUi& u = uis[activeDesktop];
+  lv_obj_t* cont = u.pages[u.stack.back()];
+  lv_obj_update_layout(cont);
+  String s = String(lv_obj_get_width(cont)) + "x" + lv_obj_get_height(cont) + " keys";
+  for (uint32_t i = 0; i < lv_obj_get_child_cnt(cont); i++) {
+    lv_obj_t* b = lv_obj_get_child(cont, i);
+    s += String(" ") + lv_obj_get_x(b) + "," + lv_obj_get_y(b) + "," + lv_obj_get_width(b) + "x" + lv_obj_get_height(b);
+  }
+  return s;
+}
+
 bool uiLoadLayout(const char* json, String& err) {
   Deck fresh;
   if (!deckParse(json, fresh, err)) return false;
@@ -532,12 +553,14 @@ void uiSetKeyStates(const std::vector<uint32_t>& onKeys) {
   }
 }
 
-bool uiSetKeyLook(int radius, int gap) {
-  radius = constrain(radius, 0, 24);
-  gap = constrain(gap, 2, 12);
-  if (radius == keyRadius && gap == keyGap) return false;
+bool uiSetKeyLook(int radius, int gap, int pad) {
+  radius = constrain(radius, 0, kMaxKeyRadius);
+  gap = constrain(gap, 0, kMaxKeyGap);
+  pad = constrain(pad, 0, kMaxKeyPad);
+  if (radius == keyRadius && gap == keyGap && pad == keyPad) return false;
   keyRadius = radius;
   keyGap = gap;
+  keyPad = pad;
   if (deck.desktops.empty()) return true;  // nothing built yet; the next layout uses the new look
   // Only the key pages are rebuilt (their containers are deleted and the visible page is built again, the
   // others lazily when they are opened); Now playing / stats screens keep their state.

@@ -31,9 +31,16 @@ void uiSetWrap(bool on);
 bool uiSwipe(bool fingerRight);
 // Debug: where the tileview is scrolled to and where its active tile is (they must be equal when nothing slides).
 void uiScrollInfo(int& scrollX, int& tileX, int& tileCount, bool& sliding);
-// Look of the key grid: corner radius 0..24 and gap 2..12 px. Rebuilds the screen when it changes
-// (keeping the desktop that is shown) and returns true in that case.
-bool uiSetKeyLook(int radius, int gap);
+// Debug: where the keys of the visible page really are, as "WxH keys x,y,wxh ..." (area below the top bar; empty keys
+// are not drawn). "not a key desktop" for the live screens.
+String uiGridInfo();
+// Look of the key grid, in px: corner radius, gap between keys and side padding (between the keys and the screen's
+// edges), each from 0. These are the only limits (companion/tests/test_deck.py holds the editor to the same ones).
+constexpr int kMaxKeyRadius = 24;
+constexpr int kMaxKeyGap = 12;
+constexpr int kMaxKeyPad = 12;
+// Rebuilds the screen when the look changes (keeping the desktop that is shown) and returns true in that case.
+bool uiSetKeyLook(int radius, int gap, int pad);
 // Which keys are "on" right now (their `on` look is shown, the others show their normal look): ids from uiKeyId. Only the
 // pages that change are redrawn.
 void uiSetKeyStates(const std::vector<uint32_t>& onKeys);

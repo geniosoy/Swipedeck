@@ -133,7 +133,7 @@ Pills for buttons, switches, chips and messages; 10px fields; 16px cards and men
 ## Components
 
 ### Buttons
-Pill, 34px (28px small). Quiet variant for history and secondary actions, icon variant for rows. Discard changes is
+Pill, 34px (28px small). Each Settings card's "Reset to defaults" is quiet and small, in the card's heading row, and dimmed when the card is at its defaults; the page's "Reset all to defaults" is a small outlined button beside the title. Quiet variant for history and secondary actions, icon variant for rows. Discard changes is
 outlined, next to the filled Save. Icons are authored SVG
 on a 24px grid with a 2px round stroke; the board's own icons come from its font.
 

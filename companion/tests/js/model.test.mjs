@@ -11,7 +11,7 @@ test('geometry matches the firmware for the layouts in deck.json', () => {
   // 4x3: (210 - 12 - 12) / 3 = 62 -> 24 px icons; width (320 - 12 - 18) / 4 = 72
   let g = M.geometry(4, 3);
   assert.deepEqual([g.keyW, g.keyH, g.iconPx, g.textPx], [72, 62, 24, 14]);
-  assert.deepEqual(g.pos(5), { x: 6 + 78, y: 6 + 68 });
+  assert.deepEqual(g.pos(5), { x: 6 + 78, y: 6 + 68, w: 73, h: 62 });
   // 3x2: keyH (210 - 12 - 6) / 2 = 96 -> 32 px icons, 16 px text; keyW (320 - 12 - 12) / 3 = 98
   g = M.geometry(3, 2);
   assert.deepEqual([g.keyW, g.keyH, g.iconPx, g.textPx], [98, 96, 32, 16]);
@@ -24,10 +24,54 @@ test('the key gap changes the geometry like the firmware does', () => {
   // 4x3 with a gap of 2: keyW = (320 - 12 - 3 * 2) / 4 = 75, keyH = (210 - 12 - 2 * 2) / 3 = 64
   let g = M.geometry(4, 3, undefined, undefined, 2);
   assert.deepEqual([g.keyW, g.keyH, g.gap], [75, 64, 2]);
-  assert.deepEqual(g.pos(5), { x: 6 + 77, y: 6 + 66 });
+  assert.deepEqual(g.pos(5), { x: 6 + 77, y: 6 + 66, w: 76, h: 65 });
   g = M.geometry(4, 3, undefined, undefined, 12); // the widest gap
   assert.deepEqual([g.keyW, g.keyH], [(320 - 12 - 36) / 4, Math.floor((210 - 12 - 24) / 3)]);
   assert.deepEqual([M.geometry(4, 3).keyW, M.geometry(4, 3).gap], [72, 6]); // no gap given: the default
+});
+
+test('side padding moves the grid, and the keys always fill the screen to the pixel', () => {
+  const [W, H] = [320, 210];
+  assert.deepEqual(M.geometry(4, 3, undefined, undefined, 6, 0).pos(0), { x: 0, y: 0, w: 75, h: 66 });
+  for (const [cols, rows] of [[1, 1], [3, 2], [4, 3], [6, 5]]) {
+    for (const gap of [0, 3, 12]) {
+      for (const pad of [0, 6, 12]) {
+        const g = M.geometry(cols, rows, undefined, undefined, gap, pad);
+        const at = (c, r) => g.pos(r * cols + c);
+        const what = `${cols}x${rows} gap ${gap} pad ${pad}`;
+        assert.deepEqual([at(0, 0).x, at(0, 0).y], [pad, pad], what);
+        const last = at(cols - 1, rows - 1);
+        assert.deepEqual([last.x + last.w, last.y + last.h], [W - pad, H - pad], what);
+        for (let c = 1; c < cols; c++) assert.equal(at(c, 0).x - at(c - 1, 0).x - at(c - 1, 0).w, gap, what);
+        for (let r = 1; r < rows; r++) assert.equal(at(0, r).y - at(0, r - 1).y - at(0, r - 1).h, gap, what);
+        for (let i = 0; i < cols * rows; i++) {
+          assert.ok(g.pos(i).w - g.keyW <= 1 && g.pos(i).w >= g.keyW, what);
+          assert.ok(g.pos(i).h - g.keyH <= 1 && g.pos(i).h >= g.keyH, what);
+        }
+      }
+    }
+  }
+});
+
+test('reset to defaults removes only the chosen group of settings', () => {
+  const deck = { desktops: [], settings: { volume: 10, sounds: false, brightness: 40, keyGap: 0, keyPad: 0 }, obs: { port: 4460 } };
+  assert.equal(M.atDefaults(deck, ['sound']), false);
+  assert.equal(M.atDefaults(deck, ['desktops']), true);
+  M.resetToDefaults(deck, ['sound']);
+  assert.deepEqual(deck.settings, { brightness: 40, keyGap: 0, keyPad: 0 });
+  assert.deepEqual(deck.obs, { port: 4460 });
+  assert.equal(M.atDefaults(deck, ['sound']), true);
+  assert.equal(M.atDefaults(deck, ['obs']), false);
+  M.resetToDefaults(deck, Object.keys(M.SETTING_GROUPS));
+  assert.deepEqual(deck, { desktops: [] });
+  assert.equal(M.atDefaults(deck, Object.keys(M.SETTING_GROUPS)), true);
+  // a value written out but equal to the default counts as the default
+  assert.equal(M.atDefaults({ settings: { volume: 70 } }, ['sound']), true);
+});
+
+test('every setting belongs to a group, so "reset all" misses none', () => {
+  const grouped = Object.entries(M.SETTING_GROUPS).filter(([name]) => name !== 'obs').flatMap(([, keys]) => keys);
+  assert.deepEqual([...grouped].sort(), Object.keys(M.SETTING_DEFAULTS).sort());
 });
 
 test('settings missing from the deck are at their defaults, and the defaults match the board', () => {
@@ -37,6 +81,7 @@ test('settings missing from the deck are at their defaults, and the defaults mat
   assert.equal(got.volume, 10);
   assert.equal(got.flip, true);
   assert.equal(got.keyGap, 6);
+  assert.equal(got.keyPad, 6);
   assert.deepEqual(M.SOUND_THEMES.map(([id]) => id), ['classic', 'soft', 'click', 'chirp']);
   assert.ok(M.SOUND_THEMES.some(([id]) => id === M.SETTING_DEFAULTS.soundTheme));
 });

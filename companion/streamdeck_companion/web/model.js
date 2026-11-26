@@ -12,27 +12,58 @@ export const clone = (v) => JSON.parse(JSON.stringify(v));
 // Mirrors SETTINGS_SPEC in deck.py. A setting that is missing from deck.json means its default.
 export const SETTING_DEFAULTS = {
   volume: 70, sounds: true, soundTheme: 'classic', navSounds: true, brightness: 255, dimAfter: 0, sleepAfter: 0,
-  flip: false, startDesktop: 0, keyRadius: 12, keyGap: 6, wrap: false, swipe: 'normal', sleepWithPc: false,
+  flip: false, startDesktop: 0, keyRadius: 12, keyGap: 6, keyPad: 6, wrap: false, swipe: 'normal', sleepWithPc: false,
 };
 export const SOUND_THEMES = [['classic', 'Classic'], ['soft', 'Soft'], ['click', 'Click'], ['chirp', 'Chirp']];
 export const SWIPE_LENGTHS = [['short', 'Short'], ['normal', 'Normal'], ['long', 'Long']];
 export const resolveSettings = (deck) => ({ ...SETTING_DEFAULTS, ...((deck && deck.settings) || {}) });
+
+// The settings of each card of the Settings page, for "Reset to defaults". The OBS connection is not a board setting: it
+// is the deck's "obs" object, and its default is not having one.
+export const SETTING_GROUPS = {
+  sound: ['sounds', 'navSounds', 'soundTheme', 'volume'],
+  screen: ['brightness', 'dimAfter', 'sleepAfter', 'flip', 'sleepWithPc'],
+  desktops: ['swipe', 'wrap', 'startDesktop'],
+  keys: ['keyRadius', 'keyGap', 'keyPad'],
+  obs: [],
+};
+
+export function atDefaults(deck, groups) {
+  const s = resolveSettings(deck);
+  return groups.every((g) => (g === 'obs' ? !deck.obs : SETTING_GROUPS[g].every((name) => s[name] === SETTING_DEFAULTS[name])));
+}
+
+// A setting at its default is one that is not in the deck, so resetting removes it.
+export function resetToDefaults(deck, groups) {
+  for (const g of groups) {
+    if (g === 'obs') delete deck.obs;
+    else if (deck.settings) for (const name of SETTING_GROUPS[g]) delete deck.settings[name];
+  }
+  if (deck.settings && !Object.keys(deck.settings).length) delete deck.settings;
+}
 
 // ---- keys ------------------------------------------------------------------------------------------
 
 export const isEmptyKey = (k) => !k || Object.keys(k).length === 0;
 export const keyKind = (k) => (isEmptyKey(k) ? 'empty' : k.folder ? 'folder' : 'action');
 
-// Same math as the firmware (buildPage in src/ui.cpp): padding 6, gap 6, the tile is 320 x 210.
-export function geometry(cols, rows, w = SCREEN.w, h = SCREEN.h - SCREEN.header, gap = SETTING_DEFAULTS.keyGap) {
-  const pad = 6;
-  const keyW = Math.floor((w - 2 * pad - (cols - 1) * gap) / cols);
-  const keyH = Math.floor((h - 2 * pad - (rows - 1) * gap) / rows);
+// Same math as the firmware (buildPage in src/ui.cpp); the tile is 320 x 210. The keys fill what is inside the side
+// padding to the pixel, the division's leftover spread over them. keyW / keyH are the smallest key (the board picks its
+// fonts by it); pos(i) gives each key's own place and size.
+export function geometry(cols, rows, w = SCREEN.w, h = SCREEN.h - SCREEN.header, gap = SETTING_DEFAULTS.keyGap, pad = SETTING_DEFAULTS.keyPad) {
+  const spanW = w - 2 * pad + gap, spanH = h - 2 * pad + gap; // each column / row: a key and the gap after it
+  const keyW = Math.floor(spanW / cols) - gap;
+  const keyH = Math.floor(spanH / rows) - gap;
+  const left = (c) => pad + Math.floor((c * spanW) / cols);
+  const top = (r) => pad + Math.floor((r * spanH) / rows);
   return {
     keyW, keyH, pad, gap,
     iconPx: keyH >= 86 ? 32 : keyH >= 62 ? 24 : 20,
     textPx: keyH >= 86 ? 16 : 14,
-    pos: (i) => ({ x: pad + (i % cols) * (keyW + gap), y: pad + Math.floor(i / cols) * (keyH + gap) }),
+    pos: (i) => {
+      const c = i % cols, r = Math.floor(i / cols);
+      return { x: left(c), y: top(r), w: left(c + 1) - gap - left(c), h: top(r + 1) - gap - top(r) };
+    },
   };
 }
 

@@ -30,7 +30,7 @@ The board holds the screens, the touch handling, the sounds and a copy of the la
 actions, the media session, PC stats, volumes) happens in the companion, which also serves the editor. Nothing leaves
 your PC by itself: the editor only listens on `127.0.0.1`. What does go out is what you set up: HTTP actions, and the
 weather on the clock screen (only the place's coordinates, see [below](#volume-mixer-and-clock-screens)).
-Firmware: Arduino + PlatformIO + LVGL 8.3.6 (v0.14.1).
+Firmware: Arduino + PlatformIO + LVGL 8.3.6 (v0.15.0).
 
 ## The layout editor
 
@@ -122,8 +122,10 @@ The companion serves a layout editor at **http://127.0.0.1:8765/** (`Streamdeck-
   the arrows), and change a page's grid size (keys keep their row and column).
 * **Settings** (the second tab at the top), see [Settings](#settings) below: sound theme and which sounds play,
   volume with **Test** buttons that play a sound on the board, brightness, auto-dim and screen-off after no touch,
-  flipping the screen, endless scrolling between desktops and how long a swipe has to be, which desktop the board opens on, and how the keys look (corner roundness, spacing). Changes show
-  on the board **right away** (a live preview that is not stored) and are kept when you save.
+  flipping the screen, endless scrolling between desktops and how long a swipe has to be, which desktop the board opens on, and how the keys look (corner roundness, spacing, side padding). Changes show
+  on the board **right away** (a live preview that is not stored) and are kept when you save. **Reset to defaults** on each
+  card, and **Reset all to defaults** at the top (which also forgets the OBS connection), ask nothing: Undo brings the old
+  values back.
 * **Add desktop menu** (`+ Add desktop`): the **live screens** (Now playing, PC stats; one each) and **ready-made
   desktops** you can add and then tweak: Discord, Coding (VS Code, with Git and Debug pages), OBS & streaming (F13-F24
   hotkeys to bind in OBS, with a Scenes page), Music, Windows, Browser, Editing and Gaming. They live in
@@ -190,8 +192,9 @@ for explanation: the real file is plain JSON.
 * **Firmware 0.8.0 or newer** is needed for `appIcon` (older firmware ignores the option and the icon messages),
   **0.9.0 or newer** for the general settings below beyond volume, sounds and brightness, and **0.12.0 or newer** for
   hold / repeat / state keys and sleeping with the PC, **0.13.0 or newer** for the volume mixer and clock desktops, and
-  **0.14.0 or newer** for the 48 added key icons (older firmware shows a warning symbol for them), and **0.14.1 or
-  newer** for a key spacing below 2 (older firmware uses 2).
+  **0.14.0 or newer** for the 48 added key icons (older firmware shows a warning symbol for them), and **0.15.0 or
+  newer** for a key spacing below 2 and for the side padding (older firmware draws at least 2 px between keys and always
+  pads 6 px).
   (0.12.0 and 0.13.0 build and pass the companion and editor tests, but had not been flashed or tried on the board when
   this was written: check the hold, state, sleep, mixer and clock features on the real screen first.) Desktops by active
   app need no firmware change: the companion just sends `focus`.
@@ -403,6 +406,7 @@ companion connects and when the deck is saved, and the board stores them. Wrong 
 | `startDesktop` | 0..7                                        | 0           | desktop shown at boot and after a layout loads (the first one if the number does not exist)                                                                                                     |
 | `keyRadius`    | 0..24                                       | 12          | corner roundness of the keys, px                                                                                                                                                                |
 | `keyGap`       | 0..12                                       | 6           | space between keys, px                                                                                                                                                                          |
+| `keyPad`       | 0..12                                       | 6           | side padding: space between the keys and the screen's edges (all four sides of the key area, below the top bar), px; key desktops only                                                          |
 | `swipe`        | `short`, `normal`, `long`             | `normal`  | how far or hard a swipe has to be to pass to another desktop: with `short` a quick flick is enough, with `long` a deliberate drag (also the swipe that wraps around; needs firmware 0.11.0) |
 | `wrap`         | true / false                                | false       | endless scrolling: swiping right on the first desktop goes to the last one, swiping left on the last goes to the first (needs firmware 0.10.0)                                                  |
 | `sleepWithPc`  | true / false                                | false       | the screen goes off while the PC is locked, asleep, off, or the companion is not running (needs firmware 0.12.0)                                                                                |

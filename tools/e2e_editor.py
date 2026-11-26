@@ -820,8 +820,48 @@ def main() -> int:
         cdp.js("setInput(document.querySelector('#setRadius'), '12')")
         cdp.js("setInput(document.querySelector('#setGap'), '6')")
         cdp.js("document.querySelector('#themeSeg [data-theme=classic]').click()")
+
+        # side padding
+        board_commands.clear()
+        cdp.js("setInput(document.querySelector('#setPad'), '0')")
+        check("side padding can be 0, and the board is told", cdp.js("document.querySelector('#setPad').closest('.field').querySelector('b').textContent") == "0 px"
+              and wait_py(lambda: any(c.get("kind") == "settings" and c["settings"].get("keyPad") == 0 for c in board_commands)), str(board_commands[-1:]))
         cdp.js("btn('Desktops').click()")
-        check("the Desktops tab brings the editor back", cdp.js("!document.querySelector('#deckView').hidden && document.querySelector('#settingsPage').hidden"))
+        edges = "Math.min(...$$('.screen .key').map((k) => parseFloat(k.style.left))) + ',' + Math.max(...$$('.screen .key').map((k) => parseFloat(k.style.left) + parseFloat(k.style.width)))"
+        check("with no side padding the keys reach both edges of the screen", cdp.js(edges) == "0,640", str(cdp.js(edges)))
+        cdp.js("btn('Settings').click()")
+
+        # reset to defaults
+        reset = "document.querySelector('#settingsPage [data-reset={}]')".format
+        look = "['#setRadius', '#setGap', '#setPad'].map((s) => +document.querySelector(s).value)"
+        cdp.js("setInput(document.querySelector('#setRadius'), '3')")
+        cdp.js("setInput(document.querySelector('#setGap'), '0')")
+        check("every card with settings has Reset to defaults, and the page has Reset all",
+              cdp.js("$$('#settingsPage .card [data-reset]').map((b) => b.dataset.reset)") == ["Sound", "Screen", "Desktops", "Keys", "OBS"]
+              and cdp.js(reset("all") + ".textContent") == "Reset all to defaults")
+        board_commands.clear()
+        cdp.js(reset("Keys") + ".click()")
+        check("resetting Keys puts its three sliders back", cdp.js(look) == [12, 6, 6], str(cdp.js(look)))
+        check("...leaves the other cards alone", cdp.js("document.querySelector('#setSwipe').value") == "long")
+        check("...is previewed on the board", wait_py(lambda: any(c.get("kind") == "settings" and [c["settings"].get(k) for k in ("keyRadius", "keyGap", "keyPad")] == [12, 6, 6] for c in board_commands)), str(board_commands[-1:]))
+        check("...says so, and then has nothing left to do", cdp.js("toasts().includes('Keys reset to defaults')") and cdp.js(reset("Keys") + ".disabled"), str(cdp.js("toasts()")))
+        cdp.js("toastUndo()")
+        check("Undo brings the key look back", cdp.js(look) == [3, 0, 0], str(cdp.js(look)))
+        cdp.js(reset("Keys") + ".click()")
+        cdp.js("setInput(document.querySelector('#setRadius'), '5')")
+        check("moving a slider makes its card's button usable again", cdp.js(reset("Keys") + ".disabled") is False)
+        values = "[document.querySelector('#setSwipe').value, document.querySelector('#obsHost').value, document.querySelector('#setVolume').value, document.querySelector('#setRadius').value]"
+        was = cdp.js(values)
+        cdp.js(reset("all") + ".click()")
+        check("Reset all puts every card back, the OBS connection included", cdp.js(values) == ["normal", "", "70", "12"]
+              and cdp.js("$$('#settingsPage [data-reset]').every((b) => b.disabled)"), str(cdp.js(values)))
+        cdp.js("toastUndo()")
+        check("...and its Undo brings everything back", cdp.js(values) == was, str(cdp.js(values)))
+        for slider_id, value in (("setRadius", "12"), ("setGap", "6"), ("setPad", "6")):  # the saved-file check expects these
+            cdp.js(f"setInput(document.querySelector('#{slider_id}'), '{value}')")
+
+        cdp.js("btn('Desktops').click()")
+        check("the Desktops tab brings the editor back",cdp.js("!document.querySelector('#deckView').hidden && document.querySelector('#settingsPage').hidden"))
         cdp.js("keyAt(11).click()")
         cdp.js("card('Mute speakers').click()")
 

@@ -378,6 +378,9 @@ details.fold > .body { padding-bottom: 8px; }
 .settingsWrap .cards { columns: 2 380px; column-gap: 18px; margin-top: 18px; }
 .settingsWrap .card { break-inside: avoid; margin: 0 0 18px; padding: 18px 20px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; }
 .settingsWrap .card h4 { margin-bottom: 12px; font-size: 16px; }
+.settingsWrap .pagehead, .settingsWrap .cardhead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; }
+.settingsWrap .cardhead { margin: -3px -8px 9px 0; } /* the quiet button's own padding lines up with the card's edge */
+.settingsWrap .cardhead h4 { margin: 0; }
 .lookSample { position: relative; background: #0b1220; border-radius: 10px; margin-bottom: 14px; overflow: hidden; }
 .sampleKey { position: absolute; }
 .inforow { display: flex; justify-content: space-between; gap: 16px; padding: 4px 0; }

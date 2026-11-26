@@ -127,6 +127,7 @@ function commit(fn, { coalesce = null, rerender = 'all' } = {}) {
   else if (rerender === 'sample') { renderTopbar(); if (state.drawSample) state.drawSample(); }
   else if (rerender === 'tree') { renderTopbar(); renderTree(); }
   else renderLive();
+  if (rerender !== 'all' && state.view === 'settings') state.refreshResets(); // the page was not rebuilt
 }
 
 // After an undo or a redo, the next edit is a step of its own again (even in the same field, right away).
@@ -438,7 +439,7 @@ function deletePage(di, pi) {
 
 function keyEl(k, i, geo) {
   const kind = M.keyKind(k);
-  const { x, y } = geo.pos(i);
+  const { x, y, w, h: tall } = geo.pos(i);
   const lit = state.previewOn && state.sel.k === i && M.stateKind(k) !== 'none';  // the editor previews the "on" look of the selected key
   if (lit) k = { ...k, ...M.stateLook(k) };
   const unknownIcon = k.icon && !state.icons[k.icon];
@@ -449,7 +450,7 @@ function keyEl(k, i, geo) {
     title: kind === 'empty' ? 'Empty key' : kind === 'folder' ? `Folder \u2192 ${(desk().pages.find((p) => p.id === k.folder) || {}).title || k.folder}` : M.describeAction(k.action)
       + (k.repeat ? ' \u00B7 repeats while held' : k.hold ? ` \u00B7 held: ${M.describeAction(k.hold)}` : '')
       + (M.stateKind(k) !== 'none' ? ' \u00B7 changes look' : ''),
-    style: { left: x * S + 'px', top: y * S + 'px', width: geo.keyW * S + 'px', height: geo.keyH * S + 'px',
+    style: { left: x * S + 'px', top: y * S + 'px', width: w * S + 'px', height: tall * S + 'px',
       borderRadius: (geo.radius ?? M.SETTING_DEFAULTS.keyRadius) * S + 'px',
       background: kind === 'empty' ? '' : (k.color || M.DEFAULT_KEY_COLOR) },
   });
@@ -707,7 +708,7 @@ function renderScreen() {
   const content = h('div', { class: 'content', style: { top: hdrH + 'px', height: (M.SCREEN.h - M.SCREEN.header) * S + 'px' } });
   if (kind === 'keys') {
     const look = M.resolveSettings(state.deck);
-    const geo = M.geometry(pg.cols, pg.rows, undefined, undefined, look.keyGap);
+    const geo = M.geometry(pg.cols, pg.rows, undefined, undefined, look.keyGap, look.keyPad);
     geo.radius = look.keyRadius;
     for (let i = 0; i < pg.cols * pg.rows; i++) content.append(keyEl(pg.keys[i] || {}, i, geo));
   } else {
@@ -1644,22 +1645,40 @@ function renderSettingsPage() {
   const sample = h('div', { class: 'lookSample', id: 'lookSample', style: { width: M.SCREEN.w * 0.75 + 'px', height: (M.SCREEN.h - M.SCREEN.header) * 0.75 + 'px' } });
   const drawSample = () => {
     const look = M.resolveSettings(state.deck);
-    const geo = M.geometry(4, 3, undefined, undefined, look.keyGap);
+    const geo = M.geometry(4, 3, undefined, undefined, look.keyGap, look.keyPad);
     const colors = ['#2A3A4D', '#1F6FEB', '#2EA043', '#8957E5', '#D29922', '#DA3633'];
     sample.replaceChildren(...Array.from({ length: 12 }, (_, i) => {
-      const { x, y } = geo.pos(i);
-      return h('div', { class: 'sampleKey', style: { left: x * 0.75 + 'px', top: y * 0.75 + 'px', width: geo.keyW * 0.75 + 'px',
-        height: geo.keyH * 0.75 + 'px', borderRadius: look.keyRadius * 0.75 + 'px', background: colors[i % colors.length] } });
+      const { x, y, w, h: tall } = geo.pos(i);
+      return h('div', { class: 'sampleKey', style: { left: x * 0.75 + 'px', top: y * 0.75 + 'px', width: w * 0.75 + 'px',
+        height: tall * 0.75 + 'px', borderRadius: look.keyRadius * 0.75 + 'px', background: colors[i % colors.length] } });
     }));
   };
   state.drawSample = drawSample;
   drawSample();
 
+  // "Reset to defaults", per card and for the whole page. Nothing is asked: Undo brings the old values back.
+  const resets = [];
+  const resetButton = (groups, what, label, look) => {
+    const button = h('button', { class: look, 'aria-label': what ? `${label}: ${what}` : null, dataset: { reset: what || 'all' },
+      disabled: M.atDefaults(state.deck, groups),
+      onclick: () => {
+        commit((d) => M.resetToDefaults(d, groups));
+        previewSettings();
+        toast(`${what || 'All settings'} reset to defaults`, { undo, deck: true });
+      } }, label);
+    resets.push([button, groups]);
+    return button;
+  };
+  state.refreshResets = () => resets.forEach(([button, groups]) => { button.disabled = M.atDefaults(state.deck, groups); });
+  const cardHead = (title, group) => h('div', { class: 'cardhead' }, h('h4', {}, title),
+    resetButton([group], title, 'Reset to defaults', 'quiet small'));
+
   $('#settingsPage').replaceChildren(h('div', { class: 'settingsWrap' },
-    h('h2', {}, 'Settings'),
+    h('div', { class: 'pagehead' }, h('h2', {}, 'Settings'),
+      resetButton(Object.keys(M.SETTING_GROUPS), '', 'Reset all to defaults', 'small')),
     h('p', { class: 'hint', id: 'previewNote' }, previewNoteText()),
     h('div', { class: 'cards' },
-      h('div', { class: 'card' }, h('h4', {}, 'Sound'),
+      h('div', { class: 'card' }, cardHead('Sound', 'sound'),
         checkRow('Key sounds', s.sounds, (v) => setting('sounds', v, 'all')),
         checkRow('Folder and Back sounds', s.navSounds, (v) => setting('navSounds', v, 'all')),
         h('div', { class: 'field' }, h('label', {}, 'Style'),
@@ -1670,7 +1689,7 @@ function renderSettingsPage() {
             [['tap', 'Key'], ['nav', 'Folder'], ['back', 'Back'], ['error', 'Error']].map(([n, t]) =>
               h('button', { class: 'small', dataset: { sound: n }, disabled: !s.sounds, onclick: () => testSound(n) }, t)))),
         slider('setVolume', 'Volume', 0, 100, s.volume, 'volume')),
-      h('div', { class: 'card' }, h('h4', {}, 'Screen'),
+      h('div', { class: 'card' }, cardHead('Screen', 'screen'),
         slider('setBrightness', 'Brightness', 5, 255, s.brightness, 'brightness', (v) => `${Math.round(v / 2.55)}%`),
         choice('setDim', 'Dim when idle', DIM_CHOICES, s.dimAfter, 'dimAfter', { off: (v) => dimsTooLate(v, s.sleepAfter) }),
         choice('setSleep', 'Screen off when idle', SLEEP_CHOICES, s.sleepAfter, 'sleepAfter', { hint: 'First touch only wakes it.', pick: pickSleep }),
@@ -1678,25 +1697,26 @@ function renderSettingsPage() {
         checkRow('Rotate screen 180\u00B0', s.flip, (v) => setting('flip', v, 'all')),
         checkRow('Screen off when PC locks or sleeps', s.sleepWithPc, (v) => setting('sleepWithPc', v, 'all')),
         h('div', { class: 'hint' }, 'Touch lights it for 30 s.')),
-      h('div', { class: 'card' }, h('h4', {}, 'Desktops'),
+      h('div', { class: 'card' }, cardHead('Desktops', 'desktops'),
         h('div', { class: 'field' }, h('label', {}, 'Swipe distance'),
           h('select', { id: 'setSwipe', onchange: (e) => setting('swipe', e.target.value, 'all') },
             M.SWIPE_LENGTHS.map(([v, t]) => h('option', { value: v, selected: v === s.swipe }, t)))),
         checkRow('Loop desktops', s.wrap, (v) => setting('wrap', v, 'all')),
         choice('setStart', 'Start on', desktops, Math.min(s.startDesktop, desktops.length - 1), 'startDesktop',
           { hint: 'The board also returns here when a save changes what it shows.' })),
-      h('div', { class: 'card' }, h('h4', {}, 'Keys'),
+      h('div', { class: 'card' }, cardHead('Keys', 'keys'),
         sample,
         slider('setRadius', 'Corners', 0, 24, s.keyRadius, 'keyRadius', (v) => `${v} px`),
-        slider('setGap', 'Spacing', 0, 12, s.keyGap, 'keyGap', (v) => `${v} px`)),
-      obsCard(),
+        slider('setGap', 'Spacing', 0, 12, s.keyGap, 'keyGap', (v) => `${v} px`),
+        slider('setPad', 'Side padding', 0, 12, s.keyPad, 'keyPad', (v) => `${v} px`)),
+      obsCard(cardHead('OBS', 'obs')),
       h('div', { class: 'card' }, h('h4', {}, 'This deck'),
         info('Board', st ? (st.connected ? `connected on ${st.port || '?'}, firmware ${st.firmware || '?'}` : 'disconnected') : 'can\u2019t reach Swipedeck'),
         h('div', { class: 'hint', style: { marginTop: '8px' } }, 'Previous save: deck.json.bak'))),
   ));
 }
 
-function obsCard() {
+function obsCard(head) {
   const obs = state.deck.obs || {};
   const set = (name, value) => commit((d) => {
     d.obs = d.obs || {};
@@ -1716,7 +1736,7 @@ function obsCard() {
       result.textContent = e.message;
     }
   };
-  return h('div', { class: 'card', id: 'obsCard' }, h('h4', {}, 'OBS'),
+  return h('div', { class: 'card', id: 'obsCard' }, head,
     h('div', { class: 'hint' }, 'In OBS: Tools > WebSocket Server Settings > Enable WebSocket server.'),
     field('Address', textInput(obs.host || '', (v) => set('host', v.trim()), { placeholder: '127.0.0.1', id: 'obsHost' })),
     field('Port', h('input', { type: 'number', id: 'obsPort', min: 1, max: 65535, placeholder: '4455', value: obs.port ?? '', style: { width: '110px' },
