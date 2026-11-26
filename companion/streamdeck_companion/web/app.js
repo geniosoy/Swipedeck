@@ -1688,7 +1688,7 @@ function renderSettingsPage() {
       h('div', { class: 'card' }, h('h4', {}, 'Keys'),
         sample,
         slider('setRadius', 'Corners', 0, 24, s.keyRadius, 'keyRadius', (v) => `${v} px`),
-        slider('setGap', 'Spacing', 2, 12, s.keyGap, 'keyGap', (v) => `${v} px`)),
+        slider('setGap', 'Spacing', 0, 12, s.keyGap, 'keyGap', (v) => `${v} px`)),
       obsCard(),
       h('div', { class: 'card' }, h('h4', {}, 'This deck'),
         info('Board', st ? (st.connected ? `connected on ${st.port || '?'}, firmware ${st.firmware || '?'}` : 'disconnected') : 'can\u2019t reach Swipedeck'),

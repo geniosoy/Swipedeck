@@ -30,7 +30,7 @@ The board holds the screens, the touch handling, the sounds and a copy of the la
 actions, the media session, PC stats, volumes) happens in the companion, which also serves the editor. Nothing leaves
 your PC by itself: the editor only listens on `127.0.0.1`. What does go out is what you set up: HTTP actions, and the
 weather on the clock screen (only the place's coordinates, see [below](#volume-mixer-and-clock-screens)).
-Firmware: Arduino + PlatformIO + LVGL 8.3.6 (v0.14.0).
+Firmware: Arduino + PlatformIO + LVGL 8.3.6 (v0.14.1).
 
 ## The layout editor
 
@@ -190,7 +190,8 @@ for explanation: the real file is plain JSON.
 * **Firmware 0.8.0 or newer** is needed for `appIcon` (older firmware ignores the option and the icon messages),
   **0.9.0 or newer** for the general settings below beyond volume, sounds and brightness, and **0.12.0 or newer** for
   hold / repeat / state keys and sleeping with the PC, **0.13.0 or newer** for the volume mixer and clock desktops, and
-  **0.14.0 or newer** for the 48 added key icons (older firmware shows a warning symbol for them).
+  **0.14.0 or newer** for the 48 added key icons (older firmware shows a warning symbol for them), and **0.14.1 or
+  newer** for a key spacing below 2 (older firmware uses 2).
   (0.12.0 and 0.13.0 build and pass the companion and editor tests, but had not been flashed or tried on the board when
   this was written: check the hold, state, sleep, mixer and clock features on the real screen first.) Desktops by active
   app need no firmware change: the companion just sends `focus`.
@@ -401,7 +402,7 @@ companion connects and when the deck is saved, and the board stores them. Wrong 
 | `flip`         | true / false                                | false       | the screen upside down, touch included (for a case mounted the other way up)                                                                                                                    |
 | `startDesktop` | 0..7                                        | 0           | desktop shown at boot and after a layout loads (the first one if the number does not exist)                                                                                                     |
 | `keyRadius`    | 0..24                                       | 12          | corner roundness of the keys, px                                                                                                                                                                |
-| `keyGap`       | 2..12                                       | 6           | space between keys, px                                                                                                                                                                          |
+| `keyGap`       | 0..12                                       | 6           | space between keys, px                                                                                                                                                                          |
 | `swipe`        | `short`, `normal`, `long`             | `normal`  | how far or hard a swipe has to be to pass to another desktop: with `short` a quick flick is enough, with `long` a deliberate drag (also the swipe that wraps around; needs firmware 0.11.0) |
 | `wrap`         | true / false                                | false       | endless scrolling: swiping right on the first desktop goes to the last one, swiping left on the last goes to the first (needs firmware 0.10.0)                                                  |
 | `sleepWithPc`  | true / false                                | false       | the screen goes off while the PC is locked, asleep, off, or the companion is not running (needs firmware 0.12.0)                                                                                |

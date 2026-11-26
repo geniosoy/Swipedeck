@@ -41,6 +41,10 @@ class DeckTest(unittest.TestCase):
         self.assertIsNone(d.action_at(0, 0, 1))
         self.assertTrue(any("does nothing" in w for w in d.warnings))
 
+    def test_keys_can_touch(self):
+        d = Deck({"settings": {"keyGap": 0}, **simple([{"label": "X"}])})
+        self.assertEqual(d.effective_settings()["keyGap"], 0)
+
     def test_errors(self):
         bad = [
             {}, {"desktops": []}, {"desktops": [{"pages": []}]},
@@ -61,7 +65,7 @@ class DeckTest(unittest.TestCase):
         self.assertEqual(Deck({"settings": {"volume": 5, "bogus": 1}, **simple([])}).settings, {"volume": 5})
         self.assertEqual(Deck(simple([])).settings, {})
         for bad in ({"soundTheme": "loud"}, {"soundTheme": 3}, {"navSounds": 1}, {"flip": "yes"}, {"wrap": 1}, {"swipe": "far"}, {"swipe": 2}, {"dimAfter": -1},
-                    {"sleepAfter": 99999}, {"keyRadius": 25}, {"keyGap": 1}, {"keyGap": 2.5}, {"startDesktop": 8},
+                    {"sleepAfter": 99999}, {"keyRadius": 25}, {"keyGap": -1}, {"keyGap": 13}, {"keyGap": 2.5}, {"startDesktop": 8},
                     {"volume": True}, {"brightness": 4}, {"sounds": 0}):
             with self.assertRaises(DeckError, msg=str(bad)):
                 Deck({"settings": bad, **simple([])})

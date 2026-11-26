@@ -17,7 +17,7 @@
 
 namespace {
 
-constexpr const char* kFirmware = "0.14.0";
+constexpr const char* kFirmware = "0.14.1";
 constexpr const char* kLayoutFile = "/layout.json";
 constexpr const char* kLayoutTmp = "/layout.tmp";
 
@@ -386,7 +386,7 @@ void onSettings(JsonDocument& m) {
   if (m["flip"].is<bool>()) settings.flip = m["flip"].as<bool>();
   if (m["startDesktop"].is<int>()) settings.startDesktop = constrain(m["startDesktop"].as<int>(), 0, 31);
   if (m["keyRadius"].is<int>()) settings.keyRadius = constrain(m["keyRadius"].as<int>(), 0, 24);
-  if (m["keyGap"].is<int>()) settings.keyGap = constrain(m["keyGap"].as<int>(), 2, 12);
+  if (m["keyGap"].is<int>()) settings.keyGap = constrain(m["keyGap"].as<int>(), 0, 12);
   if (m["wrap"].is<bool>()) settings.wrap = m["wrap"].as<bool>();
   if (m["sleepWithPc"].is<bool>()) settings.sleepWithPc = m["sleepWithPc"].as<bool>();
   if (m["swipe"].is<const char*>()) {

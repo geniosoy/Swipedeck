@@ -224,15 +224,15 @@ h5 { margin: 0 0 10px; font-size: 15px; font-weight: 700; }
 .hdr .dots { display: flex; gap: 12px; }
 .hdr .dot { width: 16px; height: 16px; border-radius: 50%; background: #55657a; }
 .hdr .dot.on { background: #fff; }
-.content { position: absolute; left: 0; right: 0; }
+.content { position: absolute; left: 0; right: 0; isolation: isolate; } /* the keys' stacking stays inside the screen */
 .key { position: absolute; border-radius: 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff;
   overflow: hidden; cursor: pointer; padding: 4px; text-align: center; transition: filter .12s var(--ease), outline-color .12s var(--ease); outline: 4px solid transparent; outline-offset: 3px; }
 .key:hover { filter: brightness(1.18); }
 .key.empty { background: transparent; border: 2px dashed #2b3b52; }
 .key.empty:hover { border-color: #4a688c; }
-.key.sel { outline-color: #f27a30; }
+.key.sel { outline-color: #f27a30; z-index: 2; } /* the ring lies over the neighbours, however close they are */
 main.placing .key.empty { border-color: #6d86a6; background: rgba(255, 255, 255, .04); }
-.key.dragover { outline: 4px dashed #f27a30; }
+.key.dragover { outline: 4px dashed #f27a30; z-index: 3; }
 .key.landed { animation: land .26s var(--ease); }
 .key .ico { line-height: 1.1; }
 .key .lbl { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

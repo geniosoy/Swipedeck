@@ -802,6 +802,16 @@ def main() -> int:
         check("the key look sliders redraw the sample", cdp.js("document.querySelector('#lookSample .sampleKey').style.borderRadius") != before)
         check("the sample follows the gap", cdp.js("document.querySelectorAll('#lookSample .sampleKey')[1].style.left") != left_before and cdp.js("document.querySelector('#lookSample').children.length") == 12)
         check("a radius label follows the slider", cdp.js("document.querySelector('#setRadius').closest('.field').querySelector('b').textContent") == "3 px")
+        cdp.js("setInput(document.querySelector('#setGap'), '0')")
+        check("the spacing can be 0", cdp.js("document.querySelector('#setGap').value") == "0"
+              and cdp.js("document.querySelector('#setGap').closest('.field').querySelector('b').textContent") == "0 px")
+        cdp.js("btn('Desktops').click()")
+        cdp.js("keyAt(1).click()")
+        touching = "parseFloat(keyAt(0).style.left) + parseFloat(keyAt(0).style.width) === parseFloat(keyAt(1).style.left)"
+        check("...and the keys then touch", cdp.js(touching), cdp.js("keyAt(1).style.left"))
+        check("the selected key is drawn over its neighbours, so its ring is not covered",
+              cdp.js("getComputedStyle(keyAt(1)).zIndex") == "2" and cdp.js("getComputedStyle(keyAt(2)).zIndex") == "auto")
+        cdp.js("btn('Settings').click()")
         if shots:
             cdp.shot(shots / "11_general_settings.png")
         cdp.js("btn('Desktops').click()")

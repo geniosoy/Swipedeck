@@ -47,7 +47,7 @@ SETTINGS_SPEC = {
     "flip": ("bool", False, None),             # screen upside down
     "startDesktop": ("int", 0, (0, MAX_DESKTOPS - 1)),
     "keyRadius": ("int", 12, (0, 24)),
-    "keyGap": ("int", 6, (2, 12)),
+    "keyGap": ("int", 6, (0, 12)),
     "swipe": ("swipe", "normal", None),        # how far / hard a swipe must be to pass to another desktop
     "wrap": ("bool", False, None),             # endless scrolling: swiping past the last desktop wraps to the first
     "sleepWithPc": ("bool", False, None),      # screen off while the PC is locked, asleep or not talking to the board
