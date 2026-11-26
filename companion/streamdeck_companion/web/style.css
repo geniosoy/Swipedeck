@@ -117,7 +117,8 @@ input[type=color] { width: 34px; height: 30px; padding: 0; border: 0; background
 .pill.off::before { background: var(--warn); }
 .history { display: flex; gap: 2px; }
 #topbar button.primary { min-width: 104px; }
-#topbar button.primary:disabled { background: transparent; border-color: var(--line-2); color: var(--muted); opacity: 1; }
+#topbar button.primary:disabled, #topbar button.discard:disabled { background: transparent; border-color: var(--line-2); color: var(--muted); opacity: 1; }
+#topbar button.discard:disabled { opacity: .6; }
 
 #banner { display: flex; gap: 12px; align-items: center; padding: 10px 20px; background: color-mix(in srgb, var(--bad) 12%, var(--panel)); border-bottom: 1px solid var(--bad); }
 #banner.warn { background: color-mix(in srgb, var(--warn) 14%, var(--panel)); border-color: var(--warn); }
@@ -251,8 +252,15 @@ main.placing .key.empty { border-color: #6d86a6; background: rgba(255, 255, 255,
 .keyhead .mini .ico { font-size: 17px; }
 .keyhead .mini .lbl { font-size: 10px; }
 .keyhead .sub { color: var(--muted); font-size: 13px; }
+.keyname { flex: 1; min-width: 0; }
+.nameline { display: flex; align-items: center; gap: 4px; min-height: 30px; }
+.nameline h4 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nameline h4.none { color: var(--muted); font-weight: 400; }
+.keyname .boardtext input { min-height: 30px; padding: 3px 10px; font-size: 15px; font-weight: 700; }
 .sect { border-top: 1px solid var(--line); padding: 16px 0 4px; }
 .emptypanel { padding: 36px 12px; text-align: center; color: var(--muted); }
+.emptypanel p { margin: 0 0 12px; }
+.emptypanel .row { justify-content: center; }
 .panelfoot { position: sticky; bottom: 0; display: flex; flex-wrap: wrap; gap: 6px; margin: 4px -20px 0; padding: 12px 20px 14px; background: var(--panel); border-top: 1px solid var(--line); }
 .deskform { padding-bottom: 8px; }
 .deskform h4 { margin-bottom: 12px; }

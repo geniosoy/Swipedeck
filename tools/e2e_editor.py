@@ -131,7 +131,8 @@ window.toasts = () => $$('#toast .toastItem span').map((s) => s.textContent);
 window.toastUndo = () => $$('#toast .toastItem.withUndo button').pop().click();
 window.pageRow = (id) => $$('.pagerow').find((r) => r.dataset.page === id);
 window.rowStep = (which, sign) => btn(sign, document.querySelectorAll('.stepper')[which]).click();
-window.labelInput = () => document.querySelector('#inspector input[maxlength="10"]');
+window.labelInput = () => { if (!document.querySelector('#keyName')) document.querySelector('#editName').click(); return document.querySelector('#keyName'); };
+window.addAction = () => { const b = btn('Add action', document.querySelector('#inspector')); if (b) b.click(); };
 window.press = (key, opts = {}) => document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...opts }));
 window.setInput = (el, value) => { el.value = value; el.dispatchEvent(new Event('input', { bubbles: true })); };
 window.addApps = (id, text) => { const el = document.querySelector('#' + id); el.focus(); el.value = text; el.dispatchEvent(new Event('change', { bubbles: true })); };
@@ -247,9 +248,23 @@ def main() -> int:
 
         print("editing a key")
         cdp.js("keyAt(0).click()")
-        check("selecting a key shows it in the inspector", cdp.js("$$('#inspector h4').pop().textContent") == "Key 1")
-        check("label field has the key's label", cdp.js("[...document.querySelectorAll('#inspector input[type=text]')].some((i) => i.value === 'Mute')"))
-        cdp.js("setInput([...document.querySelectorAll('#inspector input[type=text]')].find((i) => i.value === 'Mute'), 'Silence')")
+        check("selecting a key shows it in the inspector, under its name", cdp.js("document.querySelector('.keyhead h4').textContent") == "Mute"
+              and cdp.js("document.querySelector('.keyhead .sub').textContent") == "Action")
+        check("there is no key number, no label field and no Action / Folder switch", cdp.js("!document.querySelector('#panel').textContent.includes('Key 1')")
+              and cdp.js("!document.querySelector('#panel input[maxlength=\\'10\\']') && !btn('Action', document.querySelector('#panel')) && !btn('Folder', document.querySelector('#panel'))"))
+        cdp.js("document.querySelector('#editName').click()")
+        check("the pencil turns the name into a box that has it", cdp.js("document.activeElement.id === 'keyName' && document.activeElement.value === 'Mute'"))
+        cdp.js("setInput(document.querySelector('#keyName'), 'Scrap')")
+        cdp.js("document.querySelector('#keyName').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))")
+        check("Escape takes the typing back, leaving nothing to save", cdp.js("keyLabel(0)") == "Mute" and cdp.js("btn('Saved') && btn('Saved').disabled")
+              and cdp.js("document.querySelector('.keyhead h4').textContent") == "Mute")
+        cdp.js("document.querySelector('#editName').click()")
+        cdp.js("setInput(document.querySelector('#keyName'), 'Silence')")
+        check("the little picture follows the typing", cdp.js("document.querySelector('.keyhead .mini .lbl').textContent") == "Silence")
+        cdp.js("document.querySelector('#keyName').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))")
+        check("Enter keeps it, in the name and the little picture", cdp.js("document.querySelector('.keyhead h4').textContent") == "Silence"
+              and cdp.js("document.querySelector('.keyhead .mini .lbl').textContent") == "Silence" and cdp.js("!document.querySelector('#keyName')"))
+        check("Discard changes is outlined and usable", cdp.js("getComputedStyle(btn('Discard changes')).borderTopColor !== 'rgba(0, 0, 0, 0)' && !btn('Discard changes').disabled"))
         check("typing updates the preview live", cdp.js("keyLabel(0)") == "Silence")
         check("unsaved changes enable Save", cdp.js("btn('Save') && !btn('Save').disabled"))
         cdp.js("press('z', { ctrlKey: true })")
@@ -290,11 +305,17 @@ def main() -> int:
         cdp.js("card('Folder').click()")
         check("the Folder preset creates a new page", cdp.js("$$('.pagerow').length") == before_pages + 1)
         check("...and the key shows the folder arrow", cdp.js("!!keyAt(10).querySelector('.arrow')"))
-        cdp.js("btn('Action', document.querySelector('#inspector')).click()")
-        check("switching a folder key to Action gives it an action", cdp.js("keyAt(10).title.startsWith('press')"))
-        check("there is no separate Empty tab", cdp.js("!btn('Empty', document.querySelector('#inspector'))"))
+        check("a folder key shows the folder settings, and says it is one", cdp.js("document.querySelector('.keyhead .sub').textContent") == "Folder"
+              and cdp.js("!!btn('Open page') && !document.querySelector('#holdSection')"))
         cdp.js("btn('Clear', document.querySelector('#inspector')).click()")
         check("Clear empties the key", cdp.js("keyAt(10).classList.contains('empty')"))
+        check("an empty key offers to add an action or a folder", cdp.js("!!btn('Add action') && !!btn('Add folder') && !document.querySelector('#editName')"))
+        cdp.js("btn('Add folder').click()")
+        check("Add folder makes a folder key", cdp.js("keyAt(10).classList.contains('folder')"))
+        cdp.js("btn('Clear', document.querySelector('#inspector')).click()")
+        cdp.js("addAction()")
+        check("Add action makes an action key", cdp.js("keyAt(10).title.startsWith('press')") and cdp.js("document.querySelector('.keyhead .sub').textContent") == "Action")
+        cdp.js("btn('Clear', document.querySelector('#inspector')).click()")
         check("an empty key offers no Save as preset", cdp.js("!btn('Save as preset')"))
 
         print("grid size")
@@ -579,7 +600,7 @@ def main() -> int:
         print("http and obs actions")
         cdp.js("window.actionSelect = () => [...document.querySelectorAll('#inspector select')].find((s) => [...s.options].some((o) => o.textContent === 'Send web request'))")
         cdp.js("keyAt(8).click()")
-        cdp.js("btn('Action', document.querySelector('#inspector')).click()")
+        cdp.js("addAction()")
         types = cdp.js("[...actionSelect().options].map((o) => o.textContent)")
         check("the action list offers the web request and OBS", "Send web request" in types and "Control OBS" in types, str(types))
         cdp.js("setSelect(actionSelect(), 'http')")
@@ -597,14 +618,14 @@ def main() -> int:
         check("the tooltip of the key shows the request without any query", cdp.js("keyAt(8).title") == "POST http://homeassistant.local:8123/api/services/light/toggle", cdp.js("keyAt(8).title"))
 
         cdp.js("keyAt(9).click()")
-        cdp.js("btn('Action', document.querySelector('#inspector')).click()")
+        cdp.js("addAction()")
         cdp.js("setSelect(actionSelect(), 'obs')")
         check("an OBS action starts as 'start / stop recording' with no parameter", cdp.js("document.querySelector('#obsRequest').value") == "ToggleRecord" and cdp.js("!document.querySelector('#obsField')"))
         cdp.js("setSelect(document.querySelector('#obsRequest'), 'SetCurrentProgramScene')")
         check("switching scene asks for the scene name", cdp.js("!!document.querySelector('#obsField')"))
         cdp.js("setInput(document.querySelector('#obsField'), 'Game')")
         cdp.js("keyAt(10).click()")
-        cdp.js("btn('Action', document.querySelector('#inspector')).click()")
+        cdp.js("addAction()")
         cdp.js("setSelect(actionSelect(), 'obs')")
         cdp.js("setSelect(document.querySelector('#obsRequest'), '__other')")
         check("'another request' lets you type its name", cdp.js("document.querySelector('#obsRequestName').value") == "GetVersion")
@@ -830,8 +851,11 @@ def main() -> int:
         cdp.js("setInput(labelInput(), 'Niño')")
         warning = "labelInput().parentElement.querySelector('.accents').hidden"
         check("a label with an accent warns that the board cannot show it", cdp.js(warning) is False)
+        cdp.js("document.querySelector('#keyName').blur()")
+        check("...and keeps warning under the name", cdp.js("!!document.querySelector('.keyname .accents')"))
         cdp.js("setInput(labelInput(), 'Lock')")
         check("...and a plain one does not", cdp.js(warning) is True)
+        cdp.js("document.querySelector('#keyName').blur()")
         cdp.js("window.actionSelect = () => [...document.querySelectorAll('#inspector select')].find((s) => [...s.options].some((o) => o.textContent === 'Type text'))")
         cdp.js("setSelect(actionSelect(), 'text')")
         cdp.js("setInput(document.querySelector('#inspector textarea'), '')")

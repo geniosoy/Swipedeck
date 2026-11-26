@@ -110,7 +110,7 @@ use Segoe UI, as before, so they do not change with the shell.
 
 ### Hierarchy
 - **Headline** (700, 24px): the Settings page.
-- **Title** (700, 17px): the panel's subject ("Key 2", "Desktop").
+- **Title** (700, 17px): the panel's subject (the key's name, "Desktop").
 - **Section** (700, 15px): Look, Action, Presets, Desktops.
 - **Body** (400, 14px). **Label** (400, 13px, muted): field names and hints.
 
@@ -132,7 +132,8 @@ Pills for buttons, switches, chips and messages; 10px fields; 16px cards and men
 ## Components
 
 ### Buttons
-Pill, 34px (28px small). Quiet variant for history and secondary actions, icon variant for rows. Icons are authored SVG
+Pill, 34px (28px small). Quiet variant for history and secondary actions, icon variant for rows. Discard changes is
+outlined, next to the filled Save. Icons are authored SVG
 on a 24px grid with a 2px round stroke; the board's own icons come from its font.
 
 ### Switches
@@ -144,6 +145,10 @@ White (near-black in dark) with a hairline; focus is a 2px orange outline.
 ### Navigation
 Top-bar tabs underlined in graphite. Desktops are listed with a picture of their screen; their pages appear under the
 selected one and as tabs above the board. Row actions appear on hover or keyboard focus.
+
+### Key head
+A picture of the key, its name with a pencil that turns it into a box, and "Action" or "Folder" under it. No key number,
+no page name, no switch between the two kinds: an empty key offers to add either one.
 
 ### Folding sections
 Less used parts (Hold, Change look when) are folded and say their current value while closed.

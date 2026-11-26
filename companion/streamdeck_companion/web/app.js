@@ -35,7 +35,7 @@ const UI_ICONS = {
   undo: 'M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3', redo: 'M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h3',
   up: 'M6 14l6-6 6 6', down: 'M6 10l6 6 6-6', close: 'M6 6l12 12M18 6 6 18',
   trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3', search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM16.5 16.5 21 21',
-  grip: 'M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01', none: 'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM6.3 6.3l11.4 11.4',
+  grip: 'M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01', edit: 'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4', none: 'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM6.3 6.3l11.4 11.4',
 };
 function svg(name) {
   const NS = 'http://www.w3.org/2000/svg';
@@ -298,7 +298,7 @@ function renderTopbar() {
     h('div', { class: 'history' },
       h('button', { class: 'quiet', onclick: undo, disabled: !history.canUndo, title: 'Undo (Ctrl+Z)' }, svg('undo'), 'Undo'),
       h('button', { class: 'quiet', onclick: redo, disabled: !history.canRedo, title: 'Redo (Ctrl+Y)' }, svg('redo'), 'Redo')),
-    h('button', { class: 'quiet', onclick: revert, disabled: !isDirty() }, 'Discard changes'),
+    h('button', { class: 'discard', onclick: revert, disabled: !isDirty() }, 'Discard changes'),
     h('button', { class: 'primary', onclick: save, disabled: !isDirty() || state.saving, title: 'Save (Ctrl+S)' },
       isDirty() ? 'Save' : 'Saved'),
   );
@@ -986,23 +986,57 @@ function desktopForm(d) {
     'Names from Task Manager > Details, without .exe.'));
 }
 
+// The top of the key panel: a picture of the key, its name with a pencil to change it, and what kind of key it is.
+function keyHead(k) {
+  const kind = M.keyKind(k);
+  const info = h('div', { class: 'keyname' });
+  const head = h('div', { class: 'keyhead' }, miniKey(k), info);
+  const nameLine = () => h('div', { class: 'nameline' },
+    h('h4', { class: k.label || kind === 'empty' ? '' : 'none' }, kind === 'empty' ? 'Empty key' : k.label || 'No label'),
+    kind === 'empty' ? null : h('button', { class: 'icon', id: 'editName', title: 'Edit label', 'aria-label': 'Edit label', onclick: () => edit() }, svg('edit')));
+  const warning = () => (M.boardCannotShow(k.label) ? h('div', { class: 'hint bad accents' }, 'The board can\u2019t show accents or emoji.') : null);
+  const show = () => {
+    info.replaceChildren(...[nameLine(), kind === 'empty' ? null : h('div', { class: 'sub' }, kind === 'folder' ? 'Folder' : 'Action'), warning()].filter(Boolean));
+  };
+  // The name turns into a box: Enter or leaving it keeps what was typed (already shown on the board), Escape takes it back.
+  const edit = () => {
+    const before = deckText(), steps = history.past.length;
+    let done = false;
+    const box = boardText(k.label || '', (v) => liveEdit(() => { const key = page().keys[state.sel.k]; if (v) key.label = v; else delete key.label; }, 'label'),
+      { maxLength: 10, id: 'keyName', 'aria-label': 'Label' });
+    const input = box.querySelector('input');
+    const finish = (keep) => {
+      if (done) return;
+      done = true;
+      if (!keep && deckText() !== before) { history.past.length = steps; restore(before); return; }
+      show(); // only the head is redrawn: a click that took the focus away still lands on its button
+      head.querySelector('.mini').replaceWith(miniKey(k));
+    };
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') finish(true); else if (e.key === 'Escape') finish(false); });
+    input.addEventListener('blur', () => finish(true));
+    input.addEventListener('input', () => head.querySelector('.mini').replaceWith(miniKey(k))); // the little picture follows
+    info.querySelectorAll(':scope > .accents').forEach((el) => el.remove());
+    info.querySelector('.nameline').replaceWith(box);
+    input.focus();
+    input.select();
+  };
+  show();
+  return head;
+}
+
 // The selected key: what it looks like and what it does; the less used parts fold away.
 function keyPanel() {
   const k = keyObj();
   if (state.sel.k === null) return [h('div', { class: 'emptypanel' }, 'Click a key to edit it.')];
   const kk = M.keyKind(k);
-  const parts = [
-    h('div', { class: 'keyhead' }, miniKey(k), h('div', {}, h('h4', {}, `Key ${state.sel.k + 1}`),
-      h('div', { class: 'sub' }, M.pageName(desk(), page())))),
-    h('div', { class: 'seg' }, [['action', 'Action'], ['folder', 'Folder']].map(([v, t]) =>
-      h('button', { class: kk === v ? 'on' : '', 'aria-pressed': String(kk === v), onclick: () => { if (kk !== v) setKeyKind(v); } }, t))),
-  ];
+  const parts = [keyHead(k)];
   if (kk === 'empty') {
-    parts.push(h('div', { class: 'emptypanel' }, 'Pick Action, Folder or a preset.'));
+    parts.push(h('div', { class: 'emptypanel' }, h('p', {}, 'Add one, or pick a preset.'),
+      h('div', { class: 'row' },
+        h('button', { class: 'small', onclick: () => setKeyKind('action') }, 'Add action'),
+        h('button', { class: 'small', onclick: () => setKeyKind('folder') }, 'Add folder'))));
   } else {
-    parts.push(h('section', { class: 'sect' }, h('h5', {}, 'Look'),
-      field('Label', boardText(k.label || '', (v) => liveEdit(() => { const key = page().keys[state.sel.k]; if (v) key.label = v; else delete key.label; }, 'label'), { maxLength: 10 })),
-      colorPicker(k), iconPicker(k)));
+    parts.push(h('section', { class: 'sect' }, h('h5', {}, 'Look'), colorPicker(k), iconPicker(k)));
     if (kk === 'folder') parts.push(h('section', { class: 'sect' }, h('h5', {}, 'Folder'), folderEditor(k)));
     else {
       parts.push(h('section', { class: 'sect' }, h('h5', {}, 'Action'),

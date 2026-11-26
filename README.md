@@ -111,7 +111,7 @@ The companion serves a layout editor at **http://127.0.0.1:8765/** (`Streamdeck-
   recording a hotkey.
 * **Undo instead of questions:** deleting a desktop, a page or a saved preset, shrinking the grid, replacing a key with a
   preset and discarding changes happen at once, and a message at the bottom offers **Undo** for 10 seconds.
-* **Per key:** label, icon (a short row, or **All icons** for all 51 board icons), color, and either an action, a folder (opens another page, or creates one)
+* **Per key:** label (the pencil beside its name), icon (a short row, or **All icons** for all 51 board icons), color, and either an action, a folder (opens another page, or creates one)
   or nothing. Actions have forms: a hotkey builder (modifier tick boxes plus a key box, with a **Record** button;
   the Windows key cannot be captured by a browser, so it is a tick box), typed text, open, run, lock, and multi-step
   sequences with waits.
