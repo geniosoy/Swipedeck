@@ -197,6 +197,7 @@ def main() -> int:
         cdp = CDP(next(t for t in targets if t["type"] == "page")["webSocketDebuggerUrl"])
         cdp.call("Runtime.enable")
         cdp.call("Page.enable")
+        cdp.call("Emulation.setFocusEmulationEnabled", enabled=True)  # or a headless page sends no focus and blur events
         cdp.call("Emulation.setDeviceMetricsOverride", width=1700, height=1050, deviceScaleFactor=1, mobile=False)
 
         def open_editor():
@@ -246,10 +247,74 @@ def main() -> int:
         check("a click elsewhere closes the add menu", cdp.js("!document.querySelector('.addmenu')"))
         cdp.js("$$('.deskrow')[0].click()")
 
+        print("renaming on the preview")
+        title = "document.querySelector('.hdr .title').textContent"
+        rail = "names()[0]"
+        check("there are no name fields beside the preview's title", cdp.js("!document.querySelector('#pageControls input')")
+              and cdp.js("!document.querySelector('#panel input[maxlength=\\'24\\']')"))
+        cdp.js("document.querySelector('#screenTitle').click()")
+        check("clicking the name turns it into a box", cdp.js("document.activeElement.id === 'titleInput' && document.activeElement.value === 'Main'"))
+        cdp.js("setInput(document.querySelector('#titleInput'), 'Home')")
+        check("on the first page typing renames the desktop, the list and the tab", cdp.js(rail) == "Home" and cdp.js("document.querySelector('.pagetabs .on').textContent") == "Home"
+              and cdp.js("document.activeElement.id === 'titleInput'"))
+        cdp.js("document.querySelector('#titleInput').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))")
+        check("Enter keeps it", cdp.js(title) == "Home" and cdp.js("!document.querySelector('#titleInput')"))
+        cdp.js("press('z', { ctrlKey: true })")
+        check("...and it can be undone", cdp.js(title) == "Main" and cdp.js(rail) == "Main")
+        cdp.js("document.querySelector('#screenTitle').click()")
+        cdp.js("setInput(document.querySelector('#titleInput'), 'Nope')")
+        cdp.js("document.querySelector('#titleInput').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))")
+        check("Escape takes it back", cdp.js(title) == "Main" and cdp.js(rail) == "Main" and cdp.js("btn('Saved') && btn('Saved').disabled"))
+        cdp.js("$$('.pagetabs button')[1].click()")
+        cdp.js("document.querySelector('#screenTitle').click()")
+        cdp.js("setInput(document.querySelector('#titleInput'), 'Músic')")
+        check("on another page only the page is renamed, and an accent is pointed out", cdp.js(rail) == "Main" and cdp.js("document.querySelector('.pagetabs .on').textContent") == "Músic"
+              and cdp.js("!document.querySelector('#titleWarning').hidden"))
+        cdp.js("document.querySelector('#titleInput').blur()")
+        cdp.js("press('z', { ctrlKey: true })")
+        cdp.js("$$('.pagetabs button')[0].click()")
+        cdp.js("$$('.deskrow')[1].click()")
+        cdp.js("document.querySelector('#screenTitle').click()")
+        cdp.js("setInput(document.querySelector('#titleInput'), 'Songs')")
+        cdp.js("document.querySelector('#titleInput').blur()")
+        check("a live desktop is renamed the same way", cdp.js("names()[1]") == "Songs" and cdp.js(title) == "Songs")
+        cdp.js("press('z', { ctrlKey: true })")
+        cdp.js("$$('.deskrow')[0].click()")
+
+        print("panel sizes and the drop line")
+        width = lambda sel: cdp.js(f"document.querySelector('{sel}').offsetWidth")
+        tall = lambda: cdp.js("document.querySelector('#presets').offsetHeight")
+        tree, panel, dock = width("#tree"), width("#inspector"), tall()
+        key = lambda name, which: cdp.js(f"document.querySelector('.split.{which}').dispatchEvent(new KeyboardEvent('keydown', {{ key: '{name}', bubbles: true, cancelable: true }}))")
+        key("ArrowRight", "tree")
+        key("ArrowRight", "tree")
+        check("the desktop list can be widened with the arrow keys", width("#tree") == tree + 32, f"{tree} -> {width('#tree')}")
+
+        def drag(which, dx, dy):
+            x, y = json.loads(cdp.js(f"JSON.stringify((() => {{ const r = document.querySelector('.split.{which}').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }})())"))
+            cdp.call("Input.dispatchMouseEvent", type="mousePressed", x=x, y=y, button="left", buttons=1, clickCount=1)
+            cdp.call("Input.dispatchMouseEvent", type="mouseMoved", x=x + dx, y=y + dy, button="left", buttons=1)
+            cdp.call("Input.dispatchMouseEvent", type="mouseReleased", x=x + dx, y=y + dy, button="left", clickCount=1)
+
+        drag("panel", -60, 0)
+        check("dragging the panel's edge with the mouse widens it", width("#inspector") == panel + 60, f"{panel} -> {width('#inspector')}")
+        drag("dock", 0, -80)
+        check("dragging the tray's edge up makes it taller", tall() == dock + 80, f"{dock} -> {tall()}")
+        drag("panel", -2000, 0)
+        check("a panel stops at its limit", width("#inspector") == 560, str(width("#inspector")))
+        kept = json.loads(cdp.js("localStorage.getItem('swipedeck.sizes')"))
+        check("the sizes are kept in the browser", kept.get("tree") == tree + 32 and kept.get("panel") == 560 and kept.get("dock") == dock + 80, str(kept))
+        check("resizing is not an edit of the deck", cdp.js("btn('Saved') && btn('Saved').disabled"))
+        for which in ("tree", "panel", "dock"):
+            cdp.js(f"document.querySelector('.split.{which}').dispatchEvent(new MouseEvent('dblclick', {{ bubbles: true }}))")
+        check("a double click puts the usual size back", [width("#tree"), width("#inspector"), tall()] == [tree, panel, dock])
+        line = json.loads(cdp.js("JSON.stringify((() => { const d = $$('.desk')[2]; d.classList.add('drop-before'); const s = getComputedStyle(d, '::before'); const out = [s.height, getComputedStyle(d).boxShadow]; d.classList.remove('drop-before'); return out; })())"))
+        check("a dragged desktop's place is a line between two, not a colored edge", line == ["3px", "none"], str(line))
+
         print("editing a key")
         cdp.js("keyAt(0).click()")
-        check("selecting a key shows it in the inspector, under its name", cdp.js("document.querySelector('.keyhead h4').textContent") == "Mute"
-              and cdp.js("document.querySelector('.keyhead .sub').textContent") == "Action")
+        check("selecting a key shows it in the inspector, under its name alone", cdp.js("document.querySelector('.keyhead h4').textContent") == "Mute"
+              and cdp.js("document.querySelector('.keyname').textContent") == "Mute")
         check("there is no key number, no label field and no Action / Folder switch", cdp.js("!document.querySelector('#panel').textContent.includes('Key 1')")
               and cdp.js("!document.querySelector('#panel input[maxlength=\\'10\\']') && !btn('Action', document.querySelector('#panel')) && !btn('Folder', document.querySelector('#panel'))"))
         cdp.js("document.querySelector('#editName').click()")
@@ -305,7 +370,7 @@ def main() -> int:
         cdp.js("card('Folder').click()")
         check("the Folder preset creates a new page", cdp.js("$$('.pagerow').length") == before_pages + 1)
         check("...and the key shows the folder arrow", cdp.js("!!keyAt(10).querySelector('.arrow')"))
-        check("a folder key shows the folder settings, and says it is one", cdp.js("document.querySelector('.keyhead .sub').textContent") == "Folder"
+        check("a folder key shows the folder settings", cdp.js("$$('#panel h5').map((e) => e.textContent)") == ["Look", "Folder"]
               and cdp.js("!!btn('Open page') && !document.querySelector('#holdSection')"))
         cdp.js("btn('Clear', document.querySelector('#inspector')).click()")
         check("Clear empties the key", cdp.js("keyAt(10).classList.contains('empty')"))
@@ -314,12 +379,12 @@ def main() -> int:
         check("Add folder makes a folder key", cdp.js("keyAt(10).classList.contains('folder')"))
         cdp.js("btn('Clear', document.querySelector('#inspector')).click()")
         cdp.js("addAction()")
-        check("Add action makes an action key", cdp.js("keyAt(10).title.startsWith('press')") and cdp.js("document.querySelector('.keyhead .sub').textContent") == "Action")
+        check("Add action makes an action key", cdp.js("keyAt(10).title.startsWith('press')") and cdp.js("$$('#panel h5').map((e) => e.textContent).includes('Action')"))
         cdp.js("btn('Clear', document.querySelector('#inspector')).click()")
         check("an empty key offers no Save as preset", cdp.js("!btn('Save as preset')"))
 
         print("grid size")
-        cdp.js("btn('+', document.querySelectorAll('.stepper')[2]).click()")
+        cdp.js("btn('+', document.querySelectorAll('.stepper')[1]).click()")
         check("adding a row adds 4 slots", cdp.js("$$('.key').length") == 16)
         cdp.js("press('z', { ctrlKey: true })")
         check("undo restores the grid", cdp.js("$$('.key').length") == 12)
@@ -339,7 +404,7 @@ def main() -> int:
         check("deleting a page says what it emptied", cdp.js("$$('.pagerow').length") == pages_before - 1 and "folder key" in cdp.js("toasts()[0]"), str(cdp.js("toasts()")))
         cdp.js("toastUndo()")
         check("Undo brings back the page and the folder keys", cdp.js("$$('.pagerow').length") == pages_before and cdp.js("$$('.key').map((k) => k.textContent)") == keys_before)
-        cdp.js("rowStep(2, '\u2212')")
+        cdp.js("rowStep(1, '\u2212')")
         check("shrinking the grid says how many keys went", cdp.js("$$('.key').length") == 8 and "removed" in cdp.js("toasts()[0]"), str(cdp.js("toasts()")))
         cdp.js("toastUndo()")
         check("Undo brings the grid and its keys back", cdp.js("$$('.key').map((k) => k.textContent)") == keys_before)
@@ -852,7 +917,7 @@ def main() -> int:
         warning = "labelInput().parentElement.querySelector('.accents').hidden"
         check("a label with an accent warns that the board cannot show it", cdp.js(warning) is False)
         cdp.js("document.querySelector('#keyName').blur()")
-        check("...and keeps warning under the name", cdp.js("!!document.querySelector('.keyname .accents')"))
+        check("...and keeps warning under the name", cdp.js("!document.querySelector('#keyName') && !!document.querySelector('.keyname > .accents')"))
         cdp.js("setInput(labelInput(), 'Lock')")
         check("...and a plain one does not", cdp.js(warning) is True)
         cdp.js("document.querySelector('#keyName').blur()")
@@ -861,7 +926,7 @@ def main() -> int:
         cdp.js("setInput(document.querySelector('#inspector textarea'), '')")
         cdp.js("btn('Save').click()")
         check("a save error names the desktop and the key, and says what to do", cdp.wait("!document.querySelector('#banner').hidden")
-              and "Not saved. Main › key 4: Enter the text to type." in cdp.js("document.querySelector('#banner').textContent"),
+              and "Not saved. Main › Main › Lock: Enter the text to type." in cdp.js("document.querySelector('#banner').textContent"),
               cdp.js("document.querySelector('#banner').textContent"))
         check("the banner is closed with Dismiss", cdp.js("!!btn('Dismiss', document.querySelector('#banner'))"))
         cdp.js("btn('Dismiss').click()")

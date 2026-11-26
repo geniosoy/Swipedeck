@@ -117,7 +117,8 @@ use Segoe UI, as before, so they do not change with the shell.
 ## Layout
 
 A 64px top bar, then three columns: desktops (252px), the board with its tray below, and a panel (384px). The tray is
-`clamp(212px, 31vh, 372px)` tall (196px on short windows). The board is drawn at 2x and scaled down to fit. Below 1280px
+`clamp(212px, 31vh, 372px)` tall (196px on short windows). Those three sizes can be changed by dragging the edges, which
+show an orange line under the pointer. The board is drawn at 2x and scaled down to fit. Below 1280px
 the side columns narrow; below 1024px everything stacks. Live desktops have no tray; their settings fill the panel.
 
 ## Elevation & Depth
@@ -146,9 +147,16 @@ White (near-black in dark) with a hairline; focus is a 2px orange outline.
 Top-bar tabs underlined in graphite. Desktops are listed with a picture of their screen; their pages appear under the
 selected one and as tabs above the board. Row actions appear on hover or keyboard focus.
 
+### Renaming in place
+A name with a small pencil turns into a box where it stands: the key's name at the top of its panel, and the desktop or
+page name on the board preview. Enter or leaving keeps it, Escape takes it back. There are no separate name fields.
+
 ### Key head
-A picture of the key, its name with a pencil that turns it into a box, and "Action" or "Folder" under it. No key number,
-no page name, no switch between the two kinds: an empty key offers to add either one.
+A picture of the key and its name. No key number, page name or kind: the section below says Action or Folder, and an empty
+key offers to add either one.
+
+### Dragging to reorder
+The place a dragged row will land is a 3px orange line in the gap between two rows, never a colored edge of a row.
 
 ### Folding sections
 Less used parts (Hold, Change look when) are folded and say their current value while closed.

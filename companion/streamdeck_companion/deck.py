@@ -382,7 +382,7 @@ class Deck:
             self._check_action(action, f"{where}.action")
             self._actions[(di, pi, ki)] = action
         else:
-            self.warnings.append(f"{where}: '{out.get('label', '?')}' does nothing. Pick an action.")
+            self.warnings.append(f"{where}: This key does nothing. Pick an action.")
         repeat, hold = k.get("repeat", False), k.get("hold")
         if not isinstance(repeat, bool):
             raise DeckError(f"{where}: 'repeat' must be true or false")

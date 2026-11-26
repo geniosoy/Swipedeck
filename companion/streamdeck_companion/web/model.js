@@ -523,18 +523,27 @@ export function pageName(desktop, p) {
   return twin ? `${name} (${p.id})` : name;
 }
 
+// A key as an error names it: its label, with its place on the page when it has none or another key has the same one.
+export function keyTitle(p, i) {
+  const keys = (p && p.keys) || [], cols = (p && p.cols) || 4;
+  const label = keys[i] && keys[i].label;
+  const place = `row ${Math.floor(i / cols) + 1}, column ${(i % cols) + 1}`;
+  if (!label) return `unlabeled key (${place})`;
+  return keys.filter((k) => k && k.label === label).length > 1 ? `${label} (${place})` : label;
+}
+
 // A message from the companion that starts with a place in the file ("desktops[0].pages[1].keys[2].action: ...") said with
-// the names on screen ("Main \u203A Media \u203A key 3: ..."). Anything else is returned as it is.
+// the names on screen ("Main \u203A Media \u203A Mute: ..."). Anything else is returned as it is.
 export function describeProblem(message, deck) {
   const at = /^desktops\[(\d+)\](?:\.pages\[(\d+)\])?(?:\.keys\[(\d+)\])?((?:\.[a-z]+(?:\[\d+\])?)*):\s*/i.exec(message);
   const d = at && deck.desktops[+at[1]];
   if (!d) return message;
   const parts = [d.name || 'Untitled'];
   const p = at[2] !== undefined && d.pages && d.pages[+at[2]];
-  const inKey = at[3] !== undefined; // a key's page goes without saying when it is the only one, or named like its desktop
-  if (p && !(inKey && (d.pages.length === 1 || pageName(d, p) === d.name))) parts.push(pageName(d, p));
-  if (at[3] !== undefined) {
-    parts.push(`key ${+at[3] + 1}` + (/\.hold\b/.test(at[4]) ? ' (hold)' : ''));
+  const inKey = at[3] !== undefined; // a key's page goes without saying when it is the only one
+  if (p && !(inKey && d.pages.length === 1)) parts.push(pageName(d, p));
+  if (inKey) {
+    parts.push(keyTitle(p, +at[3]) + (/\.hold\b/.test(at[4]) ? ' (hold)' : ''));
     for (const step of at[4].matchAll(/steps\[(\d+)\]/g)) parts.push(`step ${+step[1] + 1}`);
   }
   return `${parts.join(' \u203A ')}: ${message.slice(at[0].length)}`;

@@ -298,10 +298,15 @@ test('a page is named by its title, with the id only to tell two apart', () => {
 });
 
 test('errors are said with the names on screen', () => {
-  const deck = { desktops: [{ name: 'Main', pages: [{ id: 'root', title: 'Main' }, { id: 'm', title: 'Media' }] }, { name: 'Clock', kind: 'clock' }] };
+  const root = { id: 'root', title: 'Main', cols: 4, keys: [{ label: 'Lock' }, {}, { label: 'Vol' }, { label: 'Vol' }] };
+  const media = { id: 'm', title: 'Media', cols: 4, keys: [{}, {}, { label: 'Next' }] };
+  const deck = { desktops: [{ name: 'Main', pages: [root, media] }, { name: 'Clock', kind: 'clock' }, { name: 'Work', pages: [{ ...root, title: 'Work' }] }] };
   const say = (m) => M.describeProblem(m, deck);
-  assert.equal(say('desktops[0].pages[1].keys[2].action: Enter the text to type.'), 'Main \u203A Media \u203A key 3: Enter the text to type.');
-  assert.equal(say('desktops[0].pages[0].keys[0].hold.steps[1]: Enter a command.'), 'Main \u203A key 1 (hold) \u203A step 2: Enter a command.');
+  assert.equal(say('desktops[0].pages[1].keys[2].action: Enter the text to type.'), 'Main \u203A Media \u203A Next: Enter the text to type.');
+  assert.equal(say('desktops[0].pages[0].keys[0].hold.steps[1]: Enter a command.'), 'Main \u203A Main \u203A Lock (hold) \u203A step 2: Enter a command.');
+  assert.equal(say('desktops[2].pages[0].keys[0]: x'), 'Work \u203A Lock: x'); // one page: it goes without saying
+  assert.equal(say('desktops[0].pages[0].keys[3]: x'), 'Main \u203A Main \u203A Vol (row 1, column 4): x'); // two keys named alike
+  assert.equal(say('desktops[0].pages[1].keys[5]: x'), 'Main \u203A Media \u203A unlabeled key (row 2, column 2): x');
   assert.equal(say('desktops[1].options.filter: both'), 'Clock: both');
   assert.equal(say('settings.volume must be an integer'), 'settings.volume must be an integer');
   assert.equal(say('desktops[7]: gone'), 'desktops[7]: gone');

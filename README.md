@@ -103,7 +103,8 @@ The companion serves a layout editor at **http://127.0.0.1:8765/** (`Streamdeck-
 
 * **Layout:** desktops on the left (with a picture of each), the board in the middle with its pages as tabs, a tray of
   presets under it, and on the right a panel that switches between the selected **Key** and the **Desktop**. It follows
-  Windows' light or dark theme and stacks on narrow windows.
+  Windows' light or dark theme and stacks on narrow windows. Drag the edge of the desktop list, the right panel or the
+  preset tray to size it (the browser remembers; double-click an edge to reset, or focus it and use the arrow keys).
 * **Live preview** of the board's screen, drawn with the same geometry and the same icon glyphs as the firmware.
   Click a key to edit it, drag keys to swap them, drag a preset from the tray onto a key.
 * **Keyboard:** Ctrl+Z undoes, Ctrl+Y or Ctrl+Shift+Z redoes, Ctrl+S saves. With a key selected: Ctrl+C / Ctrl+V copy and
@@ -115,7 +116,8 @@ The companion serves a layout editor at **http://127.0.0.1:8765/** (`Streamdeck-
   or nothing. Actions have forms: a hotkey builder (modifier tick boxes plus a key box, with a **Record** button;
   the Windows key cannot be captured by a browser, so it is a tick box), typed text, open, run, lock, and multi-step
   sequences with waits.
-* **Structure:** add, rename and delete desktops and pages, reorder desktops by **dragging** them in the list (or with
+* **Structure:** add and delete desktops and pages, **rename** them by clicking the name on the preview (on a desktop's
+  first page that is the desktop's name), reorder desktops by **dragging** them in the list (or with
   the arrows), and change a page's grid size (keys keep their row and column).
 * **Settings** (the second tab at the top), see [Settings](#settings) below: sound theme and which sounds play,
   volume with **Test** buttons that play a sound on the board, brightness, auto-dim and screen-off after no touch,

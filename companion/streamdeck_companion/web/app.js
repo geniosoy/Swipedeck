@@ -124,6 +124,7 @@ function commit(fn, { coalesce = null, rerender = 'all' } = {}) {
   clampSel();
   if (rerender === 'all') renderAll();
   else if (rerender === 'sample') { renderTopbar(); if (state.drawSample) state.drawSample(); }
+  else if (rerender === 'tree') { renderTopbar(); renderTree(); }
   else renderLive();
 }
 
@@ -647,6 +648,48 @@ function mockClock(o) {
   return h('div', { class: 'mock', dataset: { kind: 'clock' }, style: { background: '#101722' } }, kids);
 }
 
+// The title on the preview is the way to rename. On a desktop's first page it is the desktop's name (the page takes it
+// too); on its other pages it is the page's.
+function screenTitle(title) {
+  const what = !isKeys() || state.sel.p === 0 ? 'Rename desktop' : 'Rename page';
+  const button = h('button', { class: 'title', id: 'screenTitle', title: what, 'aria-label': `${what}: ${title}`, onclick: () => editTitle(button) },
+    h('span', {}, title), svg('edit'));
+  return h('div', { class: 'titlebox' }, button);
+}
+
+// Enter or leaving the box keeps what was typed (already shown in the list and the tabs), Escape takes it back.
+function editTitle(button) {
+  const before = deckText(), steps = history.past.length;
+  const keys = isKeys(), first = !keys || state.sel.p === 0;
+  const input = h('input', { type: 'text', class: 'titleinput', id: 'titleInput', maxLength: 24, 'aria-label': first ? 'Desktop name' : 'Page name',
+    value: (keys ? page().title : desk().name) || '' });
+  let done = false;
+  const finish = (keep) => {
+    if (done) return;
+    done = true;
+    if (!keep && deckText() !== before) { history.past.length = steps; restore(before); return; }
+    const title = keys ? page().title || page().id : desk().name;
+    button.querySelector('span').textContent = title;
+    button.setAttribute('aria-label', `${button.title}: ${title}`);
+    input.replaceWith(button); // nothing else is redrawn: a click that took the focus away still lands where it was aimed
+  };
+  input.addEventListener('input', () => {
+    const v = input.value;
+    commit(() => {
+      if (first) desk().name = v;
+      if (keys) page().title = v;
+    }, { coalesce: 'title', rerender: 'tree' });
+    const tab = document.querySelector('.pagetabs button.on');
+    if (tab) tab.textContent = M.pageName(desk(), page());
+    $('#titleWarning').hidden = !M.boardCannotShow(v);
+  });
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') finish(true); else if (e.key === 'Escape') { e.stopPropagation(); finish(false); } });
+  input.addEventListener('blur', () => finish(true));
+  button.replaceWith(input);
+  input.focus();
+  input.select();
+}
+
 function renderScreen() {
   const d = desk();
   const kind = M.desktopKind(d);
@@ -659,7 +702,7 @@ function renderScreen() {
   if (n > 1) for (let i = 0; i < n; i++) dots.append(h('span', { class: 'dot' + (i === state.sel.d ? ' on' : '') }));
   screen.append(h('div', { class: 'hdr', style: { height: hdrH + 'px' } },
     kind === 'keys' && state.sel.p > 0 ? h('span', { class: 'back' }, h('span', { class: 'fa' }, glyph('left')), ' Back') : null,
-    h('span', { class: 'title' }, title), dots));
+    screenTitle(title), dots));
   const content = h('div', { class: 'content', style: { top: hdrH + 'px', height: (M.SCREEN.h - M.SCREEN.header) * S + 'px' } });
   if (kind === 'keys') {
     const look = M.resolveSettings(state.deck);
@@ -684,7 +727,9 @@ function renderScreen() {
 
 function renderPageControls() {
   const box = $('#pageControls');
-  if (!isKeys()) { box.replaceChildren(); return; }
+  const warning = h('span', { class: 'hint bad accents', id: 'titleWarning' }, 'The board can\u2019t show accents or emoji.');
+  warning.hidden = !M.boardCannotShow(isKeys() ? page().title : desk().name);
+  if (!isKeys()) { box.replaceChildren(warning); return; }
   const pg = page();
   const resize = (c, r) => {
     c = Math.min(Math.max(c, 1), M.LIMITS.cols);
@@ -698,11 +743,10 @@ function renderPageControls() {
     h('button', { class: 'small', 'aria-label': `Fewer ${label.toLowerCase()}`, onclick: () => set(value - 1) }, '\u2212'), h('b', {}, value),
     h('button', { class: 'small', 'aria-label': `More ${label.toLowerCase()}`, onclick: () => set(value + 1) }, '+'));
   box.replaceChildren(
-    h('span', { class: 'stepper' }, 'Page name',
-      boardText(pg.title || '', (v) => commit(() => { page().title = v; }, { coalesce: 'ptitle', rerender: 'live' }), { maxLength: 24, style: { width: '150px' } })),
     stepper('Columns', pg.cols, (v) => resize(v, pg.rows)),
     stepper('Rows', pg.rows, (v) => resize(pg.cols, v)),
-    h('span', { class: 'hint' }, 'Drag keys to swap'));
+    h('span', { class: 'hint' }, 'Drag keys to swap'),
+    warning);
 }
 
 // ---- inspector ---------------------------------------------------------------------------------------
@@ -979,14 +1023,13 @@ function setKeyKind(kind) {
 // The settings of the desktop itself.
 function desktopForm(d) {
   return h('div', { class: 'deskform' }, h('h4', {}, 'Desktop'),
-    field('Name', boardText(d.name, (v) => liveEdit(() => { desk().name = v; }, 'dname'), { maxLength: 24 })),
     field('Switch here for these apps', appsField('deskApps', d.apps || [], 10, 'e.g. obs64', (apps) => commit(() => {
       if (apps.length) desk().apps = apps; else delete desk().apps;
     })),
     'Names from Task Manager > Details, without .exe.'));
 }
 
-// The top of the key panel: a picture of the key, its name with a pencil to change it, and what kind of key it is.
+// The top of the key panel: a picture of the key, and its name with a pencil to change it.
 function keyHead(k) {
   const kind = M.keyKind(k);
   const info = h('div', { class: 'keyname' });
@@ -996,7 +1039,7 @@ function keyHead(k) {
     kind === 'empty' ? null : h('button', { class: 'icon', id: 'editName', title: 'Edit label', 'aria-label': 'Edit label', onclick: () => edit() }, svg('edit')));
   const warning = () => (M.boardCannotShow(k.label) ? h('div', { class: 'hint bad accents' }, 'The board can\u2019t show accents or emoji.') : null);
   const show = () => {
-    info.replaceChildren(...[nameLine(), kind === 'empty' ? null : h('div', { class: 'sub' }, kind === 'folder' ? 'Folder' : 'Action'), warning()].filter(Boolean));
+    info.replaceChildren(...[nameLine(), warning()].filter(Boolean));
   };
   // The name turns into a box: Enter or leaving it keeps what was typed (already shown on the board), Escape takes it back.
   const edit = () => {
@@ -1681,6 +1724,7 @@ function renderAll() {
   renderInspector();
   renderPresets();
   renderLiveConfig();
+  if ($('#deckView .split')) applySizes();
   fitBoard();
 }
 
@@ -1689,6 +1733,77 @@ function renderLive() { // after typing: leave the inspector, the settings and t
   if (state.view !== 'deck') return;
   renderTree();
   renderScreen();
+}
+
+// ---- panel sizes -------------------------------------------------------------------------------------
+// The desktop list and the right panel can be made wider or narrower, the preset tray taller or shorter. What the user
+// chose is kept in this browser; a window too small for it gets less without forgetting the choice.
+
+const SIZES = {
+  tree: { css: '--tree-w', across: true, min: 200, max: 420, grows: 1, of: '#tree', label: 'Desktop list width' },
+  panel: { css: '--panel-w', across: true, min: 320, max: 560, grows: -1, of: '#inspector', label: 'Details panel width' },
+  dock: { css: '--dock-h', across: false, min: 160, max: 640, grows: -1, of: '#presets', label: 'Preset tray height' },
+};
+const SIZES_KEY = 'swipedeck.sizes';
+let sizes = {};
+try { sizes = JSON.parse(localStorage.getItem(SIZES_KEY)) || {}; } catch (e) { sizes = {}; }
+const keepSizes = () => { try { localStorage.setItem(SIZES_KEY, JSON.stringify(sizes)); } catch (e) { /* private window: not kept */ } };
+const sizeOf = (name) => $(SIZES[name].of)[SIZES[name].across ? 'offsetWidth' : 'offsetHeight'];
+
+// Within the panel's own limits, and leaving the board room.
+function fitSize(name, px) {
+  const s = SIZES[name], main = $('#deckView');
+  const room = s.across ? main.clientWidth - 420 - sizeOf(name === 'tree' ? 'panel' : 'tree') : main.clientHeight - 310;
+  return Math.round(Math.max(s.min, Math.min(px, s.max, room)));
+}
+
+function applySizes() {
+  const main = $('#deckView');
+  if (!main.clientWidth || window.matchMedia('(max-width: 1023px)').matches) return; // hidden, or stacked in one column
+  for (const [name, s] of Object.entries(SIZES)) {
+    if (typeof sizes[name] === 'number') main.style.setProperty(s.css, fitSize(name, sizes[name]) + 'px');
+    else main.style.removeProperty(s.css);
+  }
+  main.querySelectorAll('.split').forEach((el) => el.setAttribute('aria-valuenow', String(sizeOf(el.dataset.size))));
+}
+
+// The edge between a panel and its neighbour: drag it, or focus it and use the arrow keys; double-click goes back.
+function splitter(name) {
+  const s = SIZES[name];
+  const el = h('div', { class: `split ${name}`, dataset: { size: name }, role: 'separator', tabIndex: 0, title: 'Drag to resize, double-click to reset',
+    'aria-label': s.label, 'aria-orientation': s.across ? 'vertical' : 'horizontal', 'aria-valuemin': String(s.min), 'aria-valuemax': String(s.max) });
+  const set = (px) => { sizes[name] = fitSize(name, px); applySizes(); };
+  const reset = () => { delete sizes[name]; applySizes(); keepSizes(); };
+  el.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const at = (ev) => (s.across ? ev.clientX : ev.clientY);
+    const start = at(e), from = sizeOf(name);
+    let moved = false;
+    const move = (ev) => { if (!moved && Math.abs(at(ev) - start) < 3) return; moved = true; set(from + s.grows * (at(ev) - start)); };
+    const end = () => {
+      el.removeEventListener('pointermove', move);
+      el.classList.remove('active');
+      document.body.classList.remove('resizing');
+      if (moved) keepSizes();
+    };
+    el.setPointerCapture(e.pointerId);
+    el.classList.add('active');
+    document.body.classList.add('resizing');
+    el.addEventListener('pointermove', move);
+    el.addEventListener('lostpointercapture', end, { once: true });
+  });
+  el.addEventListener('dblclick', reset);
+  el.addEventListener('keydown', (e) => {
+    const step = (s.across ? { ArrowLeft: -1, ArrowRight: 1 } : { ArrowUp: -1, ArrowDown: 1 })[e.key];
+    if (!step && e.key !== 'Home') return;
+    e.preventDefault();
+    e.stopPropagation(); // not a move of the key selection
+    if (e.key === 'Home') { reset(); return; }
+    set(sizeOf(name) + s.grows * step * 16);
+    keepSizes();
+  });
+  return el;
 }
 
 // ---- keyboard ----------------------------------------------------------------------------------------
@@ -1741,6 +1856,9 @@ async function start() {
     state.templates = templates.templates;
     state.presets = { builtin: presets.builtin, user: presets.user };
     renderAll();
+    $('#deckView').append(splitter('tree'), splitter('panel'), splitter('dock'));
+    applySizes();
+    window.addEventListener('resize', applySizes);
   } catch (e) {
     banner(e.deck ? loadProblem(e) : `Couldn\u2019t open the editor: ${e.message}. Reload to try again.`);
     return;

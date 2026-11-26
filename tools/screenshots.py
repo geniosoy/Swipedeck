@@ -73,7 +73,7 @@ def main() -> int:
         # the selection outline, hover effects and the dashed outline of empty slots are not part of what the board shows
         cdp.js("document.head.append(Object.assign(document.createElement('style'), "
                "{id: 'shotStyle', textContent: '.key.sel{outline:none !important} .key:hover{filter:none !important} "
-               ".key.empty{border-color:transparent !important}'}))")
+               ".key.empty{border-color:transparent !important} .hdr .title .ui-ico{display:none}'}))")
 
         def page_shot(name: str) -> None:
             data = cdp.call("Page.captureScreenshot", format="png")["data"]
