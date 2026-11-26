@@ -513,6 +513,38 @@ export function removeFilterApps(filter, which, names) {
 // Is any of these names on the list?
 export const inFilterList = (filter, which, names) => names.some((n) => filter[which].some((x) => sameName(x, n)));
 
+// What else an icon can be found by in the picker (its own name always counts).
+export const ICON_WORDS = {
+  audio: 'music note song sound', video: 'film movie clip', list: 'menu rows', ok: 'check tick done yes', close: 'x cancel exit quit',
+  power: 'shutdown on off', settings: 'gear cog options', home: 'house start', download: 'pull save', upload: 'push send',
+  refresh: 'reload sync again', mute: 'speaker volume off quiet', volume_down: 'speaker sound quieter', volume_up: 'speaker sound louder audio',
+  image: 'picture photo', edit: 'pencil write rename', prev: 'previous back track', next: 'forward skip track', stop: 'square end',
+  play: 'start run', pause: 'hold', eject: 'remove disc', left: 'arrow chevron back', right: 'arrow chevron forward', up: 'arrow chevron',
+  down: 'arrow chevron', plus: 'add new', minus: 'remove less', eye: 'view show see', eye_off: 'hide hidden invisible',
+  warning: 'alert error caution', shuffle: 'random mix', loop: 'repeat cycle', directory: 'folder files explorer', file: 'document page new',
+  call: 'phone', cut: 'scissors clip', copy: 'duplicate', paste: 'clipboard', save: 'floppy disk', bell: 'notification alert unread',
+  keyboard: 'type typing hotkey', gps: 'location arrow', wifi: 'network signal wireless', bluetooth: 'wireless', trash: 'delete bin remove',
+  usb: 'cable plug', charge: 'bolt lightning power energy', battery: 'power charge', drive: 'disk storage', backspace: 'erase delete clear',
+  mic: 'microphone voice talk', mic_off: 'microphone muted voice silent', headphones: 'headset deafen audio ears',
+  speaker_off: 'mute muted sound volume silent', camera: 'photo screenshot picture snap', webcam: 'video camera cam',
+  webcam_off: 'video camera off cam', record: 'rec dot circle', broadcast: 'live stream antenna on air', layers: 'scene scenes stack',
+  lightbulb: 'light lamp bulb idea smart home', lock: 'secure password padlock', desktop: 'monitor screen computer pc',
+  search: 'find magnifier look', smile: 'emoji face happy shrug', clipboard: 'paste history', chart: 'task manager graph stats usage',
+  task_view: 'windows overview', exchange: 'switch swap alt tab transition', maximize: 'window big', minimize: 'window small hide',
+  fullscreen: 'expand full screen', columns: 'split snap studio side', undo: 'revert back', redo: 'again forward',
+  globe: 'web website browser internet address', code: 'developer brackets vscode dev tools', terminal: 'console command shell prompt',
+  calculator: 'math calc sum', envelope: 'mail email gmail message', youtube: 'video', spotify: 'music', discord: 'chat voice',
+  steam: 'games', gamepad: 'game controller gaming', branch: 'git merge version', bug: 'debug error', history: 'recent clock reopen replay',
+  incognito: 'private secret spy', send: 'webhook post paper plane request', script: 'file code automation macro',
+  text: 'font type letters write', bold: 'strong format', italic: 'slant format', underline: 'format line', print: 'printer paper',
+  zoom_in: 'magnify bigger plus', zoom_out: 'smaller minus',
+};
+
+export function iconMatches(name, query) {
+  const words = `${name.replace(/_/g, ' ')} ${ICON_WORDS[name] || ''}`.toLowerCase();
+  return String(query || '').toLowerCase().split(/\s+/).every((w) => words.includes(w));
+}
+
 // The board's fonts hold plain ASCII, the degree sign and the bullet: accents, emoji and the like do not show.
 export const boardCannotShow = (text) => /[^\x20-\x7E\u00B0\u2022]/.test(String(text || ''));
 

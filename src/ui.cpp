@@ -1,4 +1,5 @@
 #include "ui.h"
+#include "sd_icons.h"
 
 #include <ArduinoJson.h>
 
@@ -43,6 +44,16 @@ std::vector<lv_obj_t*> hdrDots;
 UiEventFn sink = nullptr;
 int activeDesktop = 0;
 
+// A key's icon font: LVGL's own, with the extra icons behind it.
+lv_font_t withIcons(const lv_font_t& base, const lv_font_t& extra) {
+  lv_font_t font = base;
+  font.fallback = &extra;
+  return font;
+}
+const lv_font_t kIconFont20 = withIcons(lv_font_montserrat_20, sd_icons_20);
+const lv_font_t kIconFont24 = withIcons(lv_font_montserrat_24, sd_icons_24);
+const lv_font_t kIconFont32 = withIcons(lv_font_montserrat_32, sd_icons_32);
+
 struct IconEntry {
   const char* name;
   const char* symbol;
@@ -65,6 +76,23 @@ const IconEntry kIcons[] = {
     {"gps", LV_SYMBOL_GPS},           {"wifi", LV_SYMBOL_WIFI},         {"bluetooth", LV_SYMBOL_BLUETOOTH},
     {"trash", LV_SYMBOL_TRASH},       {"usb", LV_SYMBOL_USB},           {"charge", LV_SYMBOL_CHARGE},
     {"battery", LV_SYMBOL_BATTERY_FULL}, {"drive", LV_SYMBOL_DRIVE},    {"backspace", LV_SYMBOL_BACKSPACE},
+    // icons LVGL's fonts do not have: drawn from sd_icons.c (tools/gen_symbol_font.py)
+    {"mic", SD_SYMBOL_MIC}, {"mic_off", SD_SYMBOL_MIC_OFF}, {"headphones", SD_SYMBOL_HEADPHONES},
+    {"speaker_off", SD_SYMBOL_SPEAKER_OFF}, {"camera", SD_SYMBOL_CAMERA}, {"webcam", SD_SYMBOL_WEBCAM},
+    {"webcam_off", SD_SYMBOL_WEBCAM_OFF}, {"record", SD_SYMBOL_RECORD}, {"broadcast", SD_SYMBOL_BROADCAST},
+    {"layers", SD_SYMBOL_LAYERS}, {"lightbulb", SD_SYMBOL_LIGHTBULB}, {"lock", SD_SYMBOL_LOCK},
+    {"desktop", SD_SYMBOL_DESKTOP}, {"search", SD_SYMBOL_SEARCH}, {"smile", SD_SYMBOL_SMILE},
+    {"clipboard", SD_SYMBOL_CLIPBOARD}, {"chart", SD_SYMBOL_CHART}, {"task_view", SD_SYMBOL_TASK_VIEW},
+    {"exchange", SD_SYMBOL_EXCHANGE}, {"maximize", SD_SYMBOL_MAXIMIZE}, {"minimize", SD_SYMBOL_MINIMIZE},
+    {"fullscreen", SD_SYMBOL_FULLSCREEN}, {"columns", SD_SYMBOL_COLUMNS}, {"undo", SD_SYMBOL_UNDO},
+    {"redo", SD_SYMBOL_REDO}, {"globe", SD_SYMBOL_GLOBE}, {"code", SD_SYMBOL_CODE},
+    {"terminal", SD_SYMBOL_TERMINAL}, {"calculator", SD_SYMBOL_CALCULATOR}, {"envelope", SD_SYMBOL_ENVELOPE},
+    {"youtube", SD_SYMBOL_YOUTUBE}, {"spotify", SD_SYMBOL_SPOTIFY}, {"discord", SD_SYMBOL_DISCORD},
+    {"steam", SD_SYMBOL_STEAM}, {"gamepad", SD_SYMBOL_GAMEPAD}, {"branch", SD_SYMBOL_BRANCH},
+    {"bug", SD_SYMBOL_BUG}, {"history", SD_SYMBOL_HISTORY}, {"incognito", SD_SYMBOL_INCOGNITO},
+    {"send", SD_SYMBOL_SEND}, {"script", SD_SYMBOL_SCRIPT}, {"text", SD_SYMBOL_TEXT},
+    {"bold", SD_SYMBOL_BOLD}, {"italic", SD_SYMBOL_ITALIC}, {"underline", SD_SYMBOL_UNDERLINE},
+    {"print", SD_SYMBOL_PRINT}, {"zoom_in", SD_SYMBOL_ZOOM_IN}, {"zoom_out", SD_SYMBOL_ZOOM_OUT},
 };
 
 const char* iconSymbol(const String& name) {
@@ -280,7 +308,7 @@ void buildPage(int d, int p) {
 
   const int keyW = (w - 2 * kPad - (page.cols - 1) * keyGap) / page.cols;
   const int keyH = (h - 2 * kPad - (page.rows - 1) * keyGap) / page.rows;
-  const lv_font_t* iconFont = keyH >= 86 ? &lv_font_montserrat_32 : keyH >= 62 ? &lv_font_montserrat_24 : &lv_font_montserrat_20;
+  const lv_font_t* iconFont = keyH >= 86 ? &kIconFont32 : keyH >= 62 ? &kIconFont24 : &kIconFont20;
   const lv_font_t* textFont = keyH >= 86 ? &lv_font_montserrat_16 : &lv_font_montserrat_14;
 
   for (int k = 0; k < page.cols * page.rows; k++) {

@@ -17,7 +17,7 @@
 
 namespace {
 
-constexpr const char* kFirmware = "0.13.0";
+constexpr const char* kFirmware = "0.14.0";
 constexpr const char* kLayoutFile = "/layout.json";
 constexpr const char* kLayoutTmp = "/layout.tmp";
 

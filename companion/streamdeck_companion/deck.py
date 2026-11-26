@@ -16,6 +16,13 @@ ICONS = {
     "left", "right", "up", "down", "plus", "minus", "eye", "eye_off", "warning", "shuffle", "loop",
     "directory", "file", "call", "cut", "copy", "paste", "save", "bell", "keyboard", "gps", "wifi",
     "bluetooth", "trash", "usb", "charge", "battery", "drive", "backspace",
+    # drawn by the firmware from src/sd_icons.c (needs firmware 0.14.0)
+    "mic", "mic_off", "headphones", "speaker_off", "camera", "webcam", "webcam_off", "record",
+    "broadcast", "layers", "lightbulb", "lock", "desktop", "search", "smile", "clipboard",
+    "chart", "task_view", "exchange", "maximize", "minimize", "fullscreen", "columns", "undo",
+    "redo", "globe", "code", "terminal", "calculator", "envelope", "youtube", "spotify",
+    "discord", "steam", "gamepad", "branch", "bug", "history", "incognito", "send",
+    "script", "text", "bold", "italic", "underline", "print", "zoom_in", "zoom_out",
 }
 
 MAX_DESKTOPS, MAX_PAGES = 8, 16

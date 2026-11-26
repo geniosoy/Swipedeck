@@ -222,8 +222,22 @@ def main() -> int:
         cdp.js("keyAt(0).click()")
         check("clicking a key shows its panel", cdp.js("document.querySelector('#panel .switch .on').dataset.panel") == "key")
         check("one row of icons until all are asked for", cdp.js("$$('.iconGrid button').length") == 8)
+        check("no search until all icons are asked for", cdp.js("!document.querySelector('#iconSearch')"))
         cdp.js("document.querySelector('#moreIcons').click()")
-        check("All icons opens the whole set", cdp.js("$$('.iconGrid button').length") > 40)
+        check("All icons opens the whole set, with a search that has the cursor", cdp.js("$$('.iconGrid button').length") == 100 and cdp.js("document.activeElement.id") == "iconSearch",
+              str(cdp.js("$$('.iconGrid button').length")))
+        shown = "$$('.iconGrid button[data-icon]').map((b) => b.dataset.icon)"
+        cdp.js("setInput(document.querySelector('#iconSearch'), 'light')")
+        check("searching 'light' offers the lightbulb", "lightbulb" in cdp.js(shown) and len(cdp.js(shown)) < 6 and cdp.js("document.activeElement.id") == "iconSearch", str(cdp.js(shown)))
+        cdp.js("setInput(document.querySelector('#iconSearch'), 'deafen')")
+        check("...and 'deafen' the headphones", cdp.js(shown) == ["headphones"], str(cdp.js(shown)))
+        cdp.js("setInput(document.querySelector('#iconSearch'), 'zzz')")
+        check("a search with nothing says so", cdp.js("document.querySelector('.iconGrid .nothing').textContent") == "No icons match.")
+        cdp.js("setInput(document.querySelector('#iconSearch'), 'microphone')")
+        cdp.js("document.querySelector('.iconGrid button[data-icon=mic]').click()")
+        check("picking a found icon puts it on the key and keeps the search", cdp.js("keyAt(0).querySelector('.ico').textContent.codePointAt(0)") == 0xF130
+              and cdp.js("document.querySelector('#iconSearch').value") == "microphone")
+        cdp.js("press('z', { ctrlKey: true })")
         cdp.js("document.querySelector('#moreIcons').click()")
         check("Hold and Change look start folded, saying their value", cdp.js("!document.querySelector('#holdSection').open && !document.querySelector('#stateSection').open")
               and cdp.js("document.querySelector('#holdSection summary .val').textContent") == "Nothing")
@@ -799,7 +813,7 @@ def main() -> int:
         cdp.js("btn('Desktops').click()")
         check("the Desktops tab brings the editor back", cdp.js("!document.querySelector('#deckView').hidden && document.querySelector('#settingsPage').hidden"))
         cdp.js("keyAt(11).click()")
-        cdp.js("card('Mute').click()")
+        cdp.js("card('Mute speakers').click()")
 
         print("volume mixer and clock desktops")
         before = cdp.js("$$('.deskrow').length")
@@ -872,7 +886,7 @@ def main() -> int:
         check("...the programs of the desktop", saved["desktops"][0].get("apps") == ["obs64", "code"], str(saved["desktops"][0].get("apps")))
         companion_deck = Deck(saved)
         check("the companion understands all of it",
-              companion_deck.auto_apps == [(0, {"obs64", "code"})] and companion_deck.key_states == [(0, 0, 0, "app:discord")]
+              companion_deck.auto_apps == [(0, {"obs64", "code"})] and companion_deck.key_states == [(0, 0, 0, "app:discord"), (0, 0, 11, "mute")]
               and companion_deck.hold_action_at(0, 0, 2) is not None and '"repeat":true' in companion_deck.layout_text())
         stats_options = next(d for d in saved["desktops"] if d.get("kind") == "stats")["options"]
         np_options = next(d for d in saved["desktops"] if d.get("kind") == "nowplaying")["options"]

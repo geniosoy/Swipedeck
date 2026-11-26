@@ -287,6 +287,40 @@ test('program names: compared without case, spaces and .exe; lists are cleaned u
   assert.equal(M.parseApps(Array.from({ length: 20 }, (_, i) => 'app' + i).join(',')).length, 10);
 });
 
+test('icons are found by name or by what they stand for', () => {
+  const icons = JSON.parse(readFileSync(new URL('../../streamdeck_companion/web/icons.json', import.meta.url), 'utf8'));
+  const find = (q) => Object.keys(icons).filter((n) => M.iconMatches(n, q));
+  assert.deepEqual(Object.keys(icons).filter((n) => !M.ICON_WORDS[n]), []);       // every icon has words
+  assert.deepEqual(Object.keys(M.ICON_WORDS).filter((n) => !icons[n]), []);        // and no word list is left over
+  assert.ok(find('light').includes('lightbulb'));
+  assert.ok(find('deafen').includes('headphones'));
+  assert.ok(find('microphone').includes('mic') && find('microphone').includes('mic_off'));
+  assert.ok(find('mic off').includes('mic_off'));
+  assert.equal(find('').length, Object.keys(icons).length);
+  assert.deepEqual(find('zzz'), []);
+});
+
+test('presets and templates: the icons that stand for the thing', () => {
+  const web = (f) => JSON.parse(readFileSync(new URL(`../../streamdeck_companion/web/${f}`, import.meta.url), 'utf8'));
+  const icons = web('icons.json');
+  const presets = web('presets.json').categories.flatMap((c) => c.presets);
+  const byName = (n) => presets.find((p) => p.name === n).key;
+  assert.equal(new Set(presets.map((p) => p.name)).size, presets.length);
+  for (const p of presets) if (p.key.icon) assert.ok(icons[p.key.icon], `${p.name}: ${p.key.icon}`);
+  assert.equal(byName('Home Assistant: toggle light').icon, 'lightbulb');
+  assert.equal(byName('Discord: mute mic').icon, 'mic');
+  assert.equal(byName('Discord: deafen').icon, 'headphones');
+  // only a key whose state the PC can read shows one: speaker mute, not Discord's or OBS's own
+  assert.deepEqual(byName('Mute speakers').state, { source: 'mute', icon: 'speaker_off', color: '#B3261E' });
+  assert.deepEqual(presets.filter((p) => p.key.state).map((p) => p.name), ['Mute speakers']);
+  const keys = web('templates.json').templates.flatMap((t) => t.desktop.pages.flatMap((p) => p.keys));
+  for (const k of keys) {
+    if (k.icon) assert.ok(icons[k.icon], k.label);
+    if (k.state) assert.equal(k.action.keys, 'volume_mute');
+    if (k.action?.keys === 'volume_mute') assert.equal(k.state?.source, 'mute', k.label);
+  }
+});
+
 test('text the board cannot show is noticed', () => {
   for (const ok of ['', 'Vol +', '9\u00B0', 'a \u2022 b']) assert.equal(M.boardCannotShow(ok), false, ok);
   for (const no of ['M\u00FAsica', 'Ni\u00F1o', '\uD83C\uDFB5']) assert.equal(M.boardCannotShow(no), true, no);

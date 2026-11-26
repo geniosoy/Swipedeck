@@ -1,7 +1,8 @@
 """Builds the web editor's icon table: companion/streamdeck_companion/web/icons.json (+ the font file).
 
 The board draws key icons with LVGL's built-in symbols, which are Font Awesome 5 glyphs. This script reads the icon
-names the firmware knows (kIcons in src/ui.cpp), looks up each LVGL symbol's code point in LVGL's lv_symbol_def.h and
+names the firmware knows (kIcons in src/ui.cpp), looks up each symbol's code point (LVGL's lv_symbol_def.h, or
+src/sd_icons.h for the icons LVGL does not have) and
 writes {name: "f001"}. The editor then draws the very same glyphs with the Font Awesome font that LVGL ships
 (copied to web/fonts/). Run it again after adding an icon to kIcons:
 
@@ -24,7 +25,7 @@ WEB = ROOT / "companion" / "streamdeck_companion" / "web"
 def main() -> None:
     ui = (ROOT / "src" / "ui.cpp").read_text(encoding="utf-8")
     table = ui[ui.index("kIcons[]"):ui.index("};", ui.index("kIcons[]"))]
-    names = re.findall(r'\{"([a-z_]+)",\s*(LV_SYMBOL_[A-Z_0-9]+)\}', table)
+    names = re.findall(r'\{"([a-z_]+)",\s*((?:LV|SD)_SYMBOL_[A-Z_0-9]+)\}', table)
 
     defs = (LVGL / "src" / "font" / "lv_symbol_def.h").read_text(encoding="utf-8")
     # The UTF-8 bytes in the string literal are what the board draws, so they are the source of truth. (LVGL's trailing
@@ -34,6 +35,12 @@ def main() -> None:
         symbol, escapes, decimal = m.group(1), m.group(2), int(m.group(3))
         point = ord(bytes.fromhex(escapes.replace("\\x", "")).decode("utf-8"))
         code[symbol] = (point, decimal)
+
+    # the extra icons (tools/gen_symbol_font.py): their bytes are in the generated header
+    extra = (ROOT / "src" / "sd_icons.h").read_text(encoding="utf-8")
+    for m in re.finditer(r'#define (SD_SYMBOL_[A-Z_0-9]+) "((?:\\x[0-9A-F]{2})+)"', extra):
+        point = ord(bytes.fromhex(m.group(2).replace("\\x", "")).decode("utf-8"))
+        code[m.group(1)] = (point, point)
 
     icons = {}
     for name, symbol in names:

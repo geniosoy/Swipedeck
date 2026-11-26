@@ -58,6 +58,7 @@ const state = {
   runningApps: null, previewOn: false,                    // programs with a window (datalist of the "programs" fields); preview a key's "on" look
   sources: null, sourcesBusy: false, sourcesError: '', sourcesTried: false, // media players running now (Now playing filter)
   panel: 'desktop', open: { hold: false, state: false, icons: false },       // the right panel: which side, which parts are open
+  iconQuery: '',                                                           // what is typed in the icon search
   landed: null,                                                            // the key a preset was just placed on
   catalog: { categories: [], apps: [] }, appSearch: '',   // known apps with icons (apps.json) and the library search box
 };
@@ -976,19 +977,35 @@ function folderEditor(k) {
 
 const iconName = (n) => (n.charAt(0).toUpperCase() + n.slice(1)).replace(/_/g, ' '); // "volume_down" -> "Volume down"
 
-// One row of likely icons; "All icons" opens the whole set.
-const COMMON_ICONS = ['mute', 'volume_up', 'audio', 'play', 'power', 'directory', 'keyboard'];
+// One row of likely icons; "All icons" opens the whole set, with a search.
+const COMMON_ICONS = ['volume_up', 'mic', 'headphones', 'play', 'lightbulb', 'globe', 'directory'];
 
 function iconPicker(k) {
   const names = Object.keys(state.icons).sort();
   const first = [...new Set([k.icon, ...COMMON_ICONS].filter((n) => n && state.icons[n]))].slice(0, 7);
-  const shown = state.open.icons ? names : first;
-  const grid = h('div', { class: 'iconGrid' + (state.open.icons ? ' all' : '') },
-    h('button', { class: k.icon ? '' : 'on', title: 'No icon', 'aria-label': 'No icon', onclick: () => commit(() => { delete page().keys[state.sel.k].icon; }) }, svg('none')),
-    shown.map((n) => h('button', { class: 'fa' + (k.icon === n ? ' on' : ''), title: iconName(n), 'aria-label': iconName(n), dataset: { icon: n }, onclick: () => commit(() => { page().keys[state.sel.k].icon = n; }) }, glyph(n))));
-  const more = h('button', { class: 'small quiet', id: 'moreIcons', 'aria-expanded': String(state.open.icons),
-    onclick: () => { state.open.icons = !state.open.icons; renderInspector(); } }, state.open.icons ? 'Fewer icons' : 'All icons');
-  return field('Icon', h('div', {}, grid, more));
+  const all = state.open.icons;
+  const grid = h('div', { class: 'iconGrid' + (all ? ' all' : '') });
+  const none = h('button', { class: k.icon ? '' : 'on', title: 'No icon', 'aria-label': 'No icon', onclick: () => commit(() => { delete page().keys[state.sel.k].icon; }) }, svg('none'));
+  const choice = (n) => h('button', { class: 'fa' + (k.icon === n ? ' on' : ''), title: iconName(n), 'aria-label': iconName(n), dataset: { icon: n },
+    onclick: () => commit(() => { page().keys[state.sel.k].icon = n; }) }, glyph(n));
+  // only the grid is redrawn while searching, so the box keeps the cursor
+  const fill = () => {
+    const q = all ? state.iconQuery.trim() : '';
+    const shown = all ? names.filter((n) => M.iconMatches(n, q)) : first;
+    grid.replaceChildren(...(q ? [] : [none]), ...shown.map(choice));
+    if (q && !shown.length) grid.append(h('div', { class: 'hint nothing' }, 'No icons match.'));
+  };
+  fill();
+  const search = all ? h('input', { type: 'text', id: 'iconSearch', placeholder: 'Search icons\u2026', 'aria-label': 'Search icons', value: state.iconQuery,
+    oninput: (e) => { state.iconQuery = e.target.value; fill(); } }) : null;
+  const more = h('button', { class: 'small quiet', id: 'moreIcons', 'aria-expanded': String(all),
+    onclick: () => {
+      state.open.icons = !all;
+      state.iconQuery = '';
+      renderInspector();
+      if (!all) $('#iconSearch').focus();
+    } }, all ? 'Fewer icons' : 'All icons');
+  return field('Icon', h('div', {}, search, grid, more));
 }
 
 function colorPicker(k) {
@@ -1532,7 +1549,8 @@ function renderPresets() {
   const chipScroll = dock.querySelector('.chips') ? dock.querySelector('.chips').scrollLeft : 0;
   const grid = h('div', { class: 'pgrid', dataset: { view } });
   for (const p of shown) {
-    const card = h('div', { class: 'pcard', draggable: true, tabIndex: 0, role: 'button', title: p.key.folder ? 'A folder with a new page' : M.describeAction(p.key.action),
+    const card = h('div', { class: 'pcard', draggable: true, tabIndex: 0, role: 'button',
+      title: `${p.name}: ${p.key.folder ? 'a folder with a new page' : M.describeAction(p.key.action)}` + (M.stateKind(p.key) !== 'none' ? ' \u00B7 changes look with the PC' : ''),
       onclick: () => applyPreset(p), onkeydown: (e) => { if (e.target === card && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); e.stopPropagation(); applyPreset(p); } } },
       miniKey(p.key), h('div', { class: 'nm' }, p.name),
       p.user ? h('button', { class: 'icon danger del', title: 'Delete this preset', 'aria-label': 'Delete this preset', onclick: (e) => { e.stopPropagation(); deletePreset(p.idx); } }, svg('close')) : null);

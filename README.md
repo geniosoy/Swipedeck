@@ -30,7 +30,7 @@ The board holds the screens, the touch handling, the sounds and a copy of the la
 actions, the media session, PC stats, volumes) happens in the companion, which also serves the editor. Nothing leaves
 your PC by itself: the editor only listens on `127.0.0.1`. What does go out is what you set up: HTTP actions, and the
 weather on the clock screen (only the place's coordinates, see [below](#volume-mixer-and-clock-screens)).
-Firmware: Arduino + PlatformIO + LVGL 8.3.6 (v0.13.0).
+Firmware: Arduino + PlatformIO + LVGL 8.3.6 (v0.14.0).
 
 ## The layout editor
 
@@ -112,7 +112,8 @@ The companion serves a layout editor at **http://127.0.0.1:8765/** (`Streamdeck-
   recording a hotkey.
 * **Undo instead of questions:** deleting a desktop, a page or a saved preset, shrinking the grid, replacing a key with a
   preset and discarding changes happen at once, and a message at the bottom offers **Undo** for 10 seconds.
-* **Per key:** label (the pencil beside its name), icon (a short row, or **All icons** for all 51 board icons), color, and either an action, a folder (opens another page, or creates one)
+* **Per key:** label (the pencil beside its name), icon (a short row, or **All icons** for all 99 board icons, with a search that also knows what they stand for:
+  "light", "deafen", "microphone"), color, and either an action, a folder (opens another page, or creates one)
   or nothing. Actions have forms: a hotkey builder (modifier tick boxes plus a key box, with a **Record** button;
   the Windows key cannot be captured by a browser, so it is a tick box), typed text, open, run, lock, and multi-step
   sequences with waits.
@@ -182,12 +183,14 @@ for explanation: the real file is plain JSON.
   `run` (list, or string with `"shell": true`), `lock`, `http`, `obs` (see below), `multi` (steps, with `{"wait": seconds}`). Shared actions can
   be defined in a top-level `"actions"` map and referenced by a key's `"id"`. Everything is validated when loading, with
   readable errors (`--check`).
-* Icons on keys come from a built-in list of about 50 names (`mute`, `play`, `home`, `copy` ...), see `ICONS` in
-  `companion/streamdeck_companion/deck.py`; an unknown name shows a warning symbol and a log warning.
+* Icons on keys come from a built-in list of 99 names (`mic`, `lightbulb`, `play`, `copy` ...), see `ICONS` in
+  `companion/streamdeck_companion/deck.py`; an unknown name shows a warning symbol and a log warning. 51 are LVGL's own
+  symbols; the rest are drawn from Font Awesome 5 into `src/sd_icons.c` by `tools/gen_symbol_font.py`.
 * Layouts have only been tried at a few KB; the editor warns above 30 KB.
 * **Firmware 0.8.0 or newer** is needed for `appIcon` (older firmware ignores the option and the icon messages),
   **0.9.0 or newer** for the general settings below beyond volume, sounds and brightness, and **0.12.0 or newer** for
-  hold / repeat / state keys and sleeping with the PC, and **0.13.0 or newer** for the volume mixer and clock desktops.
+  hold / repeat / state keys and sleeping with the PC, **0.13.0 or newer** for the volume mixer and clock desktops, and
+  **0.14.0 or newer** for the 48 added key icons (older firmware shows a warning symbol for them).
   (0.12.0 and 0.13.0 build and pass the companion and editor tests, but had not been flashed or tried on the board when
   this was written: check the hold, state, sleep, mixer and clock features on the real screen first.) Desktops by active
   app need no firmware change: the companion just sends `focus`.

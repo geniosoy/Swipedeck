@@ -268,7 +268,7 @@ main.placing .key.empty { border-color: #6d86a6; background: rgba(255, 255, 255,
 .pcard:hover .mini { transform: translateY(-2px); box-shadow: var(--float); }
 .mini .ico { font-size: 21px; line-height: 1.1; }
 .mini .lbl { font-size: 12px; max-width: 94%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pcard .nm { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pcard .nm { color: var(--muted); line-height: 1.25; overflow: hidden; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .pcard .del { position: absolute; top: -5px; right: 0; display: none; width: 22px; min-height: 22px; background: var(--raised); border-color: var(--line); box-shadow: var(--lift); }
 .pcard:hover .del, .pcard .del:focus-visible { display: inline-flex; }
 
@@ -305,7 +305,9 @@ details.fold > .body { padding-bottom: 8px; }
 .mods { margin-bottom: 10px; }
 .sub { margin: 4px 0 0; }
 .iconGrid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
-.iconGrid.all { max-height: 196px; overflow-y: auto; }
+.iconGrid.all { max-height: 196px; overflow-y: auto; align-content: start; }
+.iconGrid .nothing { grid-column: 1 / -1; padding: 6px 2px; }
+#iconSearch { margin-bottom: 8px; }
 #moreIcons { margin: 4px 0 0 -11px; }
 .iconGrid button { min-height: 36px; padding: 0; font-size: 16px; font-weight: 400; background: var(--hover); border-color: transparent; border-radius: 9px; }
 .iconGrid button.fa { font-weight: 900; }
