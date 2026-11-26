@@ -44,7 +44,7 @@ def main() -> int:
     shutil.copyfile(ROOT / "companion" / "tests" / "fixtures" / "deck.json", deck_path)
     players = [{"id": "Chrome", "title": "A video", "artist": "A channel", "playing": True, "current": True},
                {"id": "Spotify.exe", "title": "", "artist": "", "playing": False, "current": False}]
-    server = EditorServer(deck_path, port=0, status_fn=lambda: {"connected": True, "port": "COM3", "firmware": "0.13.0",
+    server = EditorServer(deck_path, port=0, status_fn=lambda: {"connected": True, "port": "COM3", "firmware": "0.15.0",
                                                                 "desktop": 0, "kind": "keys"},
                           media_sources_fn=lambda: players, command_fn=lambda c: True,
                           places_fn=lambda q: [{"name": "London", "region": "England", "country": "United Kingdom", "lat": 51.5074, "lon": -0.1278}])
@@ -116,14 +116,19 @@ def main() -> int:
         cdp.js("keyAt(1).click()")  # select a key so the inspector shows
         time.sleep(0.3)
         page_shot("editor.png")
+        # The next two sit side by side in the README: both are as tall as the whole Settings page, so that everything
+        # their captions name is in the picture.
+        cdp.js("btn('Settings').click()")
+        time.sleep(0.3)
+        tall = cdp.js("document.querySelector('#topbar').offsetHeight + document.querySelector('#settingsPage').scrollHeight")
+        cdp.call("Emulation.setDeviceMetricsOverride", width=WIDTH, height=tall, deviceScaleFactor=1, mobile=False)
+        time.sleep(0.5)
+        page_shot("settings.png")
+        cdp.js("btn('Desktops').click()")
         desktop(1)
         time.sleep(0.5)
         page_shot("editor-nowplaying.png")
         desktop(0)
-        cdp.js("btn('Settings').click()")
-        time.sleep(0.5)
-        cdp.js("window.scrollTo(0, 0)")
-        page_shot("settings.png")
 
         # the two newer screens are added last, so the dots in the pictures above are not changed by them
         print("mixer and clock")
