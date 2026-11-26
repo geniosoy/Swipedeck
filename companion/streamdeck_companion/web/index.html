@@ -4,25 +4,29 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="sd-token" content="__TOKEN__">
+<meta name="color-scheme" content="light dark">
 <title>Swipedeck</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="preload" href="/fonts/hanken-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
 <header id="topbar"></header>
-<div id="banner" hidden></div>
+<div id="banner" role="alert" hidden></div>
 <main id="deckView">
-  <aside id="tree">
+  <nav id="tree" aria-label="Desktops">
     <div id="treeList"></div>
-  </aside>
-  <section id="stage">
+  </nav>
+  <section id="stage" aria-label="Board preview">
     <div id="screenMount"></div>
     <div id="pageControls"></div>
-    <div id="liveConfig"></div>
-    <div id="presets"></div>
   </section>
-  <aside id="inspector"></aside>
+  <section id="presets" aria-label="Presets"></section>
+  <aside id="inspector" aria-label="Details">
+    <div id="panel"></div>
+    <div id="liveConfig"></div>
+  </aside>
 </main>
 <section id="settingsPage" hidden></section>
 <div id="toast" role="status" hidden></div>

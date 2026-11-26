@@ -1,4 +1,5 @@
 #include "ui.h"
+#include "sd_icons.h"
 
 #include <ArduinoJson.h>
 
@@ -17,7 +18,7 @@
 namespace {
 
 constexpr int kHeaderH = 30;
-constexpr int kPad = 6;  // outer padding of the key grid
+int keyPad = 6;     // padding between the keys and the screen's edges (user setting)
 int keyGap = 6;     // gap between keys (user setting)
 int keyRadius = 12; // corner radius of the keys (user setting)
 bool wrapDesktops = false;  // swiping past the first / last desktop continues on the other end (user setting)
@@ -43,6 +44,16 @@ std::vector<lv_obj_t*> hdrDots;
 UiEventFn sink = nullptr;
 int activeDesktop = 0;
 
+// A key's icon font: LVGL's own, with the extra icons behind it.
+lv_font_t withIcons(const lv_font_t& base, const lv_font_t& extra) {
+  lv_font_t font = base;
+  font.fallback = &extra;
+  return font;
+}
+const lv_font_t kIconFont20 = withIcons(lv_font_montserrat_20, sd_icons_20);
+const lv_font_t kIconFont24 = withIcons(lv_font_montserrat_24, sd_icons_24);
+const lv_font_t kIconFont32 = withIcons(lv_font_montserrat_32, sd_icons_32);
+
 struct IconEntry {
   const char* name;
   const char* symbol;
@@ -65,6 +76,23 @@ const IconEntry kIcons[] = {
     {"gps", LV_SYMBOL_GPS},           {"wifi", LV_SYMBOL_WIFI},         {"bluetooth", LV_SYMBOL_BLUETOOTH},
     {"trash", LV_SYMBOL_TRASH},       {"usb", LV_SYMBOL_USB},           {"charge", LV_SYMBOL_CHARGE},
     {"battery", LV_SYMBOL_BATTERY_FULL}, {"drive", LV_SYMBOL_DRIVE},    {"backspace", LV_SYMBOL_BACKSPACE},
+    // icons LVGL's fonts do not have: drawn from sd_icons.c (tools/gen_symbol_font.py)
+    {"mic", SD_SYMBOL_MIC}, {"mic_off", SD_SYMBOL_MIC_OFF}, {"headphones", SD_SYMBOL_HEADPHONES},
+    {"speaker_off", SD_SYMBOL_SPEAKER_OFF}, {"camera", SD_SYMBOL_CAMERA}, {"webcam", SD_SYMBOL_WEBCAM},
+    {"webcam_off", SD_SYMBOL_WEBCAM_OFF}, {"record", SD_SYMBOL_RECORD}, {"broadcast", SD_SYMBOL_BROADCAST},
+    {"layers", SD_SYMBOL_LAYERS}, {"lightbulb", SD_SYMBOL_LIGHTBULB}, {"lock", SD_SYMBOL_LOCK},
+    {"desktop", SD_SYMBOL_DESKTOP}, {"search", SD_SYMBOL_SEARCH}, {"smile", SD_SYMBOL_SMILE},
+    {"clipboard", SD_SYMBOL_CLIPBOARD}, {"chart", SD_SYMBOL_CHART}, {"task_view", SD_SYMBOL_TASK_VIEW},
+    {"exchange", SD_SYMBOL_EXCHANGE}, {"maximize", SD_SYMBOL_MAXIMIZE}, {"minimize", SD_SYMBOL_MINIMIZE},
+    {"fullscreen", SD_SYMBOL_FULLSCREEN}, {"columns", SD_SYMBOL_COLUMNS}, {"undo", SD_SYMBOL_UNDO},
+    {"redo", SD_SYMBOL_REDO}, {"globe", SD_SYMBOL_GLOBE}, {"code", SD_SYMBOL_CODE},
+    {"terminal", SD_SYMBOL_TERMINAL}, {"calculator", SD_SYMBOL_CALCULATOR}, {"envelope", SD_SYMBOL_ENVELOPE},
+    {"youtube", SD_SYMBOL_YOUTUBE}, {"spotify", SD_SYMBOL_SPOTIFY}, {"discord", SD_SYMBOL_DISCORD},
+    {"steam", SD_SYMBOL_STEAM}, {"gamepad", SD_SYMBOL_GAMEPAD}, {"branch", SD_SYMBOL_BRANCH},
+    {"bug", SD_SYMBOL_BUG}, {"history", SD_SYMBOL_HISTORY}, {"incognito", SD_SYMBOL_INCOGNITO},
+    {"send", SD_SYMBOL_SEND}, {"script", SD_SYMBOL_SCRIPT}, {"text", SD_SYMBOL_TEXT},
+    {"bold", SD_SYMBOL_BOLD}, {"italic", SD_SYMBOL_ITALIC}, {"underline", SD_SYMBOL_UNDERLINE},
+    {"print", SD_SYMBOL_PRINT}, {"zoom_in", SD_SYMBOL_ZOOM_IN}, {"zoom_out", SD_SYMBOL_ZOOM_OUT},
 };
 
 const char* iconSymbol(const String& name) {
@@ -278,17 +306,25 @@ void buildPage(int d, int p) {
   lv_obj_set_pos(cont, 0, 0);
   lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
 
-  const int keyW = (w - 2 * kPad - (page.cols - 1) * keyGap) / page.cols;
-  const int keyH = (h - 2 * kPad - (page.rows - 1) * keyGap) / page.rows;
-  const lv_font_t* iconFont = keyH >= 86 ? &lv_font_montserrat_32 : keyH >= 62 ? &lv_font_montserrat_24 : &lv_font_montserrat_20;
-  const lv_font_t* textFont = keyH >= 86 ? &lv_font_montserrat_16 : &lv_font_montserrat_14;
+  // The keys fill what is inside the side padding to the pixel: the division's leftover is spread over them, so they
+  // differ by 1 px at most (and with no padding they reach every edge). Same math as geometry() in web/model.js.
+  const int spanW = w - 2 * keyPad + keyGap;  // all columns together, each a key and the gap after it
+  const int spanH = h - 2 * keyPad + keyGap;
+  const int minH = spanH / page.rows - keyGap;  // the smallest key picks the fonts, so a page has one size of them
+  const lv_font_t* iconFont = minH >= 86 ? &kIconFont32 : minH >= 62 ? &kIconFont24 : &kIconFont20;
+  const lv_font_t* textFont = minH >= 86 ? &lv_font_montserrat_16 : &lv_font_montserrat_14;
 
   for (int k = 0; k < page.cols * page.rows; k++) {
     const DeckKey& key = page.keys[k];
     if (key.empty) continue;
+    const int col = k % page.cols, row = k / page.cols;
+    const int x = keyPad + col * spanW / page.cols;
+    const int y = keyPad + row * spanH / page.rows;
+    const int keyW = keyPad + (col + 1) * spanW / page.cols - keyGap - x;
+    const int keyH = keyPad + (row + 1) * spanH / page.rows - keyGap - y;
     lv_obj_t* b = lv_btn_create(cont);
     lv_obj_set_size(b, keyW, keyH);
-    lv_obj_set_pos(b, kPad + (k % page.cols) * (keyW + keyGap), kPad + (k / page.cols) * (keyH + keyGap));
+    lv_obj_set_pos(b, x, y);
     lv_obj_set_style_radius(b, keyRadius, 0);
     lv_obj_set_style_shadow_width(b, 0, 0);
     lv_obj_set_style_border_width(b, 0, 0);
@@ -450,6 +486,19 @@ void uiScrollInfo(int& scrollX, int& tileX, int& tileCount, bool& sliding) {
 
 bool uiSwipe(bool fingerRight) { return startWrap(fingerRight ? LV_DIR_RIGHT : LV_DIR_LEFT, false); }
 
+String uiGridInfo() {
+  if (activeDesktop >= static_cast<int>(uis.size()) || deck.desktops[activeDesktop].kind != DeskKind::Keys) return "not a key desktop";
+  const DesktopUi& u = uis[activeDesktop];
+  lv_obj_t* cont = u.pages[u.stack.back()];
+  lv_obj_update_layout(cont);
+  String s = String(lv_obj_get_width(cont)) + "x" + lv_obj_get_height(cont) + " keys";
+  for (uint32_t i = 0; i < lv_obj_get_child_cnt(cont); i++) {
+    lv_obj_t* b = lv_obj_get_child(cont, i);
+    s += String(" ") + lv_obj_get_x(b) + "," + lv_obj_get_y(b) + "," + lv_obj_get_width(b) + "x" + lv_obj_get_height(b);
+  }
+  return s;
+}
+
 bool uiLoadLayout(const char* json, String& err) {
   Deck fresh;
   if (!deckParse(json, fresh, err)) return false;
@@ -504,12 +553,14 @@ void uiSetKeyStates(const std::vector<uint32_t>& onKeys) {
   }
 }
 
-bool uiSetKeyLook(int radius, int gap) {
-  radius = constrain(radius, 0, 24);
-  gap = constrain(gap, 2, 12);
-  if (radius == keyRadius && gap == keyGap) return false;
+bool uiSetKeyLook(int radius, int gap, int pad) {
+  radius = constrain(radius, 0, kMaxKeyRadius);
+  gap = constrain(gap, 0, kMaxKeyGap);
+  pad = constrain(pad, 0, kMaxKeyPad);
+  if (radius == keyRadius && gap == keyGap && pad == keyPad) return false;
   keyRadius = radius;
   keyGap = gap;
+  keyPad = pad;
   if (deck.desktops.empty()) return true;  // nothing built yet; the next layout uses the new look
   // Only the key pages are rebuilt (their containers are deleted and the visible page is built again, the
   // others lazily when they are opened); Now playing / stats screens keep their state.

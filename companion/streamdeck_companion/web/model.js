@@ -12,27 +12,58 @@ export const clone = (v) => JSON.parse(JSON.stringify(v));
 // Mirrors SETTINGS_SPEC in deck.py. A setting that is missing from deck.json means its default.
 export const SETTING_DEFAULTS = {
   volume: 70, sounds: true, soundTheme: 'classic', navSounds: true, brightness: 255, dimAfter: 0, sleepAfter: 0,
-  flip: false, startDesktop: 0, keyRadius: 12, keyGap: 6, wrap: false, swipe: 'normal', sleepWithPc: false,
+  flip: false, startDesktop: 0, keyRadius: 12, keyGap: 6, keyPad: 6, wrap: false, swipe: 'normal', sleepWithPc: false,
 };
 export const SOUND_THEMES = [['classic', 'Classic'], ['soft', 'Soft'], ['click', 'Click'], ['chirp', 'Chirp']];
 export const SWIPE_LENGTHS = [['short', 'Short'], ['normal', 'Normal'], ['long', 'Long']];
 export const resolveSettings = (deck) => ({ ...SETTING_DEFAULTS, ...((deck && deck.settings) || {}) });
+
+// The settings of each card of the Settings page, for "Reset to defaults". The OBS connection is not a board setting: it
+// is the deck's "obs" object, and its default is not having one.
+export const SETTING_GROUPS = {
+  sound: ['sounds', 'navSounds', 'soundTheme', 'volume'],
+  screen: ['brightness', 'dimAfter', 'sleepAfter', 'flip', 'sleepWithPc'],
+  desktops: ['swipe', 'wrap', 'startDesktop'],
+  keys: ['keyRadius', 'keyGap', 'keyPad'],
+  obs: [],
+};
+
+export function atDefaults(deck, groups) {
+  const s = resolveSettings(deck);
+  return groups.every((g) => (g === 'obs' ? !deck.obs : SETTING_GROUPS[g].every((name) => s[name] === SETTING_DEFAULTS[name])));
+}
+
+// A setting at its default is one that is not in the deck, so resetting removes it.
+export function resetToDefaults(deck, groups) {
+  for (const g of groups) {
+    if (g === 'obs') delete deck.obs;
+    else if (deck.settings) for (const name of SETTING_GROUPS[g]) delete deck.settings[name];
+  }
+  if (deck.settings && !Object.keys(deck.settings).length) delete deck.settings;
+}
 
 // ---- keys ------------------------------------------------------------------------------------------
 
 export const isEmptyKey = (k) => !k || Object.keys(k).length === 0;
 export const keyKind = (k) => (isEmptyKey(k) ? 'empty' : k.folder ? 'folder' : 'action');
 
-// Same math as the firmware (buildPage in src/ui.cpp): padding 6, gap 6, the tile is 320 x 210.
-export function geometry(cols, rows, w = SCREEN.w, h = SCREEN.h - SCREEN.header, gap = SETTING_DEFAULTS.keyGap) {
-  const pad = 6;
-  const keyW = Math.floor((w - 2 * pad - (cols - 1) * gap) / cols);
-  const keyH = Math.floor((h - 2 * pad - (rows - 1) * gap) / rows);
+// Same math as the firmware (buildPage in src/ui.cpp); the tile is 320 x 210. The keys fill what is inside the side
+// padding to the pixel, the division's leftover spread over them. keyW / keyH are the smallest key (the board picks its
+// fonts by it); pos(i) gives each key's own place and size.
+export function geometry(cols, rows, w = SCREEN.w, h = SCREEN.h - SCREEN.header, gap = SETTING_DEFAULTS.keyGap, pad = SETTING_DEFAULTS.keyPad) {
+  const spanW = w - 2 * pad + gap, spanH = h - 2 * pad + gap; // each column / row: a key and the gap after it
+  const keyW = Math.floor(spanW / cols) - gap;
+  const keyH = Math.floor(spanH / rows) - gap;
+  const left = (c) => pad + Math.floor((c * spanW) / cols);
+  const top = (r) => pad + Math.floor((r * spanH) / rows);
   return {
     keyW, keyH, pad, gap,
     iconPx: keyH >= 86 ? 32 : keyH >= 62 ? 24 : 20,
     textPx: keyH >= 86 ? 16 : 14,
-    pos: (i) => ({ x: pad + (i % cols) * (keyW + gap), y: pad + Math.floor(i / cols) * (keyH + gap) }),
+    pos: (i) => {
+      const c = i % cols, r = Math.floor(i / cols);
+      return { x: left(c), y: top(r), w: left(c + 1) - gap - left(c), h: top(r + 1) - gap - top(r) };
+    },
   };
 }
 
@@ -513,6 +544,38 @@ export function removeFilterApps(filter, which, names) {
 // Is any of these names on the list?
 export const inFilterList = (filter, which, names) => names.some((n) => filter[which].some((x) => sameName(x, n)));
 
+// What else an icon can be found by in the picker (its own name always counts).
+export const ICON_WORDS = {
+  audio: 'music note song sound', video: 'film movie clip', list: 'menu rows', ok: 'check tick done yes', close: 'x cancel exit quit',
+  power: 'shutdown on off', settings: 'gear cog options', home: 'house start', download: 'pull save', upload: 'push send',
+  refresh: 'reload sync again', mute: 'speaker volume off quiet', volume_down: 'speaker sound quieter', volume_up: 'speaker sound louder audio',
+  image: 'picture photo', edit: 'pencil write rename', prev: 'previous back track', next: 'forward skip track', stop: 'square end',
+  play: 'start run', pause: 'hold', eject: 'remove disc', left: 'arrow chevron back', right: 'arrow chevron forward', up: 'arrow chevron',
+  down: 'arrow chevron', plus: 'add new', minus: 'remove less', eye: 'view show see', eye_off: 'hide hidden invisible',
+  warning: 'alert error caution', shuffle: 'random mix', loop: 'repeat cycle', directory: 'folder files explorer', file: 'document page new',
+  call: 'phone', cut: 'scissors clip', copy: 'duplicate', paste: 'clipboard', save: 'floppy disk', bell: 'notification alert unread',
+  keyboard: 'type typing hotkey', gps: 'location arrow', wifi: 'network signal wireless', bluetooth: 'wireless', trash: 'delete bin remove',
+  usb: 'cable plug', charge: 'bolt lightning power energy', battery: 'power charge', drive: 'disk storage', backspace: 'erase delete clear',
+  mic: 'microphone voice talk', mic_off: 'microphone muted voice silent', headphones: 'headset deafen audio ears',
+  speaker_off: 'mute muted sound volume silent', camera: 'photo screenshot picture snap', webcam: 'video camera cam',
+  webcam_off: 'video camera off cam', record: 'rec dot circle', broadcast: 'live stream antenna on air', layers: 'scene scenes stack',
+  lightbulb: 'light lamp bulb idea smart home', lock: 'secure password padlock', desktop: 'monitor screen computer pc',
+  search: 'find magnifier look', smile: 'emoji face happy shrug', clipboard: 'paste history', chart: 'task manager graph stats usage',
+  task_view: 'windows overview', exchange: 'switch swap alt tab transition', maximize: 'window big', minimize: 'window small hide',
+  fullscreen: 'expand full screen', columns: 'split snap studio side', undo: 'revert back', redo: 'again forward',
+  globe: 'web website browser internet address', code: 'developer brackets vscode dev tools', terminal: 'console command shell prompt',
+  calculator: 'math calc sum', envelope: 'mail email gmail message', youtube: 'video', spotify: 'music', discord: 'chat voice',
+  steam: 'games', gamepad: 'game controller gaming', branch: 'git merge version', bug: 'debug error', history: 'recent clock reopen replay',
+  incognito: 'private secret spy', send: 'webhook post paper plane request', script: 'file code automation macro',
+  text: 'font type letters write', bold: 'strong format', italic: 'slant format', underline: 'format line', print: 'printer paper',
+  zoom_in: 'magnify bigger plus', zoom_out: 'smaller minus',
+};
+
+export function iconMatches(name, query) {
+  const words = `${name.replace(/_/g, ' ')} ${ICON_WORDS[name] || ''}`.toLowerCase();
+  return String(query || '').toLowerCase().split(/\s+/).every((w) => words.includes(w));
+}
+
 // The board's fonts hold plain ASCII, the degree sign and the bullet: accents, emoji and the like do not show.
 export const boardCannotShow = (text) => /[^\x20-\x7E\u00B0\u2022]/.test(String(text || ''));
 
@@ -523,18 +586,27 @@ export function pageName(desktop, p) {
   return twin ? `${name} (${p.id})` : name;
 }
 
+// A key as an error names it: its label, with its place on the page when it has none or another key has the same one.
+export function keyTitle(p, i) {
+  const keys = (p && p.keys) || [], cols = (p && p.cols) || 4;
+  const label = keys[i] && keys[i].label;
+  const place = `row ${Math.floor(i / cols) + 1}, column ${(i % cols) + 1}`;
+  if (!label) return `unlabeled key (${place})`;
+  return keys.filter((k) => k && k.label === label).length > 1 ? `${label} (${place})` : label;
+}
+
 // A message from the companion that starts with a place in the file ("desktops[0].pages[1].keys[2].action: ...") said with
-// the names on screen ("Main \u203A Media \u203A key 3: ..."). Anything else is returned as it is.
+// the names on screen ("Main \u203A Media \u203A Mute: ..."). Anything else is returned as it is.
 export function describeProblem(message, deck) {
   const at = /^desktops\[(\d+)\](?:\.pages\[(\d+)\])?(?:\.keys\[(\d+)\])?((?:\.[a-z]+(?:\[\d+\])?)*):\s*/i.exec(message);
   const d = at && deck.desktops[+at[1]];
   if (!d) return message;
   const parts = [d.name || 'Untitled'];
   const p = at[2] !== undefined && d.pages && d.pages[+at[2]];
-  const inKey = at[3] !== undefined; // a key's page goes without saying when it is the only one, or named like its desktop
-  if (p && !(inKey && (d.pages.length === 1 || pageName(d, p) === d.name))) parts.push(pageName(d, p));
-  if (at[3] !== undefined) {
-    parts.push(`key ${+at[3] + 1}` + (/\.hold\b/.test(at[4]) ? ' (hold)' : ''));
+  const inKey = at[3] !== undefined; // a key's page goes without saying when it is the only one
+  if (p && !(inKey && d.pages.length === 1)) parts.push(pageName(d, p));
+  if (inKey) {
+    parts.push(keyTitle(p, +at[3]) + (/\.hold\b/.test(at[4]) ? ' (hold)' : ''));
     for (const step of at[4].matchAll(/steps\[(\d+)\]/g)) parts.push(`step ${+step[1] + 1}`);
   }
   return `${parts.join(' \u203A ')}: ${message.slice(at[0].length)}`;

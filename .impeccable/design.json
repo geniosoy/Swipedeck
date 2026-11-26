@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-25T00:00:00Z",
+  "title": "Design System: Swipedeck editor",
+  "extensions": {
+    "colorMeta": {
+      "signal-orange": { "role": "primary", "displayName": "Signal orange", "canonical": "#e8641b", "tonalRamp": ["#3a1706", "#66290a", "#933c0f", "#c05013", "#e8641b", "#f08a52", "#f6b08a", "#fbd8c4"] },
+      "graphite": { "role": "neutral", "displayName": "Graphite", "canonical": "#1c1d1e", "tonalRamp": ["#101112", "#1c1d1e", "#343638", "#55575a", "#7d8083", "#a7a9ad", "#d6d6d2", "#f7f7f5"] }
+    },
+    "typographyMeta": {
+      "title": { "displayName": "Title", "purpose": "The subject of the right panel." }
+    },
+    "shadows": [
+      { "name": "lift", "value": "0 1px 2px rgba(20,20,18,.12), 0 2px 8px -4px rgba(20,20,18,.18)", "purpose": "The selected desktop and switch side." },
+      { "name": "float", "value": "0 18px 40px -16px rgba(20,20,18,.38), 0 4px 12px -6px rgba(20,20,18,.22)", "purpose": "Menus, messages, a hovered preset." }
+    ],
+    "motion": [
+      { "name": "ease-out", "value": "cubic-bezier(.22,1,.36,1)", "purpose": "State changes (120-260 ms); off with reduced motion." }
+    ],
+    "breakpoints": [
+      { "name": "narrow-columns", "value": "1279px" },
+      { "name": "stacked", "value": "1023px" }
+    ]
+  },
+  "components": [
+    { "name": "Primary button", "kind": "button", "refersTo": "button-primary", "description": "The one action that commits: Save.",
+      "html": "<button class=\"ds-primary\">Save</button>",
+      "css": ".ds-primary{min-height:34px;padding:0 18px;border-radius:999px;border:1px solid #e8641b;background:#e8641b;color:#17120e;font:600 14px 'Hanken Grotesk',system-ui}.ds-primary:hover{background:#d95a14}.ds-primary:focus-visible{outline:2px solid #e8641b;outline-offset:2px}" },
+    { "name": "Switch", "kind": "nav", "refersTo": "switch-on", "description": "Chooses the panel's subject.",
+      "html": "<div class=\"ds-switch\"><button class=\"on\">Key</button><button>Desktop</button></div>",
+      "css": ".ds-switch{display:flex;gap:3px;padding:3px;background:#dcdcd8;border-radius:999px;width:240px}.ds-switch button{flex:1;min-height:30px;border:0;border-radius:999px;background:transparent;color:#55575a;font:600 14px system-ui}.ds-switch button.on{background:#1c1d1e;color:#fff}.ds-switch button:focus-visible{outline:2px solid #e8641b}" },
+    { "name": "Field", "kind": "input", "refersTo": "field", "description": "Text entry in the panel.",
+      "html": "<input class=\"ds-field\" value=\"Vol -\">",
+      "css": ".ds-field{min-height:36px;padding:6px 11px;border:1px solid #c3c3be;border-radius:10px;background:#fff;color:#1c1d1e;font:14px system-ui}.ds-field:focus{outline:2px solid #e8641b;outline-offset:-1px;border-color:transparent}" }
+  ],
+  "narrative": {
+    "northStar": "The board on the table",
+    "overview": "A matte, quiet shell after Braun product design under Dieter Rams. The board is the one dark object in a light room.",
+    "keyCharacteristics": ["The preview is the largest thing and keeps the board's colors", "One signal orange, used rarely", "Hairlines and space instead of boxes", "Pill controls"],
+    "rules": [{ "name": "The One Orange Rule", "body": "Orange means \"this is what you are editing\" or \"do it\".", "section": "colors" }],
+    "dos": ["Do keep orange for the primary action and the thing being edited.", "Do keep the board preview faithful to the firmware in both themes.", "Do give every drag a click or keyboard way."],
+    "donts": ["Don't box a section inside another box.", "Don't use symbols or emoji as interface icons.", "Don't add a web font or script from another origin."]
+  }
+}

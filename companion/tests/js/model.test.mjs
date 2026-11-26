@@ -11,7 +11,7 @@ test('geometry matches the firmware for the layouts in deck.json', () => {
   // 4x3: (210 - 12 - 12) / 3 = 62 -> 24 px icons; width (320 - 12 - 18) / 4 = 72
   let g = M.geometry(4, 3);
   assert.deepEqual([g.keyW, g.keyH, g.iconPx, g.textPx], [72, 62, 24, 14]);
-  assert.deepEqual(g.pos(5), { x: 6 + 78, y: 6 + 68 });
+  assert.deepEqual(g.pos(5), { x: 6 + 78, y: 6 + 68, w: 73, h: 62 });
   // 3x2: keyH (210 - 12 - 6) / 2 = 96 -> 32 px icons, 16 px text; keyW (320 - 12 - 12) / 3 = 98
   g = M.geometry(3, 2);
   assert.deepEqual([g.keyW, g.keyH, g.iconPx, g.textPx], [98, 96, 32, 16]);
@@ -24,10 +24,54 @@ test('the key gap changes the geometry like the firmware does', () => {
   // 4x3 with a gap of 2: keyW = (320 - 12 - 3 * 2) / 4 = 75, keyH = (210 - 12 - 2 * 2) / 3 = 64
   let g = M.geometry(4, 3, undefined, undefined, 2);
   assert.deepEqual([g.keyW, g.keyH, g.gap], [75, 64, 2]);
-  assert.deepEqual(g.pos(5), { x: 6 + 77, y: 6 + 66 });
+  assert.deepEqual(g.pos(5), { x: 6 + 77, y: 6 + 66, w: 76, h: 65 });
   g = M.geometry(4, 3, undefined, undefined, 12); // the widest gap
   assert.deepEqual([g.keyW, g.keyH], [(320 - 12 - 36) / 4, Math.floor((210 - 12 - 24) / 3)]);
   assert.deepEqual([M.geometry(4, 3).keyW, M.geometry(4, 3).gap], [72, 6]); // no gap given: the default
+});
+
+test('side padding moves the grid, and the keys always fill the screen to the pixel', () => {
+  const [W, H] = [320, 210];
+  assert.deepEqual(M.geometry(4, 3, undefined, undefined, 6, 0).pos(0), { x: 0, y: 0, w: 75, h: 66 });
+  for (const [cols, rows] of [[1, 1], [3, 2], [4, 3], [6, 5]]) {
+    for (const gap of [0, 3, 12]) {
+      for (const pad of [0, 6, 12]) {
+        const g = M.geometry(cols, rows, undefined, undefined, gap, pad);
+        const at = (c, r) => g.pos(r * cols + c);
+        const what = `${cols}x${rows} gap ${gap} pad ${pad}`;
+        assert.deepEqual([at(0, 0).x, at(0, 0).y], [pad, pad], what);
+        const last = at(cols - 1, rows - 1);
+        assert.deepEqual([last.x + last.w, last.y + last.h], [W - pad, H - pad], what);
+        for (let c = 1; c < cols; c++) assert.equal(at(c, 0).x - at(c - 1, 0).x - at(c - 1, 0).w, gap, what);
+        for (let r = 1; r < rows; r++) assert.equal(at(0, r).y - at(0, r - 1).y - at(0, r - 1).h, gap, what);
+        for (let i = 0; i < cols * rows; i++) {
+          assert.ok(g.pos(i).w - g.keyW <= 1 && g.pos(i).w >= g.keyW, what);
+          assert.ok(g.pos(i).h - g.keyH <= 1 && g.pos(i).h >= g.keyH, what);
+        }
+      }
+    }
+  }
+});
+
+test('reset to defaults removes only the chosen group of settings', () => {
+  const deck = { desktops: [], settings: { volume: 10, sounds: false, brightness: 40, keyGap: 0, keyPad: 0 }, obs: { port: 4460 } };
+  assert.equal(M.atDefaults(deck, ['sound']), false);
+  assert.equal(M.atDefaults(deck, ['desktops']), true);
+  M.resetToDefaults(deck, ['sound']);
+  assert.deepEqual(deck.settings, { brightness: 40, keyGap: 0, keyPad: 0 });
+  assert.deepEqual(deck.obs, { port: 4460 });
+  assert.equal(M.atDefaults(deck, ['sound']), true);
+  assert.equal(M.atDefaults(deck, ['obs']), false);
+  M.resetToDefaults(deck, Object.keys(M.SETTING_GROUPS));
+  assert.deepEqual(deck, { desktops: [] });
+  assert.equal(M.atDefaults(deck, Object.keys(M.SETTING_GROUPS)), true);
+  // a value written out but equal to the default counts as the default
+  assert.equal(M.atDefaults({ settings: { volume: 70 } }, ['sound']), true);
+});
+
+test('every setting belongs to a group, so "reset all" misses none', () => {
+  const grouped = Object.entries(M.SETTING_GROUPS).filter(([name]) => name !== 'obs').flatMap(([, keys]) => keys);
+  assert.deepEqual([...grouped].sort(), Object.keys(M.SETTING_DEFAULTS).sort());
 });
 
 test('settings missing from the deck are at their defaults, and the defaults match the board', () => {
@@ -37,6 +81,7 @@ test('settings missing from the deck are at their defaults, and the defaults mat
   assert.equal(got.volume, 10);
   assert.equal(got.flip, true);
   assert.equal(got.keyGap, 6);
+  assert.equal(got.keyPad, 6);
   assert.deepEqual(M.SOUND_THEMES.map(([id]) => id), ['classic', 'soft', 'click', 'chirp']);
   assert.ok(M.SOUND_THEMES.some(([id]) => id === M.SETTING_DEFAULTS.soundTheme));
 });
@@ -287,6 +332,40 @@ test('program names: compared without case, spaces and .exe; lists are cleaned u
   assert.equal(M.parseApps(Array.from({ length: 20 }, (_, i) => 'app' + i).join(',')).length, 10);
 });
 
+test('icons are found by name or by what they stand for', () => {
+  const icons = JSON.parse(readFileSync(new URL('../../streamdeck_companion/web/icons.json', import.meta.url), 'utf8'));
+  const find = (q) => Object.keys(icons).filter((n) => M.iconMatches(n, q));
+  assert.deepEqual(Object.keys(icons).filter((n) => !M.ICON_WORDS[n]), []);       // every icon has words
+  assert.deepEqual(Object.keys(M.ICON_WORDS).filter((n) => !icons[n]), []);        // and no word list is left over
+  assert.ok(find('light').includes('lightbulb'));
+  assert.ok(find('deafen').includes('headphones'));
+  assert.ok(find('microphone').includes('mic') && find('microphone').includes('mic_off'));
+  assert.ok(find('mic off').includes('mic_off'));
+  assert.equal(find('').length, Object.keys(icons).length);
+  assert.deepEqual(find('zzz'), []);
+});
+
+test('presets and templates: the icons that stand for the thing', () => {
+  const web = (f) => JSON.parse(readFileSync(new URL(`../../streamdeck_companion/web/${f}`, import.meta.url), 'utf8'));
+  const icons = web('icons.json');
+  const presets = web('presets.json').categories.flatMap((c) => c.presets);
+  const byName = (n) => presets.find((p) => p.name === n).key;
+  assert.equal(new Set(presets.map((p) => p.name)).size, presets.length);
+  for (const p of presets) if (p.key.icon) assert.ok(icons[p.key.icon], `${p.name}: ${p.key.icon}`);
+  assert.equal(byName('Home Assistant: toggle light').icon, 'lightbulb');
+  assert.equal(byName('Discord: mute mic').icon, 'mic');
+  assert.equal(byName('Discord: deafen').icon, 'headphones');
+  // only a key whose state the PC can read shows one: speaker mute, not Discord's or OBS's own
+  assert.deepEqual(byName('Mute speakers').state, { source: 'mute', icon: 'speaker_off', color: '#B3261E' });
+  assert.deepEqual(presets.filter((p) => p.key.state).map((p) => p.name), ['Mute speakers']);
+  const keys = web('templates.json').templates.flatMap((t) => t.desktop.pages.flatMap((p) => p.keys));
+  for (const k of keys) {
+    if (k.icon) assert.ok(icons[k.icon], k.label);
+    if (k.state) assert.equal(k.action.keys, 'volume_mute');
+    if (k.action?.keys === 'volume_mute') assert.equal(k.state?.source, 'mute', k.label);
+  }
+});
+
 test('text the board cannot show is noticed', () => {
   for (const ok of ['', 'Vol +', '9\u00B0', 'a \u2022 b']) assert.equal(M.boardCannotShow(ok), false, ok);
   for (const no of ['M\u00FAsica', 'Ni\u00F1o', '\uD83C\uDFB5']) assert.equal(M.boardCannotShow(no), true, no);
@@ -298,10 +377,15 @@ test('a page is named by its title, with the id only to tell two apart', () => {
 });
 
 test('errors are said with the names on screen', () => {
-  const deck = { desktops: [{ name: 'Main', pages: [{ id: 'root', title: 'Main' }, { id: 'm', title: 'Media' }] }, { name: 'Clock', kind: 'clock' }] };
+  const root = { id: 'root', title: 'Main', cols: 4, keys: [{ label: 'Lock' }, {}, { label: 'Vol' }, { label: 'Vol' }] };
+  const media = { id: 'm', title: 'Media', cols: 4, keys: [{}, {}, { label: 'Next' }] };
+  const deck = { desktops: [{ name: 'Main', pages: [root, media] }, { name: 'Clock', kind: 'clock' }, { name: 'Work', pages: [{ ...root, title: 'Work' }] }] };
   const say = (m) => M.describeProblem(m, deck);
-  assert.equal(say('desktops[0].pages[1].keys[2].action: Enter the text to type.'), 'Main \u203A Media \u203A key 3: Enter the text to type.');
-  assert.equal(say('desktops[0].pages[0].keys[0].hold.steps[1]: Enter a command.'), 'Main \u203A key 1 (hold) \u203A step 2: Enter a command.');
+  assert.equal(say('desktops[0].pages[1].keys[2].action: Enter the text to type.'), 'Main \u203A Media \u203A Next: Enter the text to type.');
+  assert.equal(say('desktops[0].pages[0].keys[0].hold.steps[1]: Enter a command.'), 'Main \u203A Main \u203A Lock (hold) \u203A step 2: Enter a command.');
+  assert.equal(say('desktops[2].pages[0].keys[0]: x'), 'Work \u203A Lock: x'); // one page: it goes without saying
+  assert.equal(say('desktops[0].pages[0].keys[3]: x'), 'Main \u203A Main \u203A Vol (row 1, column 4): x'); // two keys named alike
+  assert.equal(say('desktops[0].pages[1].keys[5]: x'), 'Main \u203A Media \u203A unlabeled key (row 2, column 2): x');
   assert.equal(say('desktops[1].options.filter: both'), 'Clock: both');
   assert.equal(say('settings.volume must be an integer'), 'settings.volume must be an integer');
   assert.equal(say('desktops[7]: gone'), 'desktops[7]: gone');

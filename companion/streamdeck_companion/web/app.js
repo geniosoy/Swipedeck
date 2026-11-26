@@ -30,6 +30,25 @@ function h(tag, props, ...children) {
   return el;
 }
 
+// The editor's own icons (the board's icons come from its font): one 24 px grid, one stroke.
+const UI_ICONS = {
+  undo: 'M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3', redo: 'M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h3',
+  up: 'M6 14l6-6 6 6', down: 'M6 10l6 6 6-6', close: 'M6 6l12 12M18 6 6 18',
+  trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3', search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM16.5 16.5 21 21',
+  grip: 'M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01', edit: 'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4', none: 'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM6.3 6.3l11.4 11.4',
+};
+function svg(name) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const el = document.createElementNS(NS, 'svg');
+  el.setAttribute('viewBox', '0 0 24 24');
+  el.setAttribute('class', 'ui-ico');
+  el.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(NS, 'path');
+  path.setAttribute('d', UI_ICONS[name]);
+  el.append(path);
+  return el;
+}
+
 // ---- state -------------------------------------------------------------------------------------------
 
 const state = {
@@ -38,6 +57,9 @@ const state = {
   templates: [], addMenu: false, view: 'deck', // 'deck' = the desktop editor, 'settings' = general settings
   runningApps: null, previewOn: false,                    // programs with a window (datalist of the "programs" fields); preview a key's "on" look
   sources: null, sourcesBusy: false, sourcesError: '', sourcesTried: false, // media players running now (Now playing filter)
+  panel: 'desktop', open: { hold: false, state: false, icons: false },       // the right panel: which side, which parts are open
+  iconQuery: '',                                                           // what is typed in the icon search
+  landed: null,                                                            // the key a preset was just placed on
   catalog: { categories: [], apps: [] }, appSearch: '',   // known apps with icons (apps.json) and the library search box
 };
 const history = new M.History();
@@ -103,7 +125,9 @@ function commit(fn, { coalesce = null, rerender = 'all' } = {}) {
   clampSel();
   if (rerender === 'all') renderAll();
   else if (rerender === 'sample') { renderTopbar(); if (state.drawSample) state.drawSample(); }
+  else if (rerender === 'tree') { renderTopbar(); renderTree(); }
   else renderLive();
+  if (rerender !== 'all' && state.view === 'settings') state.refreshResets(); // the page was not rebuilt
 }
 
 // After an undo or a redo, the next edit is a step of its own again (even in the same field, right away).
@@ -262,7 +286,7 @@ async function refreshStatus() {
 // ---- top bar -----------------------------------------------------------------------------------------
 
 // Made once and put back on every redraw (the top bar is redrawn every few seconds), so the logo is not loaded again.
-const BRAND = h('span', { class: 'brand' }, h('img', { src: '/logo.svg', alt: '', width: 32, height: 32 }), 'Swipedeck');
+const BRAND = h('span', { class: 'brand' }, h('img', { src: '/logo.svg', alt: '', width: 44, height: 44 }), 'Swipedeck');
 
 function renderTopbar() {
   const st = state.status;
@@ -274,9 +298,10 @@ function renderTopbar() {
       h('button', { class: 'tab' + (state.view === 'deck' ? ' on' : ''), onclick: () => setView('deck') }, 'Desktops'),
       h('button', { class: 'tab' + (state.view === 'settings' ? ' on' : ''), onclick: () => setView('settings') }, 'Settings')),
     pill, h('span', { class: 'spacer' }),
-    h('button', { onclick: undo, disabled: !history.canUndo, title: 'Undo (Ctrl+Z)' }, 'Undo'),
-    h('button', { onclick: redo, disabled: !history.canRedo, title: 'Redo (Ctrl+Y)' }, 'Redo'),
-    h('button', { onclick: revert, disabled: !isDirty() }, 'Discard changes'),
+    h('div', { class: 'history' },
+      h('button', { class: 'quiet', onclick: undo, disabled: !history.canUndo, title: 'Undo (Ctrl+Z)' }, svg('undo'), 'Undo'),
+      h('button', { class: 'quiet', onclick: redo, disabled: !history.canRedo, title: 'Redo (Ctrl+Y)' }, svg('redo'), 'Redo')),
+    h('button', { class: 'discard', onclick: revert, disabled: !isDirty() }, 'Discard changes'),
     h('button', { class: 'primary', onclick: save, disabled: !isDirty() || state.saving, title: 'Save (Ctrl+S)' },
       isDirty() ? 'Save' : 'Saved'),
   );
@@ -299,6 +324,18 @@ function addMenu() {
     item('bell', 'Clock & timer', 'Time, weather and a countdown timer', () => addDesktopOfKind('clock'), hasClock ? 'Already added' : ''),
     h('div', { class: 'sec' }, 'Templates'),
     state.templates.map((t) => item(t.icon, t.name, t.description, () => addTemplate(t))));
+}
+
+// A small picture of a desktop: its first page's keys in their colors, or the live desktop's icon.
+function thumb(d) {
+  const kind = M.desktopKind(d);
+  if (kind !== 'keys') return h('span', { class: 'thumb live' }, h('span', { class: 'fa' }, glyph(KIND_ICON[kind])));
+  const p = d.pages[0];
+  return h('span', { class: 'thumb', style: { gridTemplateColumns: `repeat(${p.cols}, 1fr)`, gridTemplateRows: `repeat(${p.rows}, 1fr)` } },
+    Array.from({ length: p.cols * p.rows }, (_, i) => {
+      const k = p.keys[i];
+      return h('i', { style: { background: k && !M.isEmptyKey(k) ? (k.color || M.DEFAULT_KEY_COLOR) : '' } });
+    }));
 }
 
 // Desktops can be dragged by their row to reorder; the whole card is the drop target (upper half = before it).
@@ -337,19 +374,25 @@ function renderTree() {
   const list = h('div');
   const full = state.deck.desktops.length >= M.LIMITS.desktops;
   list.append(h('div', { class: 'treehead' }, h('h3', {}, 'Desktops'),
-    h('button', { class: 'small' + (state.addMenu ? ' primary' : ''), disabled: full && !state.addMenu, title: full ? 'The board holds at most 8 desktops' : '',
-      onclick: () => { state.addMenu = !state.addMenu; renderTree(); } }, state.addMenu ? 'Close' : '+ Add desktop')));
+    h('button', { class: 'small', disabled: full && !state.addMenu, title: full ? 'The board holds at most 8 desktops' : '',
+      'aria-expanded': String(state.addMenu), onclick: () => { state.addMenu = !state.addMenu; renderTree(); } }, state.addMenu ? 'Close' : '+ Add desktop')));
   if (state.addMenu) list.append(addMenu());
+  const tool = (icon, title, disabled, act, extra = '') => h('button', { class: 'icon' + extra, title, 'aria-label': title, disabled,
+    onclick: (e) => { e.stopPropagation(); act(); } }, svg(icon));
   state.deck.desktops.forEach((d, i) => {
     const kind = M.desktopKind(d);
     const active = i === state.sel.d;
-    const row = h('div', { class: 'deskrow', title: 'Drag to reorder', onclick: () => { state.sel = { d: i, p: 0, k: null }; renderAll(); } },
-      h('span', { class: 'grip' }, '\u22EE\u22EE'),
-      h('span', { class: 'fa' }, glyph(KIND_ICON[kind])),
-      h('span', { class: 'name' }, d.name || 'Untitled'),
-      h('button', { class: 'small', title: 'Move up', disabled: i === 0, onclick: (e) => { e.stopPropagation(); moveDesktop(i, i - 1); } }, '\u2191'),
-      h('button', { class: 'small', title: 'Move down', disabled: i === state.deck.desktops.length - 1, onclick: (e) => { e.stopPropagation(); moveDesktop(i, i + 1); } }, '\u2193'),
-      h('button', { class: 'small danger', title: 'Delete desktop', disabled: state.deck.desktops.length <= 1, onclick: (e) => { e.stopPropagation(); deleteDesktop(i); } }, '\u2715'),
+    const open = () => { state.sel = { d: i, p: 0, k: null }; state.panel = 'desktop'; renderAll(); };
+    const row = h('div', { class: 'deskrow', title: 'Drag to reorder', tabIndex: 0, role: 'button', onclick: open,
+      onkeydown: (e) => { if (e.target === row && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); open(); } } },
+      h('span', { class: 'grip' }, svg('grip')),
+      thumb(d),
+      h('span', { class: 'txt' }, h('span', { class: 'name' }, d.name || 'Untitled'),
+        h('span', { class: 'sub' }, kind !== 'keys' ? KIND_LABEL[kind] : d.pages.length === 1 ? '1 page' : `${d.pages.length} pages`)),
+      h('span', { class: 'tools' },
+        tool('up', 'Move up', i === 0, () => moveDesktop(i, i - 1)),
+        tool('down', 'Move down', i === state.deck.desktops.length - 1, () => moveDesktop(i, i + 1)),
+        tool('trash', 'Delete desktop', state.deck.desktops.length <= 1, () => deleteDesktop(i), ' danger')),
     );
     const box = h('div', { class: 'desk' + (active ? ' active' : '') }, row);
     if (kind === 'keys') {
@@ -357,9 +400,8 @@ function renderTree() {
       d.pages.forEach((p, pi) => {
         pages.append(h('div', { class: 'pagerow' + (active && pi === state.sel.p ? ' active' : ''), dataset: { page: p.id }, onclick: () => { state.sel = { d: i, p: pi, k: null }; renderAll(); } },
           h('span', { class: 't' }, M.pageName(d, p)),
-          pi > 0 ? h('button', { class: 'small danger', title: 'Delete page', onclick: (e) => { e.stopPropagation(); deletePage(i, pi); } }, '\u2715') : null));
+          pi > 0 ? tool('close', 'Delete page', false, () => deletePage(i, pi), ' danger') : null));
       });
-      pages.append(h('button', { class: 'small', disabled: d.pages.length >= M.LIMITS.pages, onclick: () => addPageTo(i) }, '+ Page'));
       box.append(pages);
     }
     dragDesktopHandlers(box, row, i);
@@ -397,18 +439,18 @@ function deletePage(di, pi) {
 
 function keyEl(k, i, geo) {
   const kind = M.keyKind(k);
-  const { x, y } = geo.pos(i);
+  const { x, y, w, h: tall } = geo.pos(i);
   const lit = state.previewOn && state.sel.k === i && M.stateKind(k) !== 'none';  // the editor previews the "on" look of the selected key
   if (lit) k = { ...k, ...M.stateLook(k) };
   const unknownIcon = k.icon && !state.icons[k.icon];
   const el = h('div', {
-    class: 'key ' + kind + (state.sel.k === i ? ' sel' : ''),
+    class: 'key ' + kind + (state.sel.k === i ? ' sel' : '') + (state.landed === i ? ' landed' : ''),
     draggable: kind !== 'empty',
     dataset: { i },
     title: kind === 'empty' ? 'Empty key' : kind === 'folder' ? `Folder \u2192 ${(desk().pages.find((p) => p.id === k.folder) || {}).title || k.folder}` : M.describeAction(k.action)
       + (k.repeat ? ' \u00B7 repeats while held' : k.hold ? ` \u00B7 held: ${M.describeAction(k.hold)}` : '')
       + (M.stateKind(k) !== 'none' ? ' \u00B7 changes look' : ''),
-    style: { left: x * S + 'px', top: y * S + 'px', width: geo.keyW * S + 'px', height: geo.keyH * S + 'px',
+    style: { left: x * S + 'px', top: y * S + 'px', width: w * S + 'px', height: tall * S + 'px',
       borderRadius: (geo.radius ?? M.SETTING_DEFAULTS.keyRadius) * S + 'px',
       background: kind === 'empty' ? '' : (k.color || M.DEFAULT_KEY_COLOR) },
   });
@@ -417,8 +459,9 @@ function keyEl(k, i, geo) {
     if (k.label) el.append(h('span', { class: 'lbl', style: { fontSize: geo.textPx * S + 'px' } }, k.label));
     if (kind === 'folder') el.append(h('span', { class: 'arrow fa' }, glyph('right')));
   }
-  el.addEventListener('click', () => { state.sel.k = i; renderScreen(); renderInspector(); });
-  el.addEventListener('dragstart', (e) => { e.dataTransfer.setData('application/x-sd-key', String(i)); e.dataTransfer.effectAllowed = 'move'; });
+  el.addEventListener('click', () => { state.sel.k = i; state.panel = 'key'; renderScreen(); renderInspector(); });
+  el.addEventListener('dragstart', (e) => { e.dataTransfer.setData('application/x-sd-key', String(i)); e.dataTransfer.effectAllowed = 'move'; $('#deckView').classList.add('placing'); });
+  el.addEventListener('dragend', () => $('#deckView').classList.remove('placing'));
   el.addEventListener('dragover', (e) => {
     if ([...e.dataTransfer.types].some((t) => t.startsWith('application/x-sd-'))) { e.preventDefault(); el.classList.add('dragover'); }
   });
@@ -426,9 +469,10 @@ function keyEl(k, i, geo) {
   el.addEventListener('drop', (e) => {
     e.preventDefault();
     el.classList.remove('dragover');
+    $('#deckView').classList.remove('placing'); // (the dragged element may be redrawn before its dragend)
     const fromKey = e.dataTransfer.getData('application/x-sd-key');
     const fromPreset = e.dataTransfer.getData('application/x-sd-preset');
-    if (fromKey !== '' && +fromKey !== i) { commit(() => { M.swapKeys(page(), +fromKey, i); state.sel.k = i; }); }
+    if (fromKey !== '' && +fromKey !== i) { commit(() => { M.swapKeys(page(), +fromKey, i); state.sel.k = i; state.panel = 'key'; }); }
     else if (fromPreset !== '') { const p = flatPresets()[+fromPreset]; if (p) putPreset(i, p.key); }
   });
   return el;
@@ -606,6 +650,48 @@ function mockClock(o) {
   return h('div', { class: 'mock', dataset: { kind: 'clock' }, style: { background: '#101722' } }, kids);
 }
 
+// The title on the preview is the way to rename. On a desktop's first page it is the desktop's name (the page takes it
+// too); on its other pages it is the page's.
+function screenTitle(title) {
+  const what = !isKeys() || state.sel.p === 0 ? 'Rename desktop' : 'Rename page';
+  const button = h('button', { class: 'title', id: 'screenTitle', title: what, 'aria-label': `${what}: ${title}`, onclick: () => editTitle(button) },
+    h('span', {}, title), svg('edit'));
+  return h('div', { class: 'titlebox' }, button);
+}
+
+// Enter or leaving the box keeps what was typed (already shown in the list and the tabs), Escape takes it back.
+function editTitle(button) {
+  const before = deckText(), steps = history.past.length;
+  const keys = isKeys(), first = !keys || state.sel.p === 0;
+  const input = h('input', { type: 'text', class: 'titleinput', id: 'titleInput', maxLength: 24, 'aria-label': first ? 'Desktop name' : 'Page name',
+    value: (keys ? page().title : desk().name) || '' });
+  let done = false;
+  const finish = (keep) => {
+    if (done) return;
+    done = true;
+    if (!keep && deckText() !== before) { history.past.length = steps; restore(before); return; }
+    const title = keys ? page().title || page().id : desk().name;
+    button.querySelector('span').textContent = title;
+    button.setAttribute('aria-label', `${button.title}: ${title}`);
+    input.replaceWith(button); // nothing else is redrawn: a click that took the focus away still lands where it was aimed
+  };
+  input.addEventListener('input', () => {
+    const v = input.value;
+    commit(() => {
+      if (first) desk().name = v;
+      if (keys) page().title = v;
+    }, { coalesce: 'title', rerender: 'tree' });
+    const tab = document.querySelector('.pagetabs button.on');
+    if (tab) tab.textContent = M.pageName(desk(), page());
+    $('#titleWarning').hidden = !M.boardCannotShow(v);
+  });
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') finish(true); else if (e.key === 'Escape') { e.stopPropagation(); finish(false); } });
+  input.addEventListener('blur', () => finish(true));
+  button.replaceWith(input);
+  input.focus();
+  input.select();
+}
+
 function renderScreen() {
   const d = desk();
   const kind = M.desktopKind(d);
@@ -618,11 +704,11 @@ function renderScreen() {
   if (n > 1) for (let i = 0; i < n; i++) dots.append(h('span', { class: 'dot' + (i === state.sel.d ? ' on' : '') }));
   screen.append(h('div', { class: 'hdr', style: { height: hdrH + 'px' } },
     kind === 'keys' && state.sel.p > 0 ? h('span', { class: 'back' }, h('span', { class: 'fa' }, glyph('left')), ' Back') : null,
-    h('span', { class: 'title' }, title), dots));
+    screenTitle(title), dots));
   const content = h('div', { class: 'content', style: { top: hdrH + 'px', height: (M.SCREEN.h - M.SCREEN.header) * S + 'px' } });
   if (kind === 'keys') {
     const look = M.resolveSettings(state.deck);
-    const geo = M.geometry(pg.cols, pg.rows, undefined, undefined, look.keyGap);
+    const geo = M.geometry(pg.cols, pg.rows, undefined, undefined, look.keyGap, look.keyPad);
     geo.radius = look.keyRadius;
     for (let i = 0; i < pg.cols * pg.rows; i++) content.append(keyEl(pg.keys[i] || {}, i, geo));
   } else {
@@ -630,15 +716,22 @@ function renderScreen() {
     content.append(mocks[kind](M.liveOptions(d)));
   }
   screen.append(content);
-  const head = h('div', { class: 'stagehead' }, h('b', {}, d.name),
-    kind === 'keys' ? `\u203A ${pg.title || pg.id}` : KIND_LABEL[kind],
-    h('span', { class: 'hint' }, kind === 'keys' ? 'Drag keys to swap' : 'Sample data'));
-  $('#screenMount').replaceChildren(head, screen);
+  state.landed = null;
+  // above the board: the pages of this desktop as tabs, or what kind of live desktop it is
+  const head = kind === 'keys'
+    ? h('div', { class: 'stagehead' }, h('div', { class: 'pagetabs' },
+      d.pages.map((p, pi) => h('button', { class: pi === state.sel.p ? 'on' : '', dataset: { tab: p.id }, 'aria-pressed': String(pi === state.sel.p),
+        onclick: () => { state.sel = { d: state.sel.d, p: pi, k: null }; renderAll(); } }, M.pageName(d, p))),
+      h('button', { disabled: d.pages.length >= M.LIMITS.pages, onclick: () => addPageTo(state.sel.d) }, '+ Page')))
+    : h('div', { class: 'stagehead' }, h('b', {}, d.name), KIND_LABEL[kind], h('span', { class: 'hint' }, 'Sample data'));
+  $('#screenMount').replaceChildren(head, h('div', { class: 'device' }, screen));
 }
 
 function renderPageControls() {
   const box = $('#pageControls');
-  if (!isKeys()) { box.replaceChildren(); return; }
+  const warning = h('span', { class: 'hint bad accents', id: 'titleWarning' }, 'The board can\u2019t show accents or emoji.');
+  warning.hidden = !M.boardCannotShow(isKeys() ? page().title : desk().name);
+  if (!isKeys()) { box.replaceChildren(warning); return; }
   const pg = page();
   const resize = (c, r) => {
     c = Math.min(Math.max(c, 1), M.LIMITS.cols);
@@ -649,12 +742,13 @@ function renderPageControls() {
     if (lost) toast(`${lost} key${lost > 1 ? 's' : ''} removed`, { undo, deck: true });
   };
   const stepper = (label, value, set) => h('span', { class: 'stepper' }, label,
-    h('button', { class: 'small', onclick: () => set(value - 1) }, '\u2212'), h('b', {}, value), h('button', { class: 'small', onclick: () => set(value + 1) }, '+'));
+    h('button', { class: 'small', 'aria-label': `Fewer ${label.toLowerCase()}`, onclick: () => set(value - 1) }, '\u2212'), h('b', {}, value),
+    h('button', { class: 'small', 'aria-label': `More ${label.toLowerCase()}`, onclick: () => set(value + 1) }, '+'));
   box.replaceChildren(
-    h('span', { class: 'stepper' }, 'Page name ',
-      boardText(pg.title || '', (v) => commit(() => { page().title = v; }, { coalesce: 'ptitle', rerender: 'live' }), { maxLength: 24, style: { width: '170px' } })),
     stepper('Columns', pg.cols, (v) => resize(v, pg.rows)),
-    stepper('Rows', pg.rows, (v) => resize(pg.cols, v)));
+    stepper('Rows', pg.rows, (v) => resize(pg.cols, v)),
+    h('span', { class: 'hint' }, 'Drag keys to swap'),
+    warning);
 }
 
 // ---- inspector ---------------------------------------------------------------------------------------
@@ -702,7 +796,7 @@ function appsField(id, apps, max, placeholder, onChange) {
   }
   return h('div', { class: 'appsfield', dataset: { apps: id } },
     apps.length ? h('div', { class: 'appchips' }, apps.map((a) => h('span', { class: 'appchip' }, a,
-      h('button', { class: 'x', title: `Remove ${a}`, onclick: () => apply(apps.filter((x) => x !== a), false) }, '\u2715')))) : null,
+      h('button', { class: 'x', title: `Remove ${a}`, 'aria-label': `Remove ${a}`, onclick: () => apply(apps.filter((x) => x !== a), false) }, svg('close'))))) : null,
     input);
 }
 
@@ -742,7 +836,7 @@ function hotkeyEditor(action) {
 }
 
 // `replace(newAction)` swaps the whole action (type change); field edits mutate `action` in place.
-function actionEditor(action, replace, inMulti = false) {
+function actionEditor(action, replace, inMulti = false, bare = false) {
   const id = 'act' + nextEditorId++;
   const types = inMulti ? ['hotkey', 'text', 'open', 'run', 'lock', 'http', 'obs', 'wait'] : ['hotkey', 'text', 'open', 'run', 'lock', 'http', 'obs', 'multi'];
   const names = { hotkey: 'Press keys', text: 'Type text', open: 'Open', run: 'Run command', lock: 'Lock the PC',
@@ -776,7 +870,8 @@ function actionEditor(action, replace, inMulti = false) {
   } else if (cur === 'http') body = httpEditor(action, edit);
   else if (cur === 'obs') body = obsEditor(action, edit);
   else if (cur === 'multi') body = multiEditor(action);
-  return h('div', {}, field('Action', select), body);
+  if (bare) select.setAttribute('aria-label', 'Action');
+  return h('div', {}, bare ? h('div', { class: 'field' }, select) : field('Action', select), body);
 }
 
 // A box for JSON typed by hand: it saves only what parses, and says so when it does not.
@@ -855,9 +950,9 @@ function multiEditor(action) {
   action.steps.forEach((step, i) => {
     box.append(h('div', { class: 'step' },
       h('div', { class: 'row tight' }, h('span', { class: 'lab' }, `Step ${i + 1}`), h('span', { class: 'spacer' }),
-        h('button', { class: 'small', disabled: i === 0, onclick: () => commit(() => M.moveInList(action.steps, i, i - 1)) }, '\u2191'),
-        h('button', { class: 'small', disabled: i === action.steps.length - 1, onclick: () => commit(() => M.moveInList(action.steps, i, i + 1)) }, '\u2193'),
-        h('button', { class: 'small danger', disabled: action.steps.length <= 1, onclick: () => commit(() => action.steps.splice(i, 1)) }, '\u2715')),
+        h('button', { class: 'icon', title: 'Move up', 'aria-label': 'Move up', disabled: i === 0, onclick: () => commit(() => M.moveInList(action.steps, i, i - 1)) }, svg('up')),
+        h('button', { class: 'icon', title: 'Move down', 'aria-label': 'Move down', disabled: i === action.steps.length - 1, onclick: () => commit(() => M.moveInList(action.steps, i, i + 1)) }, svg('down')),
+        h('button', { class: 'icon danger', title: 'Remove', 'aria-label': 'Remove', disabled: action.steps.length <= 1, onclick: () => commit(() => action.steps.splice(i, 1)) }, svg('close'))),
       actionEditor(step, (na) => commit(() => { action.steps[i] = na || { type: 'lock' }; }), true)));
   });
   box.append(h('button', { class: 'small', onclick: () => commit(() => action.steps.push({ type: 'hotkey', keys: 'ctrl+c' })) }, '+ Add step'));
@@ -883,17 +978,41 @@ function folderEditor(k) {
 
 const iconName = (n) => (n.charAt(0).toUpperCase() + n.slice(1)).replace(/_/g, ' '); // "volume_down" -> "Volume down"
 
+// One row of likely icons; "All icons" opens the whole set, with a search.
+const COMMON_ICONS = ['volume_up', 'mic', 'headphones', 'play', 'lightbulb', 'globe', 'directory'];
+
 function iconPicker(k) {
   const names = Object.keys(state.icons).sort();
-  const grid = h('div', { class: 'iconGrid' }, h('button', { class: k.icon ? '' : 'on', title: 'No icon', onclick: () => commit(() => { delete page().keys[state.sel.k].icon; }) }, '\u2205'),
-    names.map((n) => h('button', { class: 'fa' + (k.icon === n ? ' on' : ''), title: iconName(n), dataset: { icon: n }, onclick: () => commit(() => { page().keys[state.sel.k].icon = n; }) }, glyph(n))));
-  return field('Icon', grid);
+  const first = [...new Set([k.icon, ...COMMON_ICONS].filter((n) => n && state.icons[n]))].slice(0, 7);
+  const all = state.open.icons;
+  const grid = h('div', { class: 'iconGrid' + (all ? ' all' : '') });
+  const none = h('button', { class: k.icon ? '' : 'on', title: 'No icon', 'aria-label': 'No icon', onclick: () => commit(() => { delete page().keys[state.sel.k].icon; }) }, svg('none'));
+  const choice = (n) => h('button', { class: 'fa' + (k.icon === n ? ' on' : ''), title: iconName(n), 'aria-label': iconName(n), dataset: { icon: n },
+    onclick: () => commit(() => { page().keys[state.sel.k].icon = n; }) }, glyph(n));
+  // only the grid is redrawn while searching, so the box keeps the cursor
+  const fill = () => {
+    const q = all ? state.iconQuery.trim() : '';
+    const shown = all ? names.filter((n) => M.iconMatches(n, q)) : first;
+    grid.replaceChildren(...(q ? [] : [none]), ...shown.map(choice));
+    if (q && !shown.length) grid.append(h('div', { class: 'hint nothing' }, 'No icons match.'));
+  };
+  fill();
+  const search = all ? h('input', { type: 'text', id: 'iconSearch', placeholder: 'Search icons\u2026', 'aria-label': 'Search icons', value: state.iconQuery,
+    oninput: (e) => { state.iconQuery = e.target.value; fill(); } }) : null;
+  const more = h('button', { class: 'small quiet', id: 'moreIcons', 'aria-expanded': String(all),
+    onclick: () => {
+      state.open.icons = !all;
+      state.iconQuery = '';
+      renderInspector();
+      if (!all) $('#iconSearch').focus();
+    } }, all ? 'Fewer icons' : 'All icons');
+  return field('Icon', h('div', {}, search, grid, more));
 }
 
 function colorPicker(k) {
   const cur = (k.color || M.DEFAULT_KEY_COLOR).toUpperCase();
   const set = (c) => commit(() => { const key = page().keys[state.sel.k]; if (c === M.DEFAULT_KEY_COLOR) delete key.color; else key.color = c; });
-  const custom = h('input', { type: 'color', value: cur, title: 'Custom color', style: { width: '34px', height: '28px', padding: 0, border: 0, background: 'none' },
+  const custom = h('input', { type: 'color', value: cur, title: 'Custom color', 'aria-label': 'Custom color',
     oninput: (e) => liveEdit(() => { page().keys[state.sel.k].color = e.target.value.toUpperCase(); }, 'color') });
   return field('Color', h('div', { class: 'swatches' }, SWATCHES.map((c) => h('button', { class: 'sw' + (cur === c ? ' on' : ''), style: { background: c }, title: c, onclick: () => set(c) })), custom));
 }
@@ -919,46 +1038,91 @@ function setKeyKind(kind) {
   });
 }
 
-function renderInspector() {
-  const box = $('#inspector');
-  const d = desk();
-  const kind = M.desktopKind(d);
-  const cards = [];
-  cards.push(h('div', { class: 'card' }, h('h4', {}, 'Desktop'),
-    field('Name', boardText(d.name, (v) => liveEdit(() => { desk().name = v; }, 'dname'), { maxLength: 24 })),
+// The settings of the desktop itself.
+function desktopForm(d) {
+  return h('div', { class: 'deskform' }, h('h4', {}, 'Desktop'),
     field('Switch here for these apps', appsField('deskApps', d.apps || [], 10, 'e.g. obs64', (apps) => commit(() => {
       if (apps.length) desk().apps = apps; else delete desk().apps;
     })),
-    'Names from Task Manager > Details, without .exe.')));
-  if (kind !== 'keys') { box.replaceChildren(...cards); return; }
+    'Names from Task Manager > Details, without .exe.'));
+}
+
+// The top of the key panel: a picture of the key, and its name with a pencil to change it.
+function keyHead(k) {
+  const kind = M.keyKind(k);
+  const info = h('div', { class: 'keyname' });
+  const head = h('div', { class: 'keyhead' }, miniKey(k), info);
+  const nameLine = () => h('div', { class: 'nameline' },
+    h('h4', { class: k.label || kind === 'empty' ? '' : 'none' }, kind === 'empty' ? 'Empty key' : k.label || 'No label'),
+    kind === 'empty' ? null : h('button', { class: 'icon', id: 'editName', title: 'Edit label', 'aria-label': 'Edit label', onclick: () => edit() }, svg('edit')));
+  const warning = () => (M.boardCannotShow(k.label) ? h('div', { class: 'hint bad accents' }, 'The board can\u2019t show accents or emoji.') : null);
+  const show = () => {
+    info.replaceChildren(...[nameLine(), warning()].filter(Boolean));
+  };
+  // The name turns into a box: Enter or leaving it keeps what was typed (already shown on the board), Escape takes it back.
+  const edit = () => {
+    const before = deckText(), steps = history.past.length;
+    let done = false;
+    const box = boardText(k.label || '', (v) => liveEdit(() => { const key = page().keys[state.sel.k]; if (v) key.label = v; else delete key.label; }, 'label'),
+      { maxLength: 10, id: 'keyName', 'aria-label': 'Label' });
+    const input = box.querySelector('input');
+    const finish = (keep) => {
+      if (done) return;
+      done = true;
+      if (!keep && deckText() !== before) { history.past.length = steps; restore(before); return; }
+      show(); // only the head is redrawn: a click that took the focus away still lands on its button
+      head.querySelector('.mini').replaceWith(miniKey(k));
+    };
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') finish(true); else if (e.key === 'Escape') finish(false); });
+    input.addEventListener('blur', () => finish(true));
+    input.addEventListener('input', () => head.querySelector('.mini').replaceWith(miniKey(k))); // the little picture follows
+    info.querySelectorAll(':scope > .accents').forEach((el) => el.remove());
+    info.querySelector('.nameline').replaceWith(box);
+    input.focus();
+    input.select();
+  };
+  show();
+  return head;
+}
+
+// The selected key: what it looks like and what it does; the less used parts fold away.
+function keyPanel() {
   const k = keyObj();
-  if (state.sel.k === null) {
-    cards.push(h('div', { class: 'card' }, h('div', { class: 'hint' }, 'Click a key to edit it.')));
-    box.replaceChildren(...cards);
-    return;
-  }
+  if (state.sel.k === null) return [h('div', { class: 'emptypanel' }, 'Click a key to edit it.')];
   const kk = M.keyKind(k);
-  const seg = h('div', { class: 'seg' }, [['action', 'Action'], ['folder', 'Folder']].map(([v, t]) =>
-    h('button', { class: kk === v ? 'on' : '', onclick: () => { if (kk !== v) setKeyKind(v); } }, t)));
-  const keyCard = h('div', { class: 'card' }, h('h4', {}, `Key ${state.sel.k + 1}`), seg);
-  if (kk !== 'empty') {
-    keyCard.append(field('Label', boardText(k.label || '', (v) => liveEdit(() => { const key = page().keys[state.sel.k]; if (v) key.label = v; else delete key.label; }, 'label'), { maxLength: 10 })),
-      iconPicker(k), colorPicker(k));
-    if (kk === 'folder') keyCard.append(folderEditor(k));
-    else {
-      keyCard.append(actionEditor(k.action || null, (na) => commit(() => { const key = page().keys[state.sel.k]; if (na) key.action = na; else delete key.action; })),
-        holdSection(k), stateSection(k));
-    }
+  const parts = [keyHead(k)];
+  if (kk === 'empty') {
+    parts.push(h('div', { class: 'emptypanel' }, h('p', {}, 'Add one, or pick a preset.'),
+      h('div', { class: 'row' },
+        h('button', { class: 'small', onclick: () => setKeyKind('action') }, 'Add action'),
+        h('button', { class: 'small', onclick: () => setKeyKind('folder') }, 'Add folder'))));
   } else {
-    keyCard.append(h('div', { class: 'hint' }, 'Pick Action, Folder or a preset.'));
+    parts.push(h('section', { class: 'sect' }, h('h5', {}, 'Look'), colorPicker(k), iconPicker(k)));
+    if (kk === 'folder') parts.push(h('section', { class: 'sect' }, h('h5', {}, 'Folder'), folderEditor(k)));
+    else {
+      parts.push(h('section', { class: 'sect' }, h('h5', {}, 'Action'),
+        actionEditor(k.action || null, (na) => commit(() => { const key = page().keys[state.sel.k]; if (na) key.action = na; else delete key.action; }), false, true)),
+      holdSection(k), stateSection(k));
+    }
   }
-  keyCard.append(h('div', { class: 'row', style: { marginTop: '10px' } },
+  parts.push(h('div', { class: 'panelfoot' },
     h('button', { class: 'small', disabled: kk === 'empty', onclick: copyKey, title: 'Copy (Ctrl+C)' }, 'Copy'),
     h('button', { class: 'small', disabled: !state.clip, onclick: pasteKey, title: 'Paste (Ctrl+V)' }, 'Paste'),
     h('button', { class: 'small danger', disabled: kk === 'empty', onclick: clearKey, title: 'Clear (Delete)' }, 'Clear'),
     kk === 'action' ? h('button', { class: 'small', onclick: saveAsPreset }, 'Save as preset') : null));
-  cards.push(keyCard);
-  box.replaceChildren(...cards);
+  return parts;
+}
+
+// The right panel: a keys desktop switches between the selected key and the desktop; a live desktop shows its settings
+// below the desktop's own (renderLiveConfig).
+function renderInspector() {
+  const box = $('#panel');
+  const d = desk();
+  if (M.desktopKind(d) !== 'keys') { box.replaceChildren(desktopForm(d)); return; }
+  const tabs = h('div', { class: 'switch' }, [['key', 'Key'], ['desktop', 'Desktop']].map(([v, t]) =>
+    h('button', { class: state.panel === v ? 'on' : '', dataset: { panel: v }, 'aria-pressed': String(state.panel === v),
+      onclick: () => { state.panel = v; renderInspector(); } }, t)));
+  box.replaceChildren(tabs, ...(state.panel === 'desktop' ? [desktopForm(d)] : keyPanel()));
 }
 
 // ---- a key held down, and a key that shows a state of the PC ------------------------------------------------
@@ -975,15 +1139,20 @@ async function loadRunningApps() {
   if (list) list.replaceChildren(...state.runningApps.map((a) => h('option', { value: a })));
 }
 
+// A part of the key panel that folds away and shows its current choice while folded. Stays as the user left it.
+function fold(id, name, title, value, ...body) {
+  const el = h('details', { class: 'fold', id }, h('summary', {}, h('span', {}, title), h('span', { class: 'val' }, value)), h('div', { class: 'body' }, body));
+  el.open = !!state.open[name];
+  el.addEventListener('toggle', () => { state.open[name] = el.open; });
+  return el;
+}
+
 function holdSection(k) {
   const mode = M.holdMode(k);
   const select = h('select', { id: 'holdMode', 'aria-label': 'When the key is held', onchange: (e) => commit(() => M.setHoldMode(page().keys[state.sel.k], e.target.value)) },
     M.HOLD_MODES.map(([v, t]) => h('option', { value: v, selected: mode === v }, t)));
-  const box = h('div', { class: 'subsec', id: 'holdSection' }, h('h5', {}, 'Hold (\u00BD s)'), h('div', { class: 'field' }, select));
-  if (mode === 'action') {
-    box.append(actionEditor(k.hold, (na) => commit(() => { const key = page().keys[state.sel.k]; if (na) key.hold = na; else delete key.hold; })));
-  }
-  return box;
+  return fold('holdSection', 'hold', 'Hold (\u00BD s)', M.HOLD_MODES.find(([v]) => v === mode)[1], h('div', { class: 'field' }, select),
+    mode === 'action' ? actionEditor(k.hold, (na) => commit(() => { const key = page().keys[state.sel.k]; if (na) key.hold = na; else delete key.hold; })) : null);
 }
 
 function stateSection(k) {
@@ -991,26 +1160,25 @@ function stateSection(k) {
   const key = () => page().keys[state.sel.k];
   const select = h('select', { id: 'stateKind', 'aria-label': 'Change the look when', onchange: (e) => commit(() => M.setStateKind(key(), e.target.value)) },
     M.STATE_SOURCES.map(([v, t]) => h('option', { value: v, selected: kind === v }, t)));
-  const box = h('div', { class: 'subsec', id: 'stateSection' }, h('h5', {}, 'Change look when'),
-    h('div', { class: 'field' }, select, kind === 'none' ? h('div', { class: 'hint' }, 'For example a mute key that turns red while the sound is muted.') : null));
-  if (kind === 'none') return box;
+  const body = [h('div', { class: 'field' }, select, kind === 'none' ? h('div', { class: 'hint' }, 'For example a mute key that turns red while the sound is muted.') : null)];
+  const done = () => fold('stateSection', 'state', 'Change look when', M.STATE_SOURCES.find(([v]) => v === kind)[1], body);
+  if (kind === 'none') return done();
   if (kind === 'app') {
-    box.append(field('App', textInput(M.stateApp(k), (v) => liveEdit(() => { key().state.source = `app:${M.normalizeApp(v) || 'obs64'}`; }, 'stateapp'),
+    body.push(field('App', textInput(M.stateApp(k), (v) => liveEdit(() => { key().state.source = `app:${M.normalizeApp(v) || 'obs64'}`; }, 'stateapp'),
       { placeholder: 'obs64', list: 'runningApps', id: 'stateApp', onfocus: loadRunningApps }), 'Name from Task Manager > Details, without .exe.'));
   }
   const look = M.stateLook(k);
   const icons = Object.keys(state.icons).sort();
-  box.append(field('Look when on', h('div', { class: 'row tight' },
+  body.push(field('Look when on', h('div', { class: 'row tight' },
     h('input', { type: 'color', id: 'stateColor', value: look.color.toLowerCase(), title: 'Color while on',
-      style: { width: '34px', height: '28px', padding: 0, border: 0, background: 'none' },
       oninput: (e) => liveEdit(() => { key().state.color = e.target.value.toUpperCase(); }, 'statecolor') }),
     boardText(k.state.label !== undefined ? k.state.label : '', (v) => liveEdit(() => { if (v) key().state.label = v; else delete key().state.label; }, 'statelabel'),
-      { maxLength: 10, placeholder: 'Same label', style: { flex: '1', minWidth: '90px' } }),
+      { maxLength: 10, placeholder: 'Same label' }),
     h('select', { id: 'stateIcon', onchange: (e) => commit(() => { if (e.target.value === '') delete key().state.icon; else key().state.icon = e.target.value; }) },
       h('option', { value: '', selected: k.state.icon === undefined }, 'Same icon'),
       icons.map((n) => h('option', { value: n, selected: k.state.icon === n }, iconName(n)))))));
-  box.append(checkRow('Preview', !!state.previewOn, (v) => { state.previewOn = v; renderScreen(); }));
-  return box;
+  body.push(checkRow('Preview', !!state.previewOn, (v) => { state.previewOn = v; renderScreen(); }));
+  return done();
 }
 
 function copyKey() { const k = keyObj(); if (k && !M.isEmptyKey(k)) { state.clip = M.clone(k); toast('Key copied'); renderInspector(); } }
@@ -1144,7 +1312,7 @@ function listCard(which, title, empty, f, setFilter) {
   const entries = M.filterEntries(f[which], state.catalog);
   const card = h('div', { class: 'card applist', dataset: { list: which } }, h('h4', {}, title, h('span', { class: 'count' }, entries.length ? String(entries.length) : '')),
     entries.length ? entries.map((e) => appRow({ app: e.app, title: e.app ? e.app.name : e.names[0], sub: e.app ? '' : 'Custom', drag: { names: e.names },
-      buttons: [h('button', { class: 'small x', title: 'Remove', onclick: () => setFilter((x) => { M.removeFilterApps(x, which, e.names); }) }, '\u2715')] }))
+      buttons: [h('button', { class: 'icon x', title: 'Remove', 'aria-label': 'Remove', onclick: () => setFilter((x) => { M.removeFilterApps(x, which, e.names); }) }, svg('close'))] }))
       : h('div', { class: 'hint emptylist' }, empty));
   card.addEventListener('dragover', (e) => { if ([...e.dataTransfer.types].includes(DRAG_APP)) { e.preventDefault(); card.classList.add('dragover'); } });
   card.addEventListener('dragleave', (e) => { if (!card.contains(e.relatedTarget)) card.classList.remove('dragover'); });
@@ -1185,11 +1353,10 @@ function nowPlayingConfig(d) {
     radioRow('npctl', 'Full', 'full', o.controls, (v) => setOpt({ controls: v })),
     radioRow('npctl', 'Basic', 'basic', o.controls, (v) => setOpt({ controls: v })));
 
-  return [h('div', { class: 'npgrid' }, libraryCard,
-    h('div', { class: 'npright' },
-      listCard('allow', 'Only these', 'Any player', f, setFilter),
-      listCard('block', 'Blocked', 'None', f, setFilter),
-      look))];
+  return [h('div', { class: 'npgrid' },
+    listCard('allow', 'Only these', 'Any player', f, setFilter),
+    listCard('block', 'Blocked', 'None', f, setFilter),
+    libraryCard, look)];
 }
 
 function statsConfig(d) {
@@ -1205,11 +1372,11 @@ function statsConfig(d) {
       h('b', {}, s.name))));
   const rows = [];
   enabled.forEach((id, i) => {
-    const row = h('div', { class: 'srow', dataset: { item: id } }, h('span', { class: 'grip', title: 'Drag to reorder' }, '\u22EE\u22EE'),
+    const row = h('div', { class: 'srow', dataset: { item: id } }, h('span', { class: 'grip', title: 'Drag to reorder' }, svg('grip')),
       h('input', { type: 'checkbox', checked: true, disabled: enabled.length <= 1, title: enabled.length <= 1 ? 'At least one item must stay' : 'Hide', onchange: (e) => toggle(id, e.target.checked) }),
       h('span', { class: 'nm' }, info(id).name), h('span', { class: 'spacer' }),
-      h('button', { class: 'small', disabled: i === 0, title: 'Move up', onclick: () => move(i, i - 1) }, '\u2191'),
-      h('button', { class: 'small', disabled: i === enabled.length - 1, title: 'Move down', onclick: () => move(i, i + 1) }, '\u2193'));
+      h('button', { class: 'icon', disabled: i === 0, title: 'Move up', 'aria-label': 'Move up', onclick: () => move(i, i - 1) }, svg('up')),
+      h('button', { class: 'icon', disabled: i === enabled.length - 1, title: 'Move down', 'aria-label': 'Move down', onclick: () => move(i, i + 1) }, svg('down')));
     sortableRow(row, i, 'application/x-sd-statitem', move);
     rows.push(row);
   });
@@ -1294,6 +1461,8 @@ function putPreset(slot, presetKey) {
     if (nk.folder === 'new') nk.folder = desk().pages[M.addPage(desk(), nk.label || 'Folder')].id;
     page().keys[slot] = nk;
     state.sel.k = slot;
+    state.panel = 'key';
+    state.landed = slot;
   });
   if (old && !M.isEmptyKey(old) && JSON.stringify(old) !== JSON.stringify(nk)) {
     toast(old.label ? `Replaced "${old.label}"` : 'Key replaced', { undo, deck: true });
@@ -1364,7 +1533,9 @@ function miniKey(key) {
 }
 
 function renderPresets() {
-  if (!isKeys()) { $('#presets').replaceChildren(); return; } // live screens have settings instead (renderLiveConfig)
+  const dock = $('#presets');
+  $('#deckView').classList.toggle('live', !isKeys());
+  if (!isKeys()) { dock.replaceChildren(); return; } // live desktops have settings instead (renderLiveConfig)
   const all = flatPresets();
   const cats = [{ id: 'all', name: 'All' }];
   if (state.presets.user.length) cats.push({ id: 'user', name: 'My presets' });
@@ -1372,28 +1543,62 @@ function renderPresets() {
   const q = state.query.trim().toLowerCase();
   const shown = all.filter((p) => (state.cat === 'all' || p.cat === state.cat) &&
     (!q || p.name.toLowerCase().includes(q) || (p.key.label || '').toLowerCase().includes(q) || M.describeAction(p.key.action).toLowerCase().includes(q)));
-  const grid = h('div', { class: 'pgrid' });
+  // keep the tray where it was scrolled to, unless the list itself changed
+  const old = dock.querySelector('.pgrid');
+  const view = `${state.cat}\n${q}`;
+  const scroll = old && old.dataset.view === view ? old.scrollTop : 0;
+  const chipScroll = dock.querySelector('.chips') ? dock.querySelector('.chips').scrollLeft : 0;
+  const grid = h('div', { class: 'pgrid', dataset: { view } });
   for (const p of shown) {
-    const card = h('div', { class: 'pcard', draggable: true, title: p.key.folder ? 'A folder with a new page' : M.describeAction(p.key.action), onclick: () => applyPreset(p) },
+    const card = h('div', { class: 'pcard', draggable: true, tabIndex: 0, role: 'button',
+      title: `${p.name}: ${p.key.folder ? 'a folder with a new page' : M.describeAction(p.key.action)}` + (M.stateKind(p.key) !== 'none' ? ' \u00B7 changes look with the PC' : ''),
+      onclick: () => applyPreset(p), onkeydown: (e) => { if (e.target === card && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); e.stopPropagation(); applyPreset(p); } } },
       miniKey(p.key), h('div', { class: 'nm' }, p.name),
-      p.user ? h('button', { class: 'small danger del', title: 'Delete this preset', onclick: (e) => { e.stopPropagation(); deletePreset(p.idx); } }, '\u2715') : null);
-    card.addEventListener('dragstart', (e) => { e.dataTransfer.setData('application/x-sd-preset', String(all.indexOf(p))); e.dataTransfer.effectAllowed = 'copy'; });
+      p.user ? h('button', { class: 'icon danger del', title: 'Delete this preset', 'aria-label': 'Delete this preset', onclick: (e) => { e.stopPropagation(); deletePreset(p.idx); } }, svg('close')) : null);
+    card.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('application/x-sd-preset', String(all.indexOf(p)));
+      e.dataTransfer.effectAllowed = 'copy';
+      e.dataTransfer.setDragImage(card.firstChild, 39, 33);
+      $('#deckView').classList.add('placing'); // every key shows it can take the preset
+    });
+    card.addEventListener('dragend', () => $('#deckView').classList.remove('placing'));
     grid.append(card);
   }
   if (!shown.length) grid.append(h('div', { class: 'hint' }, 'No presets match.'));
   const canFill = isKeys() && state.cat !== 'all' && state.cat !== 'layout';
-  $('#presets').replaceChildren(
-    h('h3', {}, 'Presets'),
+  const chips = h('div', { class: 'chips' }, cats.map((c) => h('button', { class: 'chip' + (state.cat === c.id ? ' on' : ''), title: c.note || '', onclick: () => { state.cat = c.id; renderPresets(); } }, c.name)));
+  const more = () => chips.classList.toggle('more', chips.scrollLeft + chips.clientWidth < chips.scrollWidth - 2);
+  chips.addEventListener('scroll', more);
+  chips.addEventListener('wheel', (e) => { if (chips.scrollWidth > chips.clientWidth && Math.abs(e.deltaY) > Math.abs(e.deltaX)) { e.preventDefault(); chips.scrollLeft += e.deltaY; } }, { passive: false });
+  dock.replaceChildren(
     h('div', { class: 'phead' },
-      h('input', { type: 'text', placeholder: 'Search presets\u2026', value: state.query, oninput: (e) => { state.query = e.target.value; renderPresetGrid(grid, e.target); } }),
+      h('h3', {}, 'Presets'),
+      h('span', { class: 'hint' }, 'Click or drag to add.'),
       canFill ? h('button', { class: 'small', onclick: () => fillWithCategory(state.cat) }, 'Add all') : null,
-      h('span', { class: 'hint' }, 'Click or drag to add.')),
-    h('div', { class: 'chips' }, cats.map((c) => h('button', { class: 'chip' + (state.cat === c.id ? ' on' : ''), title: c.note || '', onclick: () => { state.cat = c.id; renderPresets(); } }, c.name))),
+      h('label', { class: 'search' }, svg('search'),
+        h('input', { type: 'text', placeholder: 'Search presets\u2026', 'aria-label': 'Search presets', value: state.query, oninput: (e) => { state.query = e.target.value; renderPresetGrid(); } }))),
+    chips,
     grid);
+  grid.scrollTop = scroll;
+  chips.scrollLeft = chipScroll;
+  more();
 }
 
 // Typing in the search box must not rebuild the box itself (it would lose focus): rebuild the grid only.
 function renderPresetGrid() { renderPresets(); const input = $('#presets input'); input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
+
+// The board is drawn at twice its size and scaled down when the window cannot hold that.
+function fitBoard() {
+  const stage = $('#stage');
+  if (!stage.clientWidth) return; // the settings page is showing
+  const chips = document.querySelector('#presets .chips');
+  if (chips) chips.dispatchEvent(new Event('scroll')); // the "more categories" fade depends on the width
+  const stacked = window.matchMedia('(max-width: 1023px)').matches;
+  // what is above and below the board takes its height as it really is (the size controls may wrap onto two lines)
+  const used = [stage.querySelector('.stagehead'), $('#pageControls')].reduce((sum, el) => sum + (el && el.offsetHeight ? el.offsetHeight + 10 : 0), 16);
+  const wide = (stage.clientWidth - 32) / 668, tall = stacked ? 1 : (stage.clientHeight - used) / 508;
+  stage.style.setProperty('--fit', Math.max(0.4, Math.min(1, wide, tall)).toFixed(3));
+}
 
 // ---- rendering ---------------------------------------------------------------------------------------
 
@@ -1440,22 +1645,40 @@ function renderSettingsPage() {
   const sample = h('div', { class: 'lookSample', id: 'lookSample', style: { width: M.SCREEN.w * 0.75 + 'px', height: (M.SCREEN.h - M.SCREEN.header) * 0.75 + 'px' } });
   const drawSample = () => {
     const look = M.resolveSettings(state.deck);
-    const geo = M.geometry(4, 3, undefined, undefined, look.keyGap);
+    const geo = M.geometry(4, 3, undefined, undefined, look.keyGap, look.keyPad);
     const colors = ['#2A3A4D', '#1F6FEB', '#2EA043', '#8957E5', '#D29922', '#DA3633'];
     sample.replaceChildren(...Array.from({ length: 12 }, (_, i) => {
-      const { x, y } = geo.pos(i);
-      return h('div', { class: 'sampleKey', style: { left: x * 0.75 + 'px', top: y * 0.75 + 'px', width: geo.keyW * 0.75 + 'px',
-        height: geo.keyH * 0.75 + 'px', borderRadius: look.keyRadius * 0.75 + 'px', background: colors[i % colors.length] } });
+      const { x, y, w, h: tall } = geo.pos(i);
+      return h('div', { class: 'sampleKey', style: { left: x * 0.75 + 'px', top: y * 0.75 + 'px', width: w * 0.75 + 'px',
+        height: tall * 0.75 + 'px', borderRadius: look.keyRadius * 0.75 + 'px', background: colors[i % colors.length] } });
     }));
   };
   state.drawSample = drawSample;
   drawSample();
 
+  // "Reset to defaults", per card and for the whole page. Nothing is asked: Undo brings the old values back.
+  const resets = [];
+  const resetButton = (groups, what, label, look) => {
+    const button = h('button', { class: look, 'aria-label': what ? `${label}: ${what}` : null, dataset: { reset: what || 'all' },
+      disabled: M.atDefaults(state.deck, groups),
+      onclick: () => {
+        commit((d) => M.resetToDefaults(d, groups));
+        previewSettings();
+        toast(`${what || 'All settings'} reset to defaults`, { undo, deck: true });
+      } }, label);
+    resets.push([button, groups]);
+    return button;
+  };
+  state.refreshResets = () => resets.forEach(([button, groups]) => { button.disabled = M.atDefaults(state.deck, groups); });
+  const cardHead = (title, group) => h('div', { class: 'cardhead' }, h('h4', {}, title),
+    resetButton([group], title, 'Reset to defaults', 'quiet small'));
+
   $('#settingsPage').replaceChildren(h('div', { class: 'settingsWrap' },
-    h('h2', {}, 'Settings'),
+    h('div', { class: 'pagehead' }, h('h2', {}, 'Settings'),
+      resetButton(Object.keys(M.SETTING_GROUPS), '', 'Reset all to defaults', 'small')),
     h('p', { class: 'hint', id: 'previewNote' }, previewNoteText()),
     h('div', { class: 'cards' },
-      h('div', { class: 'card' }, h('h4', {}, 'Sound'),
+      h('div', { class: 'card' }, cardHead('Sound', 'sound'),
         checkRow('Key sounds', s.sounds, (v) => setting('sounds', v, 'all')),
         checkRow('Folder and Back sounds', s.navSounds, (v) => setting('navSounds', v, 'all')),
         h('div', { class: 'field' }, h('label', {}, 'Style'),
@@ -1466,7 +1689,7 @@ function renderSettingsPage() {
             [['tap', 'Key'], ['nav', 'Folder'], ['back', 'Back'], ['error', 'Error']].map(([n, t]) =>
               h('button', { class: 'small', dataset: { sound: n }, disabled: !s.sounds, onclick: () => testSound(n) }, t)))),
         slider('setVolume', 'Volume', 0, 100, s.volume, 'volume')),
-      h('div', { class: 'card' }, h('h4', {}, 'Screen'),
+      h('div', { class: 'card' }, cardHead('Screen', 'screen'),
         slider('setBrightness', 'Brightness', 5, 255, s.brightness, 'brightness', (v) => `${Math.round(v / 2.55)}%`),
         choice('setDim', 'Dim when idle', DIM_CHOICES, s.dimAfter, 'dimAfter', { off: (v) => dimsTooLate(v, s.sleepAfter) }),
         choice('setSleep', 'Screen off when idle', SLEEP_CHOICES, s.sleepAfter, 'sleepAfter', { hint: 'First touch only wakes it.', pick: pickSleep }),
@@ -1474,25 +1697,26 @@ function renderSettingsPage() {
         checkRow('Rotate screen 180\u00B0', s.flip, (v) => setting('flip', v, 'all')),
         checkRow('Screen off when PC locks or sleeps', s.sleepWithPc, (v) => setting('sleepWithPc', v, 'all')),
         h('div', { class: 'hint' }, 'Touch lights it for 30 s.')),
-      h('div', { class: 'card' }, h('h4', {}, 'Desktops'),
+      h('div', { class: 'card' }, cardHead('Desktops', 'desktops'),
         h('div', { class: 'field' }, h('label', {}, 'Swipe distance'),
           h('select', { id: 'setSwipe', onchange: (e) => setting('swipe', e.target.value, 'all') },
             M.SWIPE_LENGTHS.map(([v, t]) => h('option', { value: v, selected: v === s.swipe }, t)))),
         checkRow('Loop desktops', s.wrap, (v) => setting('wrap', v, 'all')),
         choice('setStart', 'Start on', desktops, Math.min(s.startDesktop, desktops.length - 1), 'startDesktop',
           { hint: 'The board also returns here when a save changes what it shows.' })),
-      h('div', { class: 'card' }, h('h4', {}, 'Keys'),
+      h('div', { class: 'card' }, cardHead('Keys', 'keys'),
         sample,
         slider('setRadius', 'Corners', 0, 24, s.keyRadius, 'keyRadius', (v) => `${v} px`),
-        slider('setGap', 'Spacing', 2, 12, s.keyGap, 'keyGap', (v) => `${v} px`)),
-      obsCard(),
+        slider('setGap', 'Spacing', 0, 12, s.keyGap, 'keyGap', (v) => `${v} px`),
+        slider('setPad', 'Side padding', 0, 12, s.keyPad, 'keyPad', (v) => `${v} px`)),
+      obsCard(cardHead('OBS', 'obs')),
       h('div', { class: 'card' }, h('h4', {}, 'This deck'),
         info('Board', st ? (st.connected ? `connected on ${st.port || '?'}, firmware ${st.firmware || '?'}` : 'disconnected') : 'can\u2019t reach Swipedeck'),
         h('div', { class: 'hint', style: { marginTop: '8px' } }, 'Previous save: deck.json.bak'))),
   ));
 }
 
-function obsCard() {
+function obsCard(head) {
   const obs = state.deck.obs || {};
   const set = (name, value) => commit((d) => {
     d.obs = d.obs || {};
@@ -1512,7 +1736,7 @@ function obsCard() {
       result.textContent = e.message;
     }
   };
-  return h('div', { class: 'card', id: 'obsCard' }, h('h4', {}, 'OBS'),
+  return h('div', { class: 'card', id: 'obsCard' }, head,
     h('div', { class: 'hint' }, 'In OBS: Tools > WebSocket Server Settings > Enable WebSocket server.'),
     field('Address', textInput(obs.host || '', (v) => set('host', v.trim()), { placeholder: '127.0.0.1', id: 'obsHost' })),
     field('Port', h('input', { type: 'number', id: 'obsPort', min: 1, max: 65535, placeholder: '4455', value: obs.port ?? '', style: { width: '110px' },
@@ -1538,6 +1762,8 @@ function renderAll() {
   renderInspector();
   renderPresets();
   renderLiveConfig();
+  if ($('#deckView .split')) applySizes();
+  fitBoard();
 }
 
 function renderLive() { // after typing: leave the inspector, the settings and the presets alone
@@ -1545,6 +1771,77 @@ function renderLive() { // after typing: leave the inspector, the settings and t
   if (state.view !== 'deck') return;
   renderTree();
   renderScreen();
+}
+
+// ---- panel sizes -------------------------------------------------------------------------------------
+// The desktop list and the right panel can be made wider or narrower, the preset tray taller or shorter. What the user
+// chose is kept in this browser; a window too small for it gets less without forgetting the choice.
+
+const SIZES = {
+  tree: { css: '--tree-w', across: true, min: 200, max: 420, grows: 1, of: '#tree', label: 'Desktop list width' },
+  panel: { css: '--panel-w', across: true, min: 320, max: 560, grows: -1, of: '#inspector', label: 'Details panel width' },
+  dock: { css: '--dock-h', across: false, min: 160, max: 640, grows: -1, of: '#presets', label: 'Preset tray height' },
+};
+const SIZES_KEY = 'swipedeck.sizes';
+let sizes = {};
+try { sizes = JSON.parse(localStorage.getItem(SIZES_KEY)) || {}; } catch (e) { sizes = {}; }
+const keepSizes = () => { try { localStorage.setItem(SIZES_KEY, JSON.stringify(sizes)); } catch (e) { /* private window: not kept */ } };
+const sizeOf = (name) => $(SIZES[name].of)[SIZES[name].across ? 'offsetWidth' : 'offsetHeight'];
+
+// Within the panel's own limits, and leaving the board room.
+function fitSize(name, px) {
+  const s = SIZES[name], main = $('#deckView');
+  const room = s.across ? main.clientWidth - 420 - sizeOf(name === 'tree' ? 'panel' : 'tree') : main.clientHeight - 310;
+  return Math.round(Math.max(s.min, Math.min(px, s.max, room)));
+}
+
+function applySizes() {
+  const main = $('#deckView');
+  if (!main.clientWidth || window.matchMedia('(max-width: 1023px)').matches) return; // hidden, or stacked in one column
+  for (const [name, s] of Object.entries(SIZES)) {
+    if (typeof sizes[name] === 'number') main.style.setProperty(s.css, fitSize(name, sizes[name]) + 'px');
+    else main.style.removeProperty(s.css);
+  }
+  main.querySelectorAll('.split').forEach((el) => el.setAttribute('aria-valuenow', String(sizeOf(el.dataset.size))));
+}
+
+// The edge between a panel and its neighbour: drag it, or focus it and use the arrow keys; double-click goes back.
+function splitter(name) {
+  const s = SIZES[name];
+  const el = h('div', { class: `split ${name}`, dataset: { size: name }, role: 'separator', tabIndex: 0, title: 'Drag to resize, double-click to reset',
+    'aria-label': s.label, 'aria-orientation': s.across ? 'vertical' : 'horizontal', 'aria-valuemin': String(s.min), 'aria-valuemax': String(s.max) });
+  const set = (px) => { sizes[name] = fitSize(name, px); applySizes(); };
+  const reset = () => { delete sizes[name]; applySizes(); keepSizes(); };
+  el.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const at = (ev) => (s.across ? ev.clientX : ev.clientY);
+    const start = at(e), from = sizeOf(name);
+    let moved = false;
+    const move = (ev) => { if (!moved && Math.abs(at(ev) - start) < 3) return; moved = true; set(from + s.grows * (at(ev) - start)); };
+    const end = () => {
+      el.removeEventListener('pointermove', move);
+      el.classList.remove('active');
+      document.body.classList.remove('resizing');
+      if (moved) keepSizes();
+    };
+    el.setPointerCapture(e.pointerId);
+    el.classList.add('active');
+    document.body.classList.add('resizing');
+    el.addEventListener('pointermove', move);
+    el.addEventListener('lostpointercapture', end, { once: true });
+  });
+  el.addEventListener('dblclick', reset);
+  el.addEventListener('keydown', (e) => {
+    const step = (s.across ? { ArrowLeft: -1, ArrowRight: 1 } : { ArrowUp: -1, ArrowDown: 1 })[e.key];
+    if (!step && e.key !== 'Home') return;
+    e.preventDefault();
+    e.stopPropagation(); // not a move of the key selection
+    if (e.key === 'Home') { reset(); return; }
+    set(sizeOf(name) + s.grows * step * 16);
+    keepSizes();
+  });
+  return el;
 }
 
 // ---- keyboard ----------------------------------------------------------------------------------------
@@ -1580,7 +1877,7 @@ function onKeyDown(e) {
     const col = state.sel.k % pg.cols;
     if ((e.key === 'ArrowLeft' && col === 0) || (e.key === 'ArrowRight' && col === pg.cols - 1)) return;
     const next = state.sel.k + moves[e.key];
-    if (next >= 0 && next < pg.cols * pg.rows) { state.sel.k = next; renderScreen(); renderInspector(); }
+    if (next >= 0 && next < pg.cols * pg.rows) { state.sel.k = next; state.panel = 'key'; renderScreen(); renderInspector(); }
   }
 }
 
@@ -1597,11 +1894,20 @@ async function start() {
     state.templates = templates.templates;
     state.presets = { builtin: presets.builtin, user: presets.user };
     renderAll();
+    $('#deckView').append(splitter('tree'), splitter('panel'), splitter('dock'));
+    applySizes();
+    window.addEventListener('resize', applySizes);
   } catch (e) {
     banner(e.deck ? loadProblem(e) : `Couldn\u2019t open the editor: ${e.message}. Reload to try again.`);
     return;
   }
   document.addEventListener('keydown', onKeyDown);
+  document.addEventListener('pointerdown', (e) => {
+    if (state.addMenu && !e.target.closest('.addmenu, .treehead button')) { state.addMenu = false; renderTree(); }
+  });
+  const watch = new ResizeObserver(fitBoard);
+  watch.observe($('#stage'));
+  watch.observe($('#pageControls'));
   window.addEventListener('beforeunload', (e) => { if (isDirty()) { e.preventDefault(); e.returnValue = ''; } });
   refreshStatus();
   setInterval(refreshStatus, 3000);

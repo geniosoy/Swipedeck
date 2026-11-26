@@ -16,6 +16,13 @@ ICONS = {
     "left", "right", "up", "down", "plus", "minus", "eye", "eye_off", "warning", "shuffle", "loop",
     "directory", "file", "call", "cut", "copy", "paste", "save", "bell", "keyboard", "gps", "wifi",
     "bluetooth", "trash", "usb", "charge", "battery", "drive", "backspace",
+    # drawn by the firmware from src/sd_icons.c (needs firmware 0.14.0)
+    "mic", "mic_off", "headphones", "speaker_off", "camera", "webcam", "webcam_off", "record",
+    "broadcast", "layers", "lightbulb", "lock", "desktop", "search", "smile", "clipboard",
+    "chart", "task_view", "exchange", "maximize", "minimize", "fullscreen", "columns", "undo",
+    "redo", "globe", "code", "terminal", "calculator", "envelope", "youtube", "spotify",
+    "discord", "steam", "gamepad", "branch", "bug", "history", "incognito", "send",
+    "script", "text", "bold", "italic", "underline", "print", "zoom_in", "zoom_out",
 }
 
 MAX_DESKTOPS, MAX_PAGES = 8, 16
@@ -40,7 +47,8 @@ SETTINGS_SPEC = {
     "flip": ("bool", False, None),             # screen upside down
     "startDesktop": ("int", 0, (0, MAX_DESKTOPS - 1)),
     "keyRadius": ("int", 12, (0, 24)),
-    "keyGap": ("int", 6, (2, 12)),
+    "keyGap": ("int", 6, (0, 12)),
+    "keyPad": ("int", 6, (0, 12)),             # between the keys and the screen's edges
     "swipe": ("swipe", "normal", None),        # how far / hard a swipe must be to pass to another desktop
     "wrap": ("bool", False, None),             # endless scrolling: swiping past the last desktop wraps to the first
     "sleepWithPc": ("bool", False, None),      # screen off while the PC is locked, asleep or not talking to the board
@@ -382,7 +390,7 @@ class Deck:
             self._check_action(action, f"{where}.action")
             self._actions[(di, pi, ki)] = action
         else:
-            self.warnings.append(f"{where}: '{out.get('label', '?')}' does nothing. Pick an action.")
+            self.warnings.append(f"{where}: This key does nothing. Pick an action.")
         repeat, hold = k.get("repeat", False), k.get("hold")
         if not isinstance(repeat, bool):
             raise DeckError(f"{where}: 'repeat' must be true or false")

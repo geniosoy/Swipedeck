@@ -17,7 +17,7 @@
 
 namespace {
 
-constexpr const char* kFirmware = "0.13.0";
+constexpr const char* kFirmware = "0.15.0";
 constexpr const char* kLayoutFile = "/layout.json";
 constexpr const char* kLayoutTmp = "/layout.tmp";
 
@@ -33,6 +33,7 @@ struct Settings {
   int startDesktop = 0;      // desktop shown after a layout loads / the board boots
   int keyRadius = 12;        // key corner radius, px
   int keyGap = 6;            // gap between keys, px
+  int keyPad = 6;            // padding between the keys and the screen's edges, px
   bool wrap = false;         // endless scrolling between desktops
   int swipe = 1;             // swipe length needed to pass to another desktop, see kSwipes
   bool sleepWithPc = false;  // screen off while the PC is locked, or silent for kLinkTimeoutMs
@@ -91,6 +92,7 @@ void putSettings(JsonObject o) {
   o["startDesktop"] = settings.startDesktop;
   o["keyRadius"] = settings.keyRadius;
   o["keyGap"] = settings.keyGap;
+  o["keyPad"] = settings.keyPad;
   o["wrap"] = settings.wrap;
   o["swipe"] = kSwipes[settings.swipe];
   o["sleepWithPc"] = settings.sleepWithPc;
@@ -112,7 +114,7 @@ void applySettings() {
     rotation = want;
     displaySetRotation(rotation);
   }
-  uiSetKeyLook(settings.keyRadius, settings.keyGap);
+  uiSetKeyLook(settings.keyRadius, settings.keyGap, settings.keyPad);
   uiSetWrap(settings.wrap);
   displaySetSwipe(settings.swipe);
   applyPresence();
@@ -138,6 +140,7 @@ void saveSettings() {
   prefs.putInt("std", settings.startDesktop);
   prefs.putInt("krd", settings.keyRadius);
   prefs.putInt("kgp", settings.keyGap);
+  prefs.putInt("kpd", settings.keyPad);
   prefs.putBool("wrp", settings.wrap);
   prefs.putInt("swp", settings.swipe);
   prefs.putBool("spc", settings.sleepWithPc);
@@ -157,6 +160,7 @@ void loadSettings() {
   settings.startDesktop = prefs.getInt("std", settings.startDesktop);
   settings.keyRadius = prefs.getInt("krd", settings.keyRadius);
   settings.keyGap = prefs.getInt("kgp", settings.keyGap);
+  settings.keyPad = prefs.getInt("kpd", settings.keyPad);
   settings.wrap = prefs.getBool("wrp", settings.wrap);
   settings.swipe = constrain(prefs.getInt("swp", settings.swipe), 0, 2);
   settings.sleepWithPc = prefs.getBool("spc", settings.sleepWithPc);
@@ -385,8 +389,9 @@ void onSettings(JsonDocument& m) {
   if (m["sleepAfter"].is<int>()) settings.sleepAfter = constrain(m["sleepAfter"].as<int>(), 0, 3600);
   if (m["flip"].is<bool>()) settings.flip = m["flip"].as<bool>();
   if (m["startDesktop"].is<int>()) settings.startDesktop = constrain(m["startDesktop"].as<int>(), 0, 31);
-  if (m["keyRadius"].is<int>()) settings.keyRadius = constrain(m["keyRadius"].as<int>(), 0, 24);
-  if (m["keyGap"].is<int>()) settings.keyGap = constrain(m["keyGap"].as<int>(), 2, 12);
+  if (m["keyRadius"].is<int>()) settings.keyRadius = constrain(m["keyRadius"].as<int>(), 0, kMaxKeyRadius);
+  if (m["keyGap"].is<int>()) settings.keyGap = constrain(m["keyGap"].as<int>(), 0, kMaxKeyGap);
+  if (m["keyPad"].is<int>()) settings.keyPad = constrain(m["keyPad"].as<int>(), 0, kMaxKeyPad);
   if (m["wrap"].is<bool>()) settings.wrap = m["wrap"].as<bool>();
   if (m["sleepWithPc"].is<bool>()) settings.sleepWithPc = m["sleepWithPc"].as<bool>();
   if (m["swipe"].is<const char*>()) {
@@ -490,7 +495,8 @@ void onConsole(const String& line) {
     bool sliding;
     uiScrollInfo(sx, tx, n, sliding);
     Serial.printf("scroll x=%d activeTile x=%d desktops=%d active=%d sliding=%d\n", sx, tx, n, uiActiveDesktop(), sliding);
-  } else if (line == "swipe right" || line == "swipe left") Serial.printf("swipe %s\n", uiSwipe(line.endsWith("right")) ? "wrapped" : "nothing to wrap");
+  } else if (line == "grid") Serial.printf("grid %s\n", uiGridInfo().c_str());
+  else if (line == "swipe right" || line == "swipe left")Serial.printf("swipe %s\n", uiSwipe(line.endsWith("right")) ? "wrapped" : "nothing to wrap");
   else if (line == "reboot") ESP.restart();
   else if (line == "info") {
     Serial.printf("layout %s crc %s, vol %d sounds %d bri %d, screen %s (pc locked %d, link lost %d), heap %u KB, PSRAM %u KB\n",
