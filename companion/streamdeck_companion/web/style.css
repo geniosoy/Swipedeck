@@ -34,6 +34,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* top bar */
 #topbar { display: flex; align-items: center; gap: 10px; padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .brand { font-weight: 600; font-size: 16px; margin-right: 8px; }
+#topbar .brand { display: flex; align-items: center; gap: 8px; }
 .spacer { flex: 1; }
 .pill { padding: 3px 10px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--line); color: var(--muted); font-size: 12px; }
 .pill.on { color: var(--good); border-color: color-mix(in srgb, var(--good) 45%, var(--line)); }

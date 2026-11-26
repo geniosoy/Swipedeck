@@ -206,6 +206,7 @@ def main() -> int:
         print("loading")
         open_editor()
         check("renders the 12 keys of the first page", cdp.js("$$('.key').length") == 12)
+        check("the header shows the logo", cdp.wait("(() => { const i = document.querySelector('#topbar .brand img'); return !!i && i.complete && i.naturalWidth > 0; })()"))
         check("starts saved (nothing to save)", cdp.js("btn('Saved') && btn('Saved').disabled"))
         check("preview shows the page title", cdp.js("document.querySelector('.hdr .title').textContent") == "Main")
         check("one dot per desktop", cdp.js("$$('.hdr .dot').length") == 5)

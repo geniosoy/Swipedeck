@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Swipedeck">
+  <title>Swipedeck</title>
+  <!-- the screen -->
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="#0B1220"/>
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="none" stroke="#26384D" stroke-width="4"/>
+  <!-- the keys: 3 x 2, one of them lit -->
+  <g>
+    <rect x="34" y="44" width="52" height="52" rx="14" fill="#2A3A4D"/>
+    <rect x="102" y="44" width="52" height="52" rx="14" fill="#3B82F6"/>
+    <rect x="170" y="44" width="52" height="52" rx="14" fill="#2A3A4D"/>
+    <rect x="34" y="112" width="52" height="52" rx="14" fill="#2A3A4D"/>
+    <rect x="102" y="112" width="52" height="52" rx="14" fill="#2A3A4D"/>
+    <rect x="170" y="112" width="52" height="52" rx="14" fill="#1ED760"/>
+  </g>
+  <!-- a play triangle on the lit key, a tick on the green one -->
+  <path d="M120 58 L120 82 L140 70 Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M183 138 L193 148 L209 128" fill="none" stroke="#0B1220" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- desktop dots: swipe between desktops -->
+  <circle cx="108" cy="204" r="7" fill="#FFFFFF"/>
+  <circle cx="128" cy="204" r="7" fill="#55657A"/>
+  <circle cx="148" cy="204" r="7" fill="#55657A"/>
+</svg>

@@ -61,8 +61,11 @@ class EditorServerTest(unittest.TestCase):
         self.assertGreater(len(presets["builtin"]), 5)
         self.assertEqual(presets["user"], [])
         self.assertEqual(self.json("GET", "/api/status"), (200, {"connected": True}))
-        for path in ("/app.js", "/model.js", "/style.css", "/icons.json", "/presets.json", "/templates.json", "/apps.json", "/fonts/fa.woff", "/favicon.svg", "/favicon.ico"):
+        for path in ("/app.js", "/model.js", "/style.css", "/icons.json", "/presets.json", "/templates.json", "/apps.json", "/fonts/fa.woff", "/favicon.svg", "/favicon.ico", "/logo.svg"):
             self.assertEqual(self.call("GET", path)[0], 200, path)
+        # the header's logo is a copy of the project's: the two must not drift apart
+        project_logo = Path(__file__).resolve().parents[2] / "assets" / "logo.svg"
+        self.assertEqual(self.call("GET", "/logo.svg")[1].split(), project_logo.read_bytes().split())
 
     def test_saving_says_whether_a_board_is_there(self):
         deck = self.json("GET", "/api/deck")[1]

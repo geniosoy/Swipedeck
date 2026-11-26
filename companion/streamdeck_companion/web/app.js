@@ -261,12 +261,15 @@ async function refreshStatus() {
 
 // ---- top bar -----------------------------------------------------------------------------------------
 
+// Made once and put back on every redraw (the top bar is redrawn every few seconds), so the logo is not loaded again.
+const BRAND = h('span', { class: 'brand' }, h('img', { src: '/logo.svg', alt: '', width: 32, height: 32 }), 'Swipedeck');
+
 function renderTopbar() {
   const st = state.status;
   let pill = h('span', { class: 'pill off' }, 'Can\u2019t reach Swipedeck. Check it\u2019s running, then reload.');
   if (st) pill = st.connected ? h('span', { class: 'pill on' }, 'Board connected') : h('span', { class: 'pill off' }, 'Board disconnected');
   $('#topbar').replaceChildren(
-    h('span', { class: 'brand' }, 'Swipedeck'),
+    BRAND,
     h('nav', { class: 'tabs' },
       h('button', { class: 'tab' + (state.view === 'deck' ? ' on' : ''), onclick: () => setView('deck') }, 'Desktops'),
       h('button', { class: 'tab' + (state.view === 'settings' ? ' on' : ''), onclick: () => setView('settings') }, 'Settings')),
